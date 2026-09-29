@@ -1,0 +1,106 @@
+import { eq } from "drizzle-orm";
+import { db } from "@/db";
+import { smsLogs, smsTemplates } from "@/db/schema";
+import { getSettings } from "./settings";
+import { maskPhone } from "./util";
+
+export const SMS_EVENTS: Record<string, { title: string; vars: string[]; body: string }> = {
+  otp_login: { title: "کد ورود یک‌بارمصرف (OTP)", vars: ["code"], body: "کد ورود شما به سبزینه: {code}\nاین کد را در اختیار دیگران قرار ندهید." },
+  order_created: { title: "ثبت سفارش", vars: ["name", "order"], body: "{name} عزیز، سفارش {order} ثبت شد. سبزینه" },
+  payment_success: { title: "پرداخت موفق", vars: ["order", "amount"], body: "پرداخت سفارش {order} به مبلغ {amount} تومان موفق بود." },
+  product_approved: { title: "تأیید محصول", vars: ["product"], body: "محصول {product} تأیید شد." },
+  product_rejected: { title: "رد محصول", vars: ["product"], body: "محصول {product} رد شد. لطفاً پنل را بررسی کنید." },
+  supply_quote_received: { title: "دریافت پیشنهاد تأمین", vars: ["request"], body: "پیشنهاد جدید برای درخواست {request} دریافت شد." },
+  quotation_sent: { title: "صدور پیش‌فاکتور", vars: ["request", "amount"], body: "پیش‌فاکتور درخواست {request} به مبلغ {amount} تومان صادر شد." },
+  ready_to_ship: { title: "آماده ارسال", vars: ["order"], body: "مرسوله سفارش {order} آماده ارسال است." },
+  order_shipped: { title: "ارسال سفارش", vars: ["order", "tracking"], body: "سفارش {order} ارسال شد. کد رهگیری: {tracking}" },
+  order_delivered: { title: "تحویل سفارش", vars: ["order"], body: "سفارش {order} تحویل شد. از خرید شما سپاسگزاریم." },
+  ticket_reply: { title: "پاسخ تیکت", vars: ["ticket"], body: "به تیکت {ticket} پاسخ داده شد." },
+  withdrawal_requested: { title: "ثبت برداشت", vars: ["amount"], body: "درخواست برداشت {amount} تومان ثبت شد." },
+  settlement_paid: { title: "پرداخت تسویه", vars: ["amount", "tracking"], body: "مبلغ {amount} تومان واریز شد. پیگیری: {tracking}" },
+};
+
+export function renderTemplate(body: string, vars: Record<string, string | number>) {
+  return body.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : `{${k}}`));
+}
+
+async function callProvider(provider: string, phone: string, patternId: string | null, body: string, vars: Record<string, string | number>) {
+  if (provider === "kavenegar") {
+    const key = process.env.KAVENEGAR_API_KEY;
+    if (!key) return { ok: true, simulated: true, response: "simulated (no KAVENEGAR_API_KEY)" };
+    const params = new URLSearchParams({ receptor: phone, template: patternId ?? "", token: String(Object.values(vars)[0] ?? "") });
+    const r = await fetch(`https://api.kavenegar.com/v1/${key}/verify/lookup.json?${params}`, { signal: AbortSignal.timeout(8000) });
+    return { ok: r.ok, simulated: false, response: (await r.text()).slice(0, 500) };
+  }
+  const key = process.env.SMSIR_API_KEY;
+  if (!key) return { ok: true, simulated: true, response: "simulated (no SMSIR_API_KEY)" };
+  const r = await fetch("https://api.sms.ir/v1/send/verify", {
+    method: "POST", headers: { "Content-Type": "application/json", "x-api-key": key },
+    body: JSON.stringify({ mobile: phone, templateId: Number(patternId), parameters: Object.entries(vars).map(([name, value]) => ({ name, value: String(value) })) }),
+    signal: AbortSignal.timeout(8000),
+  });
+  return { ok: r.ok, simulated: false, response: (await r.text()).slice(0, 500) };
+}
+
+export function extractVars(body: string) {
+  return Array.from(new Set(Array.from(body.matchAll(/\{(\w+)\}/g)).map((m) => m[1])));
+}
+
+async function deliver(event: string, phone: string, provider: string, patternId: string | null, body: string, vars: Record<string, string | number>) {
+  let attempts = 0;
+  let last = { ok: false, simulated: false, response: "" };
+  while (attempts < 3) {
+    attempts++;
+    try {
+      last = await callProvider(provider, phone, patternId, body, vars);
+      if (last.ok) break;
+    } catch (e) {
+      last = { ok: false, simulated: false, response: (e as Error).message };
+    }
+    await new Promise((r) => setTimeout(r, 200 * attempts));
+  }
+  const status = last.ok ? (last.simulated ? "simulated" : "sent") : "failed";
+  const logBody = event.startsWith("otp") ? body.replace(/\d{4,6}/g, "*****") : body;
+  await db.insert(smsLogs).values({ event, phone, provider, body: logBody, status, response: last.response, attempts });
+  return status;
+}
+
+/** Sends every active template registered for an event (multiple patterns per event supported). */
+export async function sendSms(event: string, phone: string, vars: Record<string, string | number>, force = false, templateId?: number) {
+  try {
+    const all = await db.select().from(smsTemplates).where(eq(smsTemplates.event, event));
+    const tpls = all.filter((t) => (templateId ? t.id === templateId : true) && (t.isActive || force));
+    if (!tpls.length) return { status: "skipped" };
+    const s = await getSettings();
+    const out: string[] = [];
+    let body = "";
+    for (const tpl of tpls) {
+      body = renderTemplate(tpl.body, vars);
+      out.push(await deliver(event, phone, s.smsProvider, tpl.patternId, body, vars));
+    }
+    return { status: out.join(","), body };
+  } catch {
+    return { status: "error" };
+  }
+}
+
+export async function sendTemplateTo(templateId: number, phones: string[], vars: Record<string, string | number>) {
+  const [tpl] = await db.select().from(smsTemplates).where(eq(smsTemplates.id, templateId));
+  if (!tpl) return { sent: 0, failed: 0 };
+  const s = await getSettings();
+  let sent = 0, failed = 0;
+  for (const phone of phones) {
+    const st = await deliver(`manual:${tpl.event}`, phone, s.smsProvider, tpl.patternId, renderTemplate(tpl.body, vars), vars);
+    if (st === "failed") failed++; else sent++;
+  }
+  return { sent, failed };
+}
+
+export async function retryLog(logId: number) {
+  const [l] = await db.select().from(smsLogs).where(eq(smsLogs.id, logId));
+  if (!l || l.status !== "failed" || !/^09\d{9}$/.test(l.phone)) return null;
+  const s = await getSettings();
+  return deliver(l.event, l.phone, s.smsProvider, null, l.body, {});
+}
+
+export { maskPhone };

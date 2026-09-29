@@ -1,0 +1,59 @@
+import { db } from "@/db";
+import { settings } from "@/db/schema";
+import type { DB } from "./types";
+
+export const DEFAULT_SETTINGS = {
+  siteName: "سبزینه",
+  siteTagline: "بازار آنلاین محصولات ارگانیک و طبیعی",
+  currency: "تومان",
+  taxRate: 10,
+  defaultCommission: 8,
+  minWithdrawal: 500000,
+  releasePolicy: "on_customer_confirm",
+  paymentGateway: "zarinpal",
+  smsProvider: "kavenegar",
+  smsSender: "10008663",
+  inventoryPolicy: "reserve_on_order",
+  supplyDefaultMargin: 15,
+  supplyShippingCost: 90000,
+  centralShippingCost: 85000,
+  senderName: "انبار مرکزی سبزینه",
+  senderAddress: "تهران، خیابان امین‌حضور، پلاک ۱۲",
+  marketplaceRules: "فروشندگان موظف به ارسال کالای اصل و مطابق مشخصات هستند.",
+  economicCode: "411111111111",
+  orderExpiryMinutes: 120,
+  multiVendor: 1,
+  allowSellerSignup: 1,
+  heroType: "image",
+  heroMediaId: 0,
+  heroTitle: "طعم واقعی طبیعت، ارگانیک و بی‌واسطه",
+  heroSubtitle: "عسل طبیعی، روغن‌های پرس سرد، ادویه، خشکبار و سبزیجات تازه از کشاورزان و تولیدکنندگان منتخب با گواهی معتبر.",
+  supportPhone: "021-91000000",
+  supportHours: "همه روزه ۱۰ تا ۲۱",
+  returnDays: 10,
+  freeShippingOver: 2000000,
+  reviewAutoApprove: 0,
+  senderPhone: "021-91000000",
+  senderPostalCode: "1136914311",
+  senderCity: "تهران",
+  bankAccountInfo: "بانک ملت — کارت ۶۱۰۴-۳۳۷۸-۱۲۳۴-۵۶۷۸ — شبا IR120120000000001234567890 — به نام شرکت سبزینه",
+  labelShowLogo: 1,
+  labelShowOrderBarcode: 1,
+  labelBorderStyle: "solid",
+  invoiceFooter: "کالای فروخته‌شده تا ۷ روز با حفظ شرایط اولیه قابل مرجوع است.",
+  labelWidth: 100,
+  labelHeight: 150,
+  labelFontSize: 12,
+  labelShowBarcode: 1,
+  labelShowSender: 1,
+  labelShowItems: 1,
+  labelTemplate: "# گیرنده: {receiver}\nتلفن: {phone}\nآدرس: {city} - {address}\nکد پستی: {postalCode}\n---\nسفارش: {order} | مرسوله: {shipment}\nحامل: {carrier} | تعداد بسته: {packages}\n! شکستنی — با احتیاط حمل شود",
+};
+export type SettingsShape = typeof DEFAULT_SETTINGS;
+
+export async function getSettings(tx: DB = db): Promise<SettingsShape> {
+  const rows = await tx.select().from(settings);
+  const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
+  for (const r of rows) out[r.key] = r.value;
+  return out as SettingsShape;
+}

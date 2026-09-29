@@ -1,0 +1,45 @@
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import {
+  LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, Menu, X, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList,
+} from "lucide-react";
+
+const ICONS = { LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList };
+export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
+
+export function SideNav({ items, mobile, title }: { items: NavItem[]; mobile?: boolean; title?: string }) {
+  const path = usePathname();
+  const [open, setOpen] = useState(false);
+  const isActive = (h: string) => path === h || (h.split("/").length > 2 && path.startsWith(h + "/")) || (path.startsWith(h + "/") && !items.some((i) => i.href !== h && path.startsWith(i.href)));
+  const list = (
+    <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+      {items.map((it) => {
+        const Icon = ICONS[it.icon];
+        const active = isActive(it.href);
+        return (
+          <Link key={it.href} href={it.href} onClick={() => setOpen(false)}
+            className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${active ? "bg-emerald-50 text-emerald-700" : "text-slate-600 hover:bg-slate-50"}`}>
+            <Icon className="h-[18px] w-[18px]" />{it.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+  if (!mobile) return list;
+  return (
+    <>
+      <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="منو"><Menu className="h-5 w-5" /></button>
+      {open && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div className="absolute inset-0 bg-slate-900/40" onClick={() => setOpen(false)} />
+          <div className="absolute inset-y-0 right-0 flex w-72 flex-col bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b p-4"><b>{title}</b><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
+            {list}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

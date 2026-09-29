@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --color-cream: #faf7ef;
+  --color-leaf: #2f6b3a;
+}
+
+html { font-family: "Vazirmatn", ui-sans-serif, system-ui, sans-serif; }
+body { font-feature-settings: "ss01"; }
+
+@layer components {
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-emerald-600 to-emerald-700 shadow-emerald-600/25 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-emerald-800 disabled:cursor-not-allowed disabled:opacity-60; }
+  .btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60; }
+  .btn-danger { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-60; }
+  .btn-success { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60; }
+  .btn-sm { @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60; }
+  .input { @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100; }
+  .skeleton { @apply animate-pulse rounded-xl bg-slate-200; }
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
+  aside, header.sticky { display: none !important; }
+  .invoice-sheet, .label-sheet { box-shadow: none !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+@keyframes qvIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+.qv-in { animation: qvIn .22s ease-out; }
+
+.bg-leaf-pattern {
+  background-color: #faf7ef;
+  background-image: radial-gradient(circle at 20% 20%, rgba(132, 204, 22, .08) 0, transparent 40%), radial-gradient(circle at 80% 0%, rgba(16, 185, 129, .08) 0, transparent 35%);
+}
+.text-balance { text-wrap: balance; }
+
+/* CKEditor */
+.rich-editor .ck-editor__editable_inline { min-height: var(--re-min, 260px); max-height: 640px; direction: rtl; text-align: right; font-family: Vazirmatn, sans-serif; line-height: 2; }
+.rich-editor .ck.ck-editor__main > .ck-editor__editable { border-bottom-left-radius: .75rem; border-bottom-right-radius: .75rem; }
+.rich-editor .ck.ck-toolbar { border-top-left-radius: .75rem; border-top-right-radius: .75rem; background: #f8faf5; }
+.rich-editor { --ck-font-face: Vazirmatn, sans-serif; --ck-color-focus-border: #10b981; }
+
+/* Rendered rich content */
+.prose-rich { line-height: 2.1; color: #334155; }
+.prose-rich h2 { font-size: 1.35rem; font-weight: 900; color: #064e3b; margin: 1.4em 0 .6em; }
+.prose-rich h3 { font-size: 1.15rem; font-weight: 800; color: #065f46; margin: 1.2em 0 .5em; }
+.prose-rich h4 { font-weight: 800; margin: 1em 0 .4em; }
+.prose-rich p { margin: .6em 0; }
+.prose-rich ul { list-style: disc; padding-right: 1.5rem; margin: .6em 0; }
+.prose-rich ol { list-style: decimal; padding-right: 1.5rem; margin: .6em 0; }
+.prose-rich a { color: #047857; text-decoration: underline; }
+.prose-rich blockquote { border-right: 4px solid #84cc16; background: #f7fee7; padding: .75rem 1rem; border-radius: .75rem; margin: 1em 0; }
+.prose-rich img { border-radius: 1rem; max-width: 100%; height: auto; margin: .75rem auto; }
+.prose-rich figure { margin: 1rem 0; }
+.prose-rich figure.image-style-side { float: left; max-width: 45%; margin: 0 1rem 1rem 0; }
+.prose-rich figcaption { text-align: center; font-size: .8rem; color: #64748b; }
+.prose-rich table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .9rem; }
+.prose-rich th, .prose-rich td { border: 1px solid #e2e8f0; padding: .5rem .75rem; }
+.prose-rich th { background: #f0fdf4; font-weight: 800; }
+.prose-rich mark { background: #fef08a; border-radius: .25rem; padding: 0 .2em; }
+.prose-rich pre { background: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: .75rem; overflow-x: auto; direction: ltr; }
+.prose-rich iframe { width: 100%; aspect-ratio: 16/9; border-radius: 1rem; }
+.prose-rich hr { margin: 1.5rem 0; border-color: #d9f99d; }

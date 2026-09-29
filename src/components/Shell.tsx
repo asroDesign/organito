@@ -1,0 +1,93 @@
+import type { ReactNode } from "react";
+import Link from "next/link";
+import { and, eq, count } from "drizzle-orm";
+import { Leaf } from "lucide-react";
+import { NotificationBell } from "./NotificationBell";
+import { db } from "@/db";
+import { notifications } from "@/db/schema";
+import type { SessionUser } from "@/lib/auth";
+import { ROLES, type Permission } from "@/lib/rbac";
+import { SideNav, type NavItem } from "./SideNav";
+import { LogoutButton } from "./client";
+
+const ADMIN_NAV: (NavItem & { perm?: Permission | Permission[] })[] = [
+  { href: "/admin", label: "داشبورد", icon: "LayoutDashboard" },
+  { href: "/admin/products", label: "محصولات و کاتالوگ", icon: "Package", perm: "PRODUCTS_VIEW" },
+  { href: "/admin/reviews", label: "دیدگاه‌ها و پرسش‌ها", icon: "MessageSquare", perm: "PRODUCTS_APPROVE" },
+  { href: "/admin/categories", label: "دسته‌بندی‌ها", icon: "FolderTree", perm: "PRODUCTS_EDIT" },
+  { href: "/admin/marketplace", label: "مارکت‌پلیس و تأمین‌کنندگان", icon: "Store", perm: ["SUPPLIER_OFFERS_MANAGE", "SELLER_SETTLEMENT_MANAGE", "WITHDRAWALS_MANAGE"] },
+  { href: "/admin/orders", label: "سفارش‌ها", icon: "ShoppingBag", perm: "ORDERS_VIEW" },
+  { href: "/admin/shipments", label: "مدیریت ارسال‌ها", icon: "Truck", perm: "SHIPMENTS_MANAGE" },
+  { href: "/admin/carriers", label: "شرکت‌های پستی و تعرفه", icon: "MapPin", perm: "SHIPMENTS_MANAGE" },
+  { href: "/admin/discounts", label: "کدهای تخفیف", icon: "BadgePercent", perm: "MARKETING_MANAGE" },
+  { href: "/admin/festivals", label: "جشنواره‌های فروش", icon: "Flame", perm: "MARKETING_MANAGE" },
+  { href: "/admin/supply", label: "استعلام و تأمین محصول", icon: "Search", perm: "SUPPLY_REQUESTS_VIEW" },
+  { href: "/admin/inventory", label: "انبار مرکزی", icon: "Warehouse", perm: "INVENTORY_MANAGE" },
+  { href: "/admin/warehouse-issues", label: "حواله‌های خروج انبار", icon: "ClipboardList", perm: ["INVENTORY_MANAGE", "SHIPMENTS_MANAGE"] },
+  { href: "/admin/accounting", label: "حسابداری", icon: "Calculator", perm: "ACCOUNTING_MANAGE" },
+  { href: "/admin/tickets", label: "تیکت‌ها", icon: "LifeBuoy", perm: "TICKETS_MANAGE" },
+  { href: "/admin/sms", label: "پنل پیامک", icon: "MessageSquare", perm: "SMS_MANAGE" },
+  { href: "/admin/labels", label: "طراحی لیبل پستی", icon: "Tag", perm: "SETTINGS_MANAGE" },
+  { href: "/admin/users", label: "کاربران و مجوزها", icon: "Users", perm: "USERS_MANAGE" },
+  { href: "/admin/settings", label: "تنظیمات", icon: "Settings", perm: "SETTINGS_MANAGE" },
+  { href: "/admin/audit", label: "ممیزی", icon: "ShieldCheck", perm: "AUDIT_LOG_VIEW" },
+];
+const SELLER_NAV: NavItem[] = [
+  { href: "/seller", label: "داشبورد", icon: "LayoutDashboard" },
+  { href: "/seller/products", label: "محصولات و پیشنهادها", icon: "Package" },
+  { href: "/seller/orders", label: "سفارش‌ها و مرسوله‌ها", icon: "Truck" },
+  { href: "/seller/warehouse-issues", label: "حواله‌های خروج انبار", icon: "ClipboardList" },
+  { href: "/seller/rfq", label: "درخواست‌های RFQ", icon: "Search" },
+  { href: "/seller/finance", label: "مالی و گزارش", icon: "Calculator" },
+  { href: "/seller/wallet", label: "کیف پول و برداشت", icon: "Wallet" },
+  { href: "/seller/profile", label: "پروفایل و مدارک", icon: "User" },
+];
+const CUSTOMER_NAV: NavItem[] = [
+  { href: "/customer", label: "داشبورد", icon: "LayoutDashboard" },
+  { href: "/customer/orders", label: "سفارش‌های من", icon: "ShoppingBag" },
+  { href: "/customer/tracking", label: "پیگیری سفارش", icon: "Truck" },
+  { href: "/customer/supply", label: "استعلام و تأمین محصول", icon: "Search" },
+  { href: "/customer/tickets", label: "پشتیبانی", icon: "LifeBuoy" },
+  { href: "/customer/profile", label: "پروفایل و امنیت", icon: "User" },
+  { href: "/shop", label: "فروشگاه", icon: "Store" },
+];
+
+export async function Shell({ user, area, children }: { user: SessionUser; area: "admin" | "seller" | "customer"; children: ReactNode }) {
+  const items = area === "admin"
+    ? ADMIN_NAV.filter((n) => !n.perm || (Array.isArray(n.perm) ? n.perm.some((p) => user.permissions.includes(p)) : user.permissions.includes(n.perm))).map((n) => ({ href: n.href, label: n.label, icon: n.icon }))
+    : area === "seller" ? SELLER_NAV : CUSTOMER_NAV;
+  const [{ n }] = await db.select({ n: count() }).from(notifications).where(and(eq(notifications.userId, user.id), eq(notifications.read, false)));
+  const title = area === "admin" ? "پنل مدیریت" : area === "seller" ? "پنل تأمین‌کننده" : "حساب کاربری";
+  const side = (
+    <div className="flex h-full flex-col">
+      <Link href="/" className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white"><Leaf className="h-5 w-5" /></span>
+        <div><div className="font-black text-slate-800">سبزینه</div><div className="text-[11px] text-slate-500">{title}</div></div>
+      </Link>
+      <SideNav items={items} />
+      <div className="border-t border-slate-100 p-3">
+        <div className="mb-2 rounded-xl bg-slate-50 px-3 py-2">
+          <div className="truncate text-sm font-bold text-slate-700">{user.name}</div>
+          <div className="text-xs text-slate-500">{ROLES[user.role as keyof typeof ROLES] ?? user.role}</div>
+        </div>
+        <LogoutButton />
+      </div>
+    </div>
+  );
+  return (
+    <div className="flex min-h-screen">
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-l border-slate-200 bg-white lg:block">{side}</aside>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
+          <SideNav items={items} mobile title={title} />
+          <div className="hidden text-sm text-slate-500 lg:block">{title}</div>
+          <div className="flex items-center gap-2">
+            <NotificationBell initialUnread={n} />
+            <Link href="/shop" className="btn-sm">فروشگاه</Link>
+          </div>
+        </header>
+        <main className="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6">{children}</main>
+      </div>
+    </div>
+  );
+}
