@@ -39,8 +39,8 @@ export default async function Home() {
       {/* HERO */}
       <section className="relative overflow-hidden">
         {st.heroMediaId && st.heroType === "video"
-          ? <video src={`/api/media/${st.heroMediaId}`} autoPlay muted loop playsInline preload="auto" poster="/images/hero-organic.jpg" className="absolute inset-0 h-full w-full object-cover" />
-          : /* eslint-disable-next-line @next/next/no-img-element */ <img src={st.heroMediaId ? `/api/media/${st.heroMediaId}` : "/images/hero-organic.jpg"} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+          ? <video src={`/api/media/${st.heroMediaId}`} autoPlay muted loop playsInline preload="auto" poster="/images/home-harvest.jpg" className="absolute inset-0 h-full w-full object-cover" />
+          : /* eslint-disable-next-line @next/next/no-img-element */ <img src={st.heroMediaId ? `/api/media/${st.heroMediaId}` : "/images/home-harvest.jpg"} alt="" className="absolute inset-0 h-full w-full object-cover" />}
         <div className="absolute inset-0 bg-gradient-to-l from-emerald-950/95 via-emerald-900/75 to-emerald-900/10" />
         <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 lg:grid-cols-[1.25fr_1fr] lg:py-24">
           <div className="space-y-6 text-white">
