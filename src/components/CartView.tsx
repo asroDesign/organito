@@ -9,7 +9,8 @@ import type { Quote } from "@/lib/services/orders";
 const t = (n: number) => `${n.toLocaleString("fa-IR")} تومان`;
 const keyOf = (i: { productId: number; offerId: number | null; variantId: number | null }) => `${i.productId}:${i.offerId ?? 0}:${i.variantId ?? 0}`;
 
-export function CartView({ loggedIn, defaultName, defaultPhone }: { loggedIn: boolean; defaultName: string; defaultPhone: string }) {
+type SavedAddress = { id:number; title:string; receiverName:string; receiverPhone:string; city:string; address:string; postalCode:string|null; latitude:string|null; longitude:string|null; isDefault:boolean };
+export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[] }: { loggedIn: boolean; defaultName: string; defaultPhone: string; savedAddresses?:SavedAddress[] }) {
   const cart = useCart();
   const router = useRouter();
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -23,6 +24,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone }: { loggedIn: bo
   const [carrierId, setCarrierId] = useState<number | null>(null);
   const [err, setErr] = useState("");
   const [payMethod, setPayMethod] = useState<"gateway" | "manual">("gateway");
+  const [selectedAddress,setSelectedAddress]=useState<SavedAddress|null>(savedAddresses.find(a=>a.isDefault)??null);
   useEffect(() => { const t = setTimeout(() => setCityQ(city), 500); return () => clearTimeout(t); }, [city]);
   useEffect(() => {
     if (!cart.length) { setQuote(null); setLoading(false); return; }
@@ -148,7 +150,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone }: { loggedIn: bo
           {code && quote?.code && !quote.code.ok && <div className="mt-1 text-xs text-rose-600">{quote.code.error}</div>}
         </div>
         {!loggedIn ? <Link href="/login?next=/cart" className="btn-primary w-full">برای ثبت سفارش وارد شوید</Link> : (
-          <form className="space-y-2" onSubmit={async (e) => {
+          <form key={selectedAddress?.id??"custom"} className="space-y-2" onSubmit={async (e) => {
             e.preventDefault();
             const fd = new FormData(e.currentTarget);
             setPlacing(true);
@@ -163,10 +165,12 @@ export function CartView({ loggedIn, defaultName, defaultPhone }: { loggedIn: bo
               router.push(`/customer/orders/${r.id}`);
             } catch (e2) { toast((e2 as Error).message, false); idem.current = uid(); } finally { setPlacing(false); }
           }}>
-            <input name="fullName" required defaultValue={defaultName} placeholder="نام تحویل‌گیرنده" className="input" />
-            <input name="phone" required defaultValue={defaultPhone} placeholder="موبایل" className="input" />
-            <div className="grid grid-cols-2 gap-2"><input name="city" required placeholder="شهر" value={city} onChange={(e) => setCity(e.target.value)} className="input" /><input name="postalCode" placeholder="کد پستی" className="input" /></div>
-            <textarea name="address" required minLength={10} placeholder="آدرس کامل" className="input min-h-20" />
+            {savedAddresses.length>0&&<select className="input" value={selectedAddress?.id??"custom"} onChange={e=>{const a=savedAddresses.find(x=>x.id===Number(e.target.value))??null;setSelectedAddress(a);if(a)setCity(a.city)}}><option value="custom">ثبت نشانی جدید</option>{savedAddresses.map(a=><option key={a.id} value={a.id}>{a.title} — {a.city}{a.isDefault?" (پیش‌فرض)":""}</option>)}</select>}
+            <input name="fullName" required defaultValue={selectedAddress?.receiverName??defaultName} placeholder="نام تحویل‌گیرنده" className="input" />
+            <input name="phone" required defaultValue={selectedAddress?.receiverPhone??defaultPhone} placeholder="موبایل" className="input" />
+            <div className="grid grid-cols-2 gap-2"><input name="city" required placeholder="شهر" value={selectedAddress?.city??city} onChange={(e) => {setCity(e.target.value);setSelectedAddress(null)}} className="input" /><input name="postalCode" defaultValue={selectedAddress?.postalCode??""} placeholder="کد پستی" className="input" /></div>
+            <textarea name="address" required minLength={10} defaultValue={selectedAddress?.address??""} placeholder="آدرس کامل" className="input min-h-20" />
+            <input type="hidden" name="latitude" value={selectedAddress?.latitude??""}/><input type="hidden" name="longitude" value={selectedAddress?.longitude??""}/>
             <div className="space-y-2 pt-1">
               <b className="text-xs text-slate-600">روش پرداخت</b>
               {([["gateway", "پرداخت آنلاین — درگاه زرین‌پال", "همه کارت‌های عضو شتاب"], ["manual", "کارت به کارت / حواله بانکی", "ثبت فیش پس از ثبت سفارش؛ پردازش پس از تأیید مالی"]] as const).map(([k, l, d]) => (

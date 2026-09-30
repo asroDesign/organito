@@ -5,6 +5,8 @@ import { media, sellerDocuments, sellers } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
 import { DOC_TYPES, KYC_STATUS, PROFILE_FIELDS } from "@/lib/services/kyc";
 import { SellerKycForm } from "@/components/SellerKycForm";
+import { ProfileAvatarUploader } from "@/components/ProfileAvatarUploader";
+import { Card } from "@/components/ui";
 
 export const metadata = { title: "پروفایل و مدارک تأمین‌کننده" };
 
@@ -19,6 +21,7 @@ export default async function SellerProfile() {
         <div className="flex items-center gap-3"><ShieldCheck className="h-10 w-10" /><div><h1 className="text-2xl font-black">پروفایل و مدارک {s.shopName}</h1><p className="text-sm text-white/80">وضعیت احراز هویت: <b>{KYC_STATUS[s.kycStatus] ?? s.kycStatus}</b></p></div></div>
         <div className="text-left text-xs text-white/80">کمیسیون: <b className="text-white">{s.commissionRate.toLocaleString("fa-IR")}٪</b> · دوره تسویه: <b className="text-white">{s.settlementDays.toLocaleString("fa-IR")} روز</b></div>
       </div>
+      <Card title="تصویر پروفایل"><ProfileAvatarUploader initial={u.avatarMediaId} /></Card>
       <SellerKycForm entityType={s.entityType === "legal" ? "legal" : "individual"} profile={s.profile} iban={s.iban ?? ""} kycStatus={s.kycStatus} restricted={s.restricted} restrictReason={s.restrictReason}
         fields={PROFILE_FIELDS} docTypes={DOC_TYPES}
         docs={docs.map(({ d, mime }) => ({ id: d.id, type: d.type, title: d.title, mediaId: d.mediaId, mime, status: d.status, required: d.required, requestNote: d.requestNote, reviewNote: d.reviewNote, dueAt: d.dueAt?.toISOString() ?? null }))} />

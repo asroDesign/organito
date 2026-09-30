@@ -11,10 +11,15 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   phone: text("phone").notNull().unique(),
   email: text("email"),
+  avatarMediaId: integer("avatar_media_id"),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("customer"),
   roleId: integer("role_id"),
   birthdate: timestamp("birthdate", { withTimezone: true }),
+  bankInfo: jsonb("bank_info").$type<{ cardNumber?: string; iban?: string; accountHolder?: string; bankName?: string }>(),
+  referralCode: text("referral_code"),
+  referredById: integer("referred_by_id"),
+  marketingPoints: integer("marketing_points").notNull().default(0),
   smsConsent: boolean("sms_consent").notNull().default(false),
   extraPermissions: jsonb("extra_permissions").$type<string[]>().notNull().default([]),
   isActive: boolean("is_active").notNull().default(true),
@@ -78,6 +83,33 @@ export const wallets = pgTable("wallets", {
   withdrawnBalance: money("withdrawn_balance"),
   updatedAt: updated(),
 });
+
+export const customerWallets = pgTable("customer_wallets", {
+  userId: integer("user_id").primaryKey(),
+  balance: money("balance"),
+  updatedAt: updated(),
+});
+export const customerWalletEntries = pgTable("customer_wallet_entries", {
+  id: serial("id").primaryKey(), userId: integer("user_id").notNull(), amount: bigint("amount", { mode: "number" }).notNull(),
+  type: text("type").notNull(), description: text("description").notNull(), reference: text("reference").unique(), createdAt: created(),
+}, (t) => [index("customer_wallet_entries_user_created").on(t.userId, t.createdAt)]);
+export const customerAddresses = pgTable("customer_addresses", {
+  id: serial("id").primaryKey(), userId: integer("user_id").notNull(), title: text("title").notNull().default("خانه"),
+  receiverName: text("receiver_name").notNull(), receiverPhone: text("receiver_phone").notNull(), city: text("city").notNull(),
+  address: text("address").notNull(), postalCode: text("postal_code"), latitude: text("latitude"), longitude: text("longitude"),
+  isDefault: boolean("is_default").notNull().default(false), createdAt: created(), updatedAt: updated(),
+}, (t) => [index("customer_addresses_user").on(t.userId, t.id)]);
+export const customerFavorites = pgTable("customer_favorites", {
+  id: serial("id").primaryKey(), userId: integer("user_id").notNull(), productId: integer("product_id").notNull(), createdAt: created(),
+}, (t) => [uniqueIndex("customer_favorites_user_product").on(t.userId, t.productId), index("customer_favorites_user_created").on(t.userId, t.createdAt)]);
+export const referralAwards = pgTable("referral_awards", {
+  id: serial("id").primaryKey(), orderId: integer("order_id").notNull().unique(), referrerId: integer("referrer_id").notNull(),
+  buyerId: integer("buyer_id").notNull(), points: integer("points").notNull(), createdAt: created(),
+});
+export const customerWalletWithdrawals = pgTable("customer_wallet_withdrawals", {
+  id: serial("id").primaryKey(), userId: integer("user_id").notNull(), amount: money("amount"), bankInfo: jsonb("bank_info").$type<Record<string, string>>().notNull(),
+  status: text("status").notNull().default("pending"), note: text("note"), adminNote: text("admin_note"), createdAt: created(), processedAt: timestamp("processed_at", { withTimezone: true }),
+}, (t) => [index("customer_wallet_withdrawals_user").on(t.userId, t.createdAt)]);
 
 export const walletTransactions = pgTable("wallet_transactions", {
   id: serial("id").primaryKey(),
@@ -323,7 +355,7 @@ export const stockMovements = pgTable("stock_movements", {
   createdAt: created(),
 });
 
-export type Address = { fullName: string; phone: string; city: string; address: string; postalCode: string };
+export type Address = { fullName: string; phone: string; city: string; address: string; postalCode: string; latitude?: string; longitude?: string };
 
 export const orders = pgTable("orders", {
   creditAmount: money("credit_amount"),

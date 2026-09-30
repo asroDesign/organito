@@ -15,11 +15,12 @@ import { sellerPosRoutes } from "@/lib/api/seller-pos";
 import { centralPosRoutes } from "@/lib/api/central-pos";
 import { contentRoutes } from "@/lib/api/content";
 import { mediaLibraryRoutes } from "@/lib/api/media-library";
+import { customerRoutes } from "@/lib/api/customer";
 import { ensureSeeded } from "@/lib/seed";
 import { expireStaleOrders } from "@/lib/services/orders";
 
 export const dynamic = "force-dynamic";
-const routes = [...mediaLibraryRoutes, ...contentRoutes, ...commerceRoutes, ...crmRoutes, ...centralPosRoutes, ...sellerPosRoutes, ...communityRoutes, ...kycRoutes, ...warehouseRoutes, ...gatewayRoutes, ...paymentRoutes, ...marketingRoutes, ...extraRoutes, ...publicRoutes, ...staffRoutes];
+const routes = [...mediaLibraryRoutes, ...contentRoutes, ...commerceRoutes, ...crmRoutes, ...centralPosRoutes, ...sellerPosRoutes, ...communityRoutes, ...customerRoutes, ...kycRoutes, ...warehouseRoutes, ...gatewayRoutes, ...paymentRoutes, ...marketingRoutes, ...extraRoutes, ...publicRoutes, ...staffRoutes];
 
 type Ctx = { params: Promise<{ path: string[] }> };
 async function handle(req: NextRequest, ctx: Ctx) {

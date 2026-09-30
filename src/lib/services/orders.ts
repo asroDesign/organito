@@ -3,7 +3,7 @@ import { and, eq, inArray, sql, ne } from "drizzle-orm";
 import { db } from "@/db";
 import {
   orders, orderItems, sellerShipments, orderHistory, payments, products, productVariants, sellerOffers, sellers,
-  stockMovements, wallets, walletTransactions, users, discountCodes, discountUsages, carriers, type Address,
+  stockMovements, wallets, walletTransactions, users, discountCodes, discountUsages, carriers, referralAwards, type Address,
 } from "@/db/schema";
 import { activeCarriers, activeFestivals, carrierCost, evaluateCode, festivalFor } from "../marketing";
 import { audit, notify } from "../audit";
@@ -193,7 +193,7 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
       discount: q.discount, tax: q.tax, total: q.finalTotal, creditAmount:q.creditAmount,giftCardId:q.giftCardId,address, idempotencyKey: idemKey,
       festivalDiscount: q.festivalDiscount, codeDiscount: q.codeDiscount, discountCodeId: q.code?.ok ? q.code.codeId ?? null : null, discountCode: q.code?.ok ? q.code.code ?? null : null, carrierId: q.carrierId,
     }).returning();
-    if(q.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,ctx.userId));await reserveCredit(tx,customer.phone,q.creditAmount,q.giftCardId,order.id);}
+    if(q.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,ctx.userId));await reserveCredit(tx,customer.phone,q.creditAmount,q.giftCardId,order.id,ctx.userId);}
     if (q.code?.ok && q.code.codeId) {
       await tx.update(discountCodes).set({ usedCount: sql`${discountCodes.usedCount} + 1` }).where(eq(discountCodes.id, q.code.codeId));
       await tx.insert(discountUsages).values({ codeId: q.code.codeId, userId: ctx.userId, orderId: order.id, amount: q.codeDiscount });
@@ -296,6 +296,14 @@ export async function payOrder(ctx: Ctx & { userId: number }, orderId: number, i
     const METHOD_FA: Record<string, string> = { gateway: "درگاه اینترنتی", card_to_card: "کارت به کارت", bank_transfer: "حواله بانکی", cash: "نقدی", pos: "کارتخوان" };
     await tx.insert(orderHistory).values({ orderId: o.id, status: "paid", note: `پرداخت موفق (${METHOD_FA[pay.method] ?? pay.method}) - کد ${pay.refCode}${pay.trackingCode ? ` - پیگیری ${pay.trackingCode}` : ""}`, userId: ctx.userId });
     await audit(tx, ctx, "payment.success", "order", o.id, { status: o.status }, { status: "paid", amount: o.total, payment: pay.id });
+    const [buyer] = await tx.select({ id: users.id, referredById: users.referredById }).from(users).where(eq(users.id, o.customerId));
+    if (buyer?.referredById) {
+      const points = Math.floor((o.total * 0.05) / 1000);
+      if (points > 0) {
+        const [award] = await tx.insert(referralAwards).values({ orderId: o.id, buyerId: buyer.id, referrerId: buyer.referredById, points }).onConflictDoNothing().returning({ id: referralAwards.id });
+        if (award) await tx.update(users).set({ marketingPoints: sql`${users.marketingPoints}+${points}` }).where(eq(users.id, buyer.referredById));
+      }
+    }
     return { order: upd, duplicate: false };
   });
   if (out.order) {
@@ -522,7 +530,7 @@ export async function cancelOrder(ctx: Ctx & { userId: number }, orderId: number
       }
       await tx.update(payments).set({ status: "refunded" }).where(eq(payments.orderId, o.id));
     }
-    if(o.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,o.customerId));await restoreCredit(tx,customer.phone,o.creditAmount,o.giftCardId,o.id);}
+    if(o.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,o.customerId));await restoreCredit(tx,customer.phone,o.creditAmount,o.giftCardId,o.id,o.customerId);}
     if (o.discountCodeId) {
       await tx.update(discountCodes).set({ usedCount: sql`greatest(${discountCodes.usedCount} - 1, 0)` }).where(eq(discountCodes.id, o.discountCodeId));
       await tx.delete(discountUsages).where(eq(discountUsages.orderId, o.id));

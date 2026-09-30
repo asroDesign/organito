@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, detailAccounts, journalLines, products, sellers, smsTemplates, ticketDepartments, tickets, users } from "@/db/schema";
+import { accounts, categories, detailAccounts, journalLines, media, products, sellers, smsTemplates, ticketDepartments, tickets, users } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword, verifyPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal } from "../accounting";
@@ -250,6 +250,16 @@ export const extraRoutes: Route[] = [
   } },
 
   // ---------- customer profile ----------
+  { method: "POST", pattern: "me/avatar", handler: async (req, _p, m) => {
+    const u = await requireApi(), b = await body(req), mediaId = b.mediaId ? int(b.mediaId, 1) : null;
+    if (mediaId) {
+      const [file] = await db.select({ id: media.id }).from(media).where(and(eq(media.id, mediaId), eq(media.uploadedBy, u.id), sql`${media.mime} like 'image/%'`));
+      if (!file) throw new HttpError(403, "تصویر پروفایل معتبر نیست");
+    }
+    await db.update(users).set({ avatarMediaId: mediaId }).where(eq(users.id, u.id));
+    await audit(db, { userId: u.id, ...m }, "user.avatar_update", "user", u.id, null, { mediaId });
+    return { ok: true, mediaId };
+  } },
   { method: "POST", pattern: "me/profile", handler: async (req, _p, m) => {
     const u = await requireApi();
     const b = await body(req);

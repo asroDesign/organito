@@ -46,7 +46,7 @@ export async function SiteHeader() {
             <Link href={u ? "/customer/tracking" : "/login"} className="hidden items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 lg:flex"><Truck className="h-5 w-5" />پیگیری سفارش</Link>
             <Link href="/cart" className="relative rounded-xl p-2.5 text-slate-700 hover:bg-slate-100" aria-label="سبد خرید"><ShoppingCart className="h-6 w-6" /><CartCount /></Link>
             <Link href={panel} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50">
-              {u ? <LayoutDashboard className="h-5 w-5 text-emerald-600" /> : <User className="h-5 w-5" />}<span className="hidden sm:inline">{u ? u.name.split(" ")[0] : "ورود | ثبت‌نام"}</span>
+              {u ? (u.avatarMediaId ? <img src={`/api/media/${u.avatarMediaId}`} alt="" className="h-6 w-6 rounded-full object-cover" /> : <LayoutDashboard className="h-5 w-5 text-emerald-600" />) : <User className="h-5 w-5" />}<span className="hidden sm:inline">{u ? u.name.split(" ")[0] : "ورود | ثبت‌نام"}</span>
             </Link>
           </nav>
         </div>
@@ -73,7 +73,7 @@ export async function SiteHeader() {
             <Link href="/shop?sort=new" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">جدیدترین‌ها</Link>
             <Link href="/blog" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">مجله سبزینه</Link>
             <Link href="/customer/supply" className="flex items-center gap-1 rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700"><PackageSearch className="h-4 w-4" />سفارش ویژه</Link>
-            {mv && !!st.allowSellerSignup && <Link href="/login" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">تولیدکننده شوید</Link>}
+            {mv && !!st.allowSellerSignup && <Link href="/login?seller=1" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">تولیدکننده شوید</Link>}
             <Link href="/contact" className="mr-auto flex items-center gap-1 py-3 text-xs text-slate-500"><Headphones className="h-4 w-4" />پشتیبانی <span dir="ltr">021-91000000</span></Link>
           </div>
         </div>

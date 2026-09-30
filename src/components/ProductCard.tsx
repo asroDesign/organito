@@ -4,6 +4,7 @@ import type { ShopProduct } from "@/lib/queries";
 import { AUTH_LABEL, faNum } from "@/lib/util";
 import { Img } from "./ui";
 import { QuickViewButton } from "./QuickView";
+import { FavoriteButton } from "./CustomerSelfService";
 
 const tone: Record<string, string> = { Original: "bg-emerald-600", OEM: "bg-lime-600", Aftermarket: "bg-amber-600" };
 
@@ -16,6 +17,7 @@ export function ProductCard({ p }: { p: ShopProduct }) {
           <span className={`rounded-lg px-2 py-0.5 text-[10px] font-bold text-white ${tone[p.authenticity]}`}>{AUTH_LABEL[p.authenticity]}</span>
           {p.festival && <span className="flex items-center gap-0.5 rounded-lg px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: p.festival.color }}><Flame className="h-3 w-3" />جشنواره</span>}
         </div>
+        <div className="absolute bottom-2 right-2 z-10"><FavoriteButton productId={p.id}/></div>
         {p.discountPct > 0 && p.inStock && <span className="absolute left-2 top-2 grid h-10 w-10 place-items-center rounded-full bg-rose-500 text-xs font-black text-white shadow-lg">{faNum(p.discountPct)}٪</span>}
         {!p.inStock && <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 bg-slate-900/70 py-1.5 text-center text-xs font-bold text-white">ناموجود — قابل سفارش تأمین</span>}
         <div className="absolute inset-x-2 bottom-2 translate-y-2 opacity-100 transition md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100"><QuickViewButton id={p.id} /></div>

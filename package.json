@@ -9,20 +9,26 @@
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/migrate.mjs",
     "db:import-legacy-media": "node scripts/import-legacy-media.mjs",
+    "db:import-legacy-commerce": "node scripts/import-legacy-commerce.mjs",
     "db:cache-legacy-media": "node scripts/cache-legacy-media.mjs"
   },
   "dependencies": {
     "@ckeditor/ckeditor5-react": "^11.2.0",
+    "@types/leaflet": "^1.9.22",
     "@types/sanitize-html": "^2.16.1",
+    "bcryptjs": "^3.0.3",
     "ckeditor5": "^48.5.2",
     "dotenv": "17.3.1",
     "drizzle-orm": "0.45.2",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.48.0",
     "next": "16.2.6",
     "pg": "8.20.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "sanitize-html": "^2.17.7"
+    "react-leaflet": "^5.0.0",
+    "sanitize-html": "^2.17.7",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.1.17",

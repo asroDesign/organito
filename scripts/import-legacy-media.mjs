@@ -7,7 +7,14 @@ if(!sourceFile)throw new Error("Usage: node scripts/import-legacy-media.mjs <mys
 const sqlText=await readFile(sourceFile,"utf8");
 const base=(process.env.LEGACY_MEDIA_BASE_URL||"https://honeykando.ir/storage/").replace(/\/+$/,"")+"/";
 
-function blocks(table){const re=new RegExp("INSERT INTO `"+table+"`[^;]+? VALUES\\s*([\\s\\S]*?);","gi");return [...sqlText.matchAll(re)].map(m=>m[1])}
+function blocks(table){
+ const marker=`INSERT INTO \`${table}\``;const result=[];let from=0;
+ while(true){const start=sqlText.indexOf(marker,from);if(start<0)break;const values=sqlText.indexOf(" VALUES",start);if(values<0)break;let quote=false,escape=false,end=values+7;
+  for(;end<sqlText.length;end++){const c=sqlText[end];if(quote){if(escape)escape=false;else if(c==="\\")escape=true;else if(c==="'")quote=false;}else if(c==="'")quote=true;else if(c===";")break;}
+  result.push(sqlText.slice(values+7,end));from=end+1;
+ }
+ return result;
+}
 function tuples(input){
  const rows=[];let row=null,token="",quote=false,escape=false;
  const push=()=>{const raw=token.trim();row.push(raw==="NULL"?null:raw);token=""};

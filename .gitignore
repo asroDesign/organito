@@ -5,3 +5,4 @@ yarn.lock
 next-env.d.ts
 storage/media/*
 !storage/media/.gitkeep
+drizzle.config.json

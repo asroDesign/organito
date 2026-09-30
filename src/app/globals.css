@@ -1,3 +1,4 @@
+@import "leaflet/dist/leaflet.css";
 @import "tailwindcss";
 
 @theme {
@@ -70,3 +71,4 @@ body { font-feature-settings: "ss01"; }
 .prose-rich pre { background: #0f172a; color: #e2e8f0; padding: 1rem; border-radius: .75rem; overflow-x: auto; direction: ltr; }
 .prose-rich iframe { width: 100%; aspect-ratio: 16/9; border-radius: 1rem; }
 .prose-rich hr { margin: 1.5rem 0; border-color: #d9f99d; }
+@import "leaflet/dist/leaflet.css";

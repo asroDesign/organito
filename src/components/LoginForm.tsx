@@ -27,6 +27,7 @@ export function LoginForm() {
   const [busy, setBusy] = useState(false);
   const [timer, setTimer] = useState(0);
   const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const sellerIntent = () => new URLSearchParams(window.location.search).get("seller") === "1";
 
   useEffect(() => { if (timer <= 0) return; const t = setTimeout(() => setTimer(timer - 1), 1000); return () => clearTimeout(t); }, [timer]);
   const next = () => { const n = new URLSearchParams(window.location.search).get("next"); return n && n.startsWith("/") && !n.startsWith("//") ? n : null; };
@@ -35,7 +36,7 @@ export function LoginForm() {
     e?.preventDefault();
     setBusy(true); setErr("");
     try {
-      const r = await api<{ isNew: boolean; canSellerSignup: boolean; devCode?: string }>("/api/auth/otp/request", "POST", { phone: toEn(phone) });
+      const r = await api<{ isNew: boolean; canSellerSignup: boolean; devCode?: string }>("/api/auth/otp/request", "POST", { phone: toEn(phone), sellerIntent: sellerIntent() });
       setInfo(r); setStep("code"); setTimer(60); setDigits(r.devCode ? r.devCode.split("") : ["", "", "", "", ""]);
       setTimeout(() => refs.current[r.devCode ? 4 : 0]?.focus(), 50);
     } catch (e2) { setErr((e2 as Error).message); } finally { setBusy(false); }
@@ -46,7 +47,8 @@ export function LoginForm() {
     if (code.length !== 5) { setErr("کد ۵ رقمی را کامل وارد کنید"); return; }
     setBusy(true); setErr("");
     try {
-      const r = await api<{ redirect: string }>("/api/auth/otp/verify", "POST", { phone: toEn(phone).replace(/\D/g, ""), code, name, asSeller, ...shop });
+      const referralCode = new URLSearchParams(window.location.search).get("ref") || "";
+      const r = await api<{ redirect: string }>("/api/auth/otp/verify", "POST", { phone: toEn(phone), code, name, asSeller, sellerIntent: sellerIntent(), referralCode, ...shop });
       router.push(next() ?? r.redirect); router.refresh();
     } catch (e2) { setErr((e2 as Error).message); } finally { setBusy(false); }
   };

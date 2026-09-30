@@ -12,6 +12,7 @@ import { customerSupplyAction } from "../services/supply";
 import { sendSms } from "../sms";
 import { body, idParam, type Route } from "./router";
 import { newMediaPath, readMediaFile, removeMediaFile, writeMediaFile } from "../media-storage";
+import { applyUploadWatermark } from "../watermark";
 
 function sniff(buf: Buffer): string | null {
   if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
@@ -133,6 +134,7 @@ export const publicRoutes: Route[] = [
     const kind = String(form?.get("kind") ?? "image");
     const KINDS: Record<string, { types: string[]; mb: number; label: string; staffOnly?: boolean }> = {
       image: { types: ["image/jpeg", "image/png", "image/webp"], mb: 3, label: "JPG، PNG و WebP" },
+      profile: { types: ["image/jpeg", "image/png", "image/webp"], mb: 3, label: "JPG، PNG و WebP" },
       document: { types: ["image/jpeg", "image/png", "image/webp", "application/pdf"], mb: 8, label: "JPG، PNG، WebP یا PDF" },
       video: { types: ["video/mp4", "video/webm"], mb: 40, label: "MP4 یا WebM" },
       hero: { types: ["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"], mb: 40, label: "تصویر، GIF یا ویدیو (MP4/WebM)", staffOnly: true },
@@ -144,13 +146,14 @@ export const publicRoutes: Route[] = [
     if (kind === "video" && !u.staff && !u.sellerId) throw new HttpError(403, "بارگذاری ویدیو فقط برای فروشندگان و مدیران مجاز است");
     if (!k.types.includes(file.type)) throw new HttpError(400, `فقط ${k.label} مجاز است`);
     if (file.size > k.mb * 1024 * 1024) throw new HttpError(400, `حداکثر حجم فایل ${k.mb.toLocaleString("fa-IR")} مگابایت است`);
-    const buf = Buffer.from(await file.arrayBuffer());
+    let buf: Buffer = Buffer.from(await file.arrayBuffer());
     const real = sniff(buf);
     if (!real || !k.types.includes(real) || (real.startsWith("video/") !== file.type.startsWith("video/"))) throw new HttpError(400, "محتوای فایل با نوع اعلام‌شده مطابقت ندارد");
+    buf = await applyUploadWatermark(buf, real, kind);
     const filename = (file.name || "upload").replace(/[/\\]/g, "_").replace(/\.\.+/g, ".").replace(/[^\w.\-\u0600-\u06FF]/g, "_").slice(0, 100);
     const folderId = form?.get("folderId") ? int(form.get("folderId"), 1) : null;
     const storagePath=newMediaPath(filename);await writeMediaFile(storagePath,buf);
-    let row:{id:number}|undefined;try{[row]=await db.insert(media).values({ filename, alt: str(form?.get("alt"), 190) || null, folderId, mime: real, size: buf.length, storagePath, uploadedBy: u.id, isPublic: kind === "editor" || kind === "library" }).returning({ id: media.id })}catch(error){await removeMediaFile(storagePath);throw error}if(!row){await removeMediaFile(storagePath);throw new HttpError(500,"ثبت فایل انجام نشد")}
+    let row:{id:number}|undefined;try{[row]=await db.insert(media).values({ filename, alt: str(form?.get("alt"), 190) || null, folderId, mime: real, size: buf.length, storagePath, uploadedBy: u.id, isPublic: kind === "editor" || kind === "library" || kind === "profile" }).returning({ id: media.id })}catch(error){await removeMediaFile(storagePath);throw error}if(!row){await removeMediaFile(storagePath);throw new HttpError(500,"ثبت فایل انجام نشد")}
     await audit(db, { userId: u.id, ...m }, "media.upload", "media", row.id, null, { filename, size: buf.length, kind });
     return { id: row.id, url: `/api/media/${row.id}`, mime: real };
   } },
@@ -160,7 +163,7 @@ export const publicRoutes: Route[] = [
     const b = await body(req);
     const items = sanitizeCart(b.items);
     const a = (b.address ?? {}) as Record<string, unknown>;
-    const address = { fullName: str(a.fullName, 100), phone: str(a.phone, 20), city: str(a.city, 60), address: str(a.address, 500), postalCode: str(a.postalCode, 20) };
+    const address = { fullName: str(a.fullName, 100), phone: str(a.phone, 20), city: str(a.city, 60), address: str(a.address, 500), postalCode: str(a.postalCode, 20), latitude: str(a.latitude, 30), longitude: str(a.longitude, 30) };
     if (!address.fullName || !address.phone || !address.city || address.address.length < 10) throw new HttpError(400, "آدرس تحویل کامل نیست");
     const key = str(b.idempotencyKey, 100);
     if (key.length < 8) throw new HttpError(400, "کلید یکتا الزامی است");

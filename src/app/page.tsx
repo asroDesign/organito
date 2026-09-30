@@ -195,7 +195,7 @@ export default async function Home() {
             <BadgePercent className="h-14 w-14 shrink-0 text-emerald-700" />
             <div><b className="text-lg text-emerald-950">اولین خرید با <span dir="ltr" className="rounded-lg bg-white px-2 font-mono text-emerald-700">WELCOME10</span></b><p className="mt-1 text-sm text-emerald-900/70">۱۰٪ تخفیف برای خرید بالای ۵۰۰ هزار تومان</p><Link href="/shop" className="mt-3 inline-block text-sm font-bold text-emerald-700">شروع خرید ←</Link></div>
           </div>
-          {mv ? <Link href="/login" className="group flex items-center gap-5 rounded-[2rem] bg-gradient-to-l from-amber-100 to-orange-100 p-7">
+          {mv && !!st.allowSellerSignup ? <Link href="/login?seller=1" className="group flex items-center gap-5 rounded-[2rem] bg-gradient-to-l from-amber-100 to-orange-100 p-7">
             <Tractor className="h-14 w-14 shrink-0 text-amber-700 transition group-hover:scale-110" />
             <div><b className="text-lg text-amber-950">کشاورز یا تولیدکننده هستید؟</b><p className="mt-1 text-sm text-amber-900/70">محصولاتتان را بدون واسطه به هزاران خانواده بفروشید.</p><span className="mt-3 inline-block text-sm font-bold text-amber-700">ثبت‌نام تولیدکنندگان ←</span></div>
           </Link> : <Link href="/customer/supply" className="group flex items-center gap-5 rounded-[2rem] bg-gradient-to-l from-amber-100 to-orange-100 p-7"><Sprout className="h-14 w-14 shrink-0 text-amber-700 transition group-hover:scale-110" /><div><b className="text-lg text-amber-950">محصول خاصی می‌خواهید؟</b><p className="mt-1 text-sm text-amber-900/70">سفارش ویژه ثبت کنید تا برایتان تهیه کنیم.</p><span className="mt-3 inline-block text-sm font-bold text-amber-700">ثبت سفارش ویژه ←</span></div></Link>}

@@ -13,6 +13,10 @@ import { body, idParam, type Route } from "./router";
 const lines = (v: unknown) => (Array.isArray(v) ? v : String(v ?? "").split("\n")).map((x) => str(x, 120)).filter(Boolean).slice(0, 8);
 const pepper = () => process.env.OTP_SECRET || process.env.DATABASE_URL || "otp";
 const hashOtp = (phone: string, code: string) => createHash("sha256").update(`${pepper()}:${phone}:${code}`).digest("hex");
+const normalizePhone = (value: unknown) => str(value, 30)
+  .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
+  .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+  .replace(/\D/g, "").replace(/^0098/, "0").replace(/^98/, "0").replace(/^9/, "09");
 const smsConfigured = async () => { const s = await getSettings(); return s.smsProvider === "kavenegar" ? !!process.env.KAVENEGAR_API_KEY : !!process.env.SMSIR_API_KEY; };
 
 async function assertProduct(id: number) {
@@ -163,7 +167,7 @@ export const communityRoutes: Route[] = [
   // ---------------- OTP auth ----------------
   { method: "POST", pattern: "auth/otp/request", handler: async (req, _p, m) => {
     const b = await body(req);
-    const phone = str(b.phone, 20).replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/\D/g, "").replace(/^98/, "0").replace(/^9/, "09");
+    const phone = normalizePhone(b.phone);
     if (!/^09\d{9}$/.test(phone)) throw new HttpError(400, "شماره موبایل معتبر وارد کنید (مثلاً 09121234567)");
     rateLimit(`otpip:${m.ip}`, 10, 10 * 60_000);
     rateLimit(`otpph:${phone}`, 4, 10 * 60_000);
@@ -177,11 +181,11 @@ export const communityRoutes: Route[] = [
     const configured = await smsConfigured();
     await sendSms("otp_login", phone, { code }, true);
     const s = await getSettings();
-    return { ok: true, isNew: !u, ttl: 120, canSellerSignup: !!(s.multiVendor && s.allowSellerSignup), ...(configured ? {} : { devCode: code, devNote: "سرویس پیامک تنظیم نشده؛ کد برای آزمایش نمایش داده می‌شود." }) };
+    return { ok: true, isNew: !u, ttl: 120, canSellerSignup: b.sellerIntent === true && !!(s.multiVendor && s.allowSellerSignup), ...(configured ? {} : { devCode: code, devNote: "سرویس پیامک تنظیم نشده؛ کد برای آزمایش نمایش داده می‌شود." }) };
   } },
   { method: "POST", pattern: "auth/otp/verify", handler: async (req, _p, m) => {
     const b = await body(req);
-    const phone = str(b.phone, 20).replace(/\D/g, "");
+    const phone = normalizePhone(b.phone);
     const code = str(b.code, 6).replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/\D/g, "");
     if (!/^09\d{9}$/.test(phone) || !/^\d{5}$/.test(code)) throw new HttpError(400, "کد تأیید ۵ رقمی را وارد کنید");
     rateLimit(`otpv:${phone}`, 10, 10 * 60_000);
@@ -198,9 +202,11 @@ export const communityRoutes: Route[] = [
     if (!u) {
       const name = str(b.name, 100);
       if (name.length < 2) throw new HttpError(400, "برای ثبت‌نام نام و نام خانوادگی را وارد کنید");
-      const asSeller = b.asSeller === true && !!s.multiVendor && !!s.allowSellerSignup;
+      const asSeller = b.asSeller === true && b.sellerIntent === true && !!s.multiVendor && !!s.allowSellerSignup;
+      const referralCode = str(b.referralCode, 32).trim().toUpperCase();
       u = await db.transaction(async (tx) => {
-        const [nu] = await tx.insert(users).values({ name, phone, passwordHash: hashPassword(`${Date.now()}${Math.random()}`), role: asSeller ? "seller" : "customer" }).returning();
+        const [referrer] = referralCode ? await tx.select({ id: users.id }).from(users).where(eq(users.referralCode, referralCode)).limit(1) : [];
+        const [nu] = await tx.insert(users).values({ name, phone, passwordHash: hashPassword(`${Date.now()}${Math.random()}`), role: asSeller ? "seller" : "customer", referredById: !asSeller && referrer?.id ? referrer.id : null, referralCode: `SBZ${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2,6).toUpperCase()}` }).returning();
         if (asSeller) {
           const [sl] = await tx.insert(sellers).values({ userId: nu.id, shopName: str(b.shopName, 100) || name, city: str(b.city, 50) || "تهران", status: "pending", commissionRate: s.defaultCommission }).returning();
           await tx.insert(wallets).values({ sellerId: sl.id });
@@ -237,4 +243,3 @@ export const communityRoutes: Route[] = [
     return { ok: true, heroType };
   } },
 ];
-

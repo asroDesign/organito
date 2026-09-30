@@ -3,10 +3,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, Menu, X, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage,
+  LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, Menu, X, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage, Heart,
 } from "lucide-react";
 
-const ICONS = { LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage };
+const ICONS = { LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage, Heart };
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
 
 export function SideNav({ items, mobile, title }: { items: NavItem[]; mobile?: boolean; title?: string }) {

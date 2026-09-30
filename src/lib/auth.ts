@@ -1,4 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from "crypto";
+import { compareSync as compareBcrypt } from "bcryptjs";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq, gt } from "drizzle-orm";
@@ -15,6 +16,7 @@ export function hashPassword(pw: string) {
   return `${salt}:${scryptSync(pw, salt, 64).toString("hex")}`;
 }
 export function verifyPassword(pw: string, stored: string) {
+  if (/^\$2[aby]\$/.test(stored)) return compareBcrypt(pw, stored);
   const [salt, hash] = stored.split(":");
   if (!salt || !hash) return false;
   const a = Buffer.from(hash, "hex");
@@ -25,6 +27,7 @@ const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export type SessionUser = {
   id: number; name: string; phone: string; role: string; permissions: Permission[];
+  avatarMediaId: number | null;
   sellerId: number | null; sellerStatus: string | null; staff: boolean;
 };
 
@@ -56,7 +59,7 @@ export async function getUser(): Promise<SessionUser | null> {
   const [customRole] = row.u.roleId ? await db.select().from(accessRoles).where(eq(accessRoles.id,row.u.roleId)) : [];
   const permissions = permissionsOf(row.u.role, [...row.u.extraPermissions,...(customRole?.permissions??[])]);
   return {
-    id: row.u.id, name: row.u.name, phone: row.u.phone, role: row.u.role,
+    id: row.u.id, name: row.u.name, phone: row.u.phone, role: row.u.role, avatarMediaId: row.u.avatarMediaId,
     permissions,
     sellerId: row.s?.id ?? null, sellerStatus: row.s?.status ?? null, staff: isStaff(row.u.role) || (row.u.role!=="seller" && permissions.length>0),
   };

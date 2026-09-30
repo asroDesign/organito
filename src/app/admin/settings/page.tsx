@@ -35,7 +35,7 @@ export default async function SettingsPage() {
           { name: "freeShippingOver", label: "ارسال رایگان از مبلغ (نمایشی)", type: "number", half: true, defaultValue: s.freeShippingOver },
           { name: "returnDays", label: "مهلت بازگشت کالا (روز)", type: "number", half: true, defaultValue: s.returnDays },
           { name: "orderExpiryMinutes", label: "لغو خودکار سفارش پرداخت‌نشده (دقیقه، ۰=غیرفعال)", type: "number", half: true, defaultValue: s.orderExpiryMinutes },
-          { name: "paymentGateway", label: "درگاه پرداخت", type: "select", half: true, defaultValue: s.paymentGateway, options: [["zarinpal", "زرین‌پال"], ["idpay", "آیدی‌پی"], ["mellat", "بانک ملت"]] },
+          { name: "paymentGateway", label: "درگاه پرداخت", type: "select", half: true, defaultValue: s.paymentGateway, options: [["zarinpal", "زرین‌پال"], ["zibal", "زیبال"], ["idpay", "آیدی‌پی"], ["mellat", "بانک ملت"]] },
           { name: "smsProvider", label: "Provider پیامک", type: "select", half: true, defaultValue: s.smsProvider, options: [["kavenegar", "کاوه‌نگار"], ["smsir", "SMS.ir"]] },
           { name: "smsSender", label: "شماره فرستنده پیامک", half: true, defaultValue: s.smsSender },
           { name: "inventoryPolicy", label: "سیاست موجودی", type: "select", half: true, defaultValue: s.inventoryPolicy, options: [["reserve_on_order", "رزرو در ثبت سفارش"]] },
@@ -50,6 +50,11 @@ export default async function SettingsPage() {
           { name: "economicCode", label: "کد اقتصادی", half: true, defaultValue: s.economicCode },
           { name: "bankAccountInfo", label: "اطلاعات حساب برای کارت به کارت / حواله", type: "textarea", defaultValue: s.bankAccountInfo },
           { name: "invoiceFooter", label: "پانویس فاکتور", type: "textarea", defaultValue: s.invoiceFooter },
+          { name: "watermarkEnabled", label: "واترمارک تصاویر جدید", type: "select", half: true, defaultValue: String(s.watermarkEnabled), options: [["0", "غیرفعال"], ["1", "فعال"]] },
+          { name: "watermarkText", label: "متن واترمارک", half: true, defaultValue: s.watermarkText },
+          { name: "watermarkImageId", label: "شناسه تصویر لوگوی واترمارک (اختیاری)", type: "number", half: true, defaultValue: s.watermarkImageId },
+          { name: "watermarkOpacity", label: "شفافیت واترمارک (۱۰ تا ۱۰۰)", type: "number", half: true, defaultValue: s.watermarkOpacity },
+          { name: "watermarkPosition", label: "محل واترمارک", type: "select", half: true, defaultValue: s.watermarkPosition, options: [["southeast", "پایین راست"], ["southwest", "پایین چپ"], ["center", "وسط"], ["northeast", "بالا راست"], ["northwest", "بالا چپ"]] },
           { name: "marketplaceRules", label: "قوانین مارکت‌پلیس", type: "textarea", defaultValue: s.marketplaceRules },
         ]} />
       </Card>

@@ -4,6 +4,7 @@ import { users } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
 import { Card, PageHeader } from "@/components/ui";
 import { JsonForm } from "@/components/client";
+import { ProfileAvatarUploader } from "@/components/ProfileAvatarUploader";
 
 export default async function Profile() {
   const u = await requirePage();
@@ -13,6 +14,7 @@ export default async function Profile() {
       <PageHeader title="پروفایل و امنیت" />
       <div className="grid gap-6 md:grid-cols-2">
         <Card title="اطلاعات حساب">
+          <div className="mb-6"><ProfileAvatarUploader initial={row.avatarMediaId} /></div>
           <JsonForm url="/api/me/profile" submit="ذخیره" resetOnDone={false} fields={[
             { name: "name", label: "نام و نام خانوادگی", required: true, defaultValue: row.name },
             { name: "email", label: "ایمیل", defaultValue: row.email ?? "" },

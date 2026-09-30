@@ -3,7 +3,8 @@ import { rateLimit, requireApi } from "../auth";
 import { startGatewayPayment, handleGatewayCallback } from "../services/gateway";
 import { zpMode } from "../zarinpal";
 import { str } from "../util";
-import { idParam, type Route } from "./router";
+import { body, idParam, type Route } from "./router";
+import { HttpError } from "../util";
 
 export function baseUrl(req: NextRequest) {
   const env = process.env.APP_URL?.replace(/\/$/, "");
@@ -24,16 +25,27 @@ export const gatewayRoutes: Route[] = [
     rateLimit(`gw:${u.id}`, 10, 60_000);
     return startGatewayPayment({ userId: u.id, ...m }, { supplyId: idParam(p.id) }, baseUrl(req));
   } },
+  { method: "POST", pattern: "customer/wallet/gateway", handler: async (req, _p, m) => {
+    const u=await requireApi();rateLimit(`gw:${u.id}`,10,60_000);const b=await body(req);const amount=Number(b.amount);if(!Number.isSafeInteger(amount)||amount<10000||amount>100_000_000)throw new HttpError(400,"مبلغ شارژ باید بین ۱۰ هزار تا ۱۰۰ میلیون تومان باشد");return startGatewayPayment({userId:u.id,...m},{walletAmount:amount},baseUrl(req));
+  } },
   { method: "GET", pattern: "payments/zarinpal/callback", handler: async (req, _p, m) => {
     const q = req.nextUrl.searchParams;
     const authority = str(q.get("Authority"), 64);
     const status = str(q.get("Status"), 5);
     const sim = zpMode() === "simulator" && q.get("sim") === "ok";
-    const r = authority ? await handleGatewayCallback(authority, status, sim, m) : { ok: false, paymentId: null, message: "پارامتر Authority ارسال نشده است" };
+    const r = authority ? await handleGatewayCallback(authority, status, sim, m, "zarinpal") : { ok: false, paymentId: null, message: "پارامتر Authority ارسال نشده است" };
     const url = new URL(`${baseUrl(req)}/pay/result`);
     url.searchParams.set("ok", r.ok ? "1" : "0");
     if (r.paymentId) url.searchParams.set("pid", String(r.paymentId));
     url.searchParams.set("msg", r.message);
+    return NextResponse.redirect(url, 303);
+  } },
+  { method: "GET", pattern: "payments/zibal/callback", handler: async (req, _p, m) => {
+    const q = req.nextUrl.searchParams;
+    const trackId = str(q.get("trackId"), 64), success = str(q.get("success"), 5);
+    const r = trackId ? await handleGatewayCallback(trackId, success, false, m, "zibal") : { ok: false, paymentId: null, message: "پارامتر trackId ارسال نشده است" };
+    const url = new URL(`${baseUrl(req)}/pay/result`);
+    url.searchParams.set("ok", r.ok ? "1" : "0"); if (r.paymentId) url.searchParams.set("pid", String(r.paymentId)); url.searchParams.set("msg", r.message);
     return NextResponse.redirect(url, 303);
   } },
   { method: "GET", pattern: "payments/gateway-mode", handler: async () => ({ mode: zpMode() }) },

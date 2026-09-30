@@ -18,6 +18,7 @@ const ADMIN_NAV: (NavItem & { perm?: Permission | Permission[] })[] = [
   { href: "/admin/media", label: "مرکز فایل", icon: "FileImage", perm: "PRODUCTS_EDIT" },
   { href: "/admin/blog", label: "وبلاگ و سئو", icon: "FileText", perm: "PRODUCTS_EDIT" },
   { href: "/admin/marketplace", label: "مارکت‌پلیس و تأمین‌کنندگان", icon: "Store", perm: ["SUPPLIER_OFFERS_MANAGE", "SELLER_SETTLEMENT_MANAGE", "WITHDRAWALS_MANAGE"] },
+  { href: "/admin/customer-wallet", label: "برداشت کیف پول مشتریان", icon: "Wallet", perm: "WITHDRAWALS_MANAGE" },
   { href: "/admin/returns", label: "درخواست‌های مرجوعی", icon: "ClipboardList", perm: "ORDERS_MANAGE" },
   { href: "/admin/giftcards", label: "فروش کارت هدیه", icon: "Tag", perm: "PAYMENTS_MANAGE" },
   { href: "/admin/campaigns", label: "کمپین‌های تبلیغاتی", icon: "MessageSquare", perm: "SMS_MANAGE" },
@@ -61,6 +62,10 @@ const CUSTOMER_NAV: NavItem[] = [
   { href: "/customer", label: "داشبورد", icon: "LayoutDashboard" },
   { href: "/customer/orders", label: "سفارش‌های من", icon: "ShoppingBag" },
   { href: "/customer/credit", label: "اعتبار خرید", icon: "Wallet" },
+  { href: "/customer/wallet", label: "کیف پول و حساب بانکی", icon: "Wallet" },
+  { href: "/customer/addresses", label: "آدرس‌های من", icon: "MapPin" },
+  { href: "/customer/favorites", label: "علاقه‌مندی‌های من", icon: "Heart" },
+  { href: "/customer/referral", label: "دعوت دوستان و امتیاز", icon: "Users" },
   { href: "/customer/returns", label: "درخواست‌های مرجوعی", icon: "ClipboardList" },
   { href: "/customer/tracking", label: "پیگیری سفارش", icon: "Truck" },
   { href: "/customer/supply", label: "استعلام و تأمین محصول", icon: "Search" },
@@ -83,9 +88,10 @@ export async function Shell({ user, area, children }: { user: SessionUser; area:
       </Link>
       <SideNav items={items} />
       <div className="border-t border-slate-100 p-3">
-        <div className="mb-2 rounded-xl bg-slate-50 px-3 py-2">
-          <div className="truncate text-sm font-bold text-slate-700">{user.name}</div>
-          <div className="text-xs text-slate-500">{ROLES[user.role as keyof typeof ROLES] ?? user.role}</div>
+        <div className="mb-2 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+          {user.avatarMediaId ? <img src={`/api/media/${user.avatarMediaId}`} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">{user.name.slice(0,1)}</span>}
+          <div className="min-w-0"><div className="truncate text-sm font-bold text-slate-700">{user.name}</div>
+          <div className="text-xs text-slate-500">{ROLES[user.role as keyof typeof ROLES] ?? user.role}</div></div>
         </div>
         <LogoutButton />
       </div>
