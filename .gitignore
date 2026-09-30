@@ -1,2 +1,5 @@
 node_modules
 .next
+.env
+yarn.lock
+next-env.d.ts

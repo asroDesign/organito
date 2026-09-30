@@ -98,8 +98,51 @@ export const categories = pgTable("categories", {
   slug: text("slug").notNull().unique(),
   parentId: integer("parent_id"),
   description: text("description"),
+  seoTitle: text("seo_title"),
+  metaDescription: text("meta_description"),
+  seoKeywords: text("seo_keywords"),
+  canonicalUrl: text("canonical_url"),
+  faqs: jsonb("faqs").$type<{ question: string; answer: string }[]>().notNull().default([]),
   sortOrder: integer("sort_order").notNull().default(0),
 });
+
+export const blogPosts = pgTable("blog_posts", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  slug: text("slug").notNull().unique(),
+  excerpt: text("excerpt"),
+  content: text("content").notNull(),
+  coverImageId: integer("cover_image_id"),
+  category: text("category").notNull().default("سلامت و سبک زندگی"),
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  seoTitle: text("seo_title"),
+  metaDescription: text("meta_description"),
+  canonicalUrl: text("canonical_url"),
+  status: text("status").notNull().default("draft"),
+  authorId: integer("author_id").notNull(),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  createdAt: created(),
+  updatedAt: updated(),
+}, (t) => [index("blog_posts_status_published").on(t.status, t.publishedAt), index("blog_posts_category").on(t.category)]);
+
+export const blogCategories = pgTable("blog_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: created(),
+  updatedAt: updated(),
+}, (t) => [uniqueIndex("blog_categories_name_unique").on(t.name), index("blog_categories_order").on(t.sortOrder)]);
+
+export const blogTags = pgTable("blog_tags", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  createdAt: created(),
+  updatedAt: updated(),
+}, (t) => [uniqueIndex("blog_tags_name_unique").on(t.name)]);
 
 export const media = pgTable("media", {
   id: serial("id").primaryKey(),
@@ -187,6 +230,7 @@ export const sellerOffers = pgTable("seller_offers", {
   productId: integer("product_id").notNull(),
   sellerId: integer("seller_id").notNull(),
   price: money("price"),
+  costPrice: money("cost_price"),
   salePrice: bigint("sale_price", { mode: "number" }),
   stock: integer("stock").notNull().default(0),
   reserved: integer("reserved").notNull().default(0),
@@ -242,6 +286,7 @@ export const sellerPosItems = pgTable("seller_pos_items", {
   title: text("title").notNull(),
   quantity: integer("quantity").notNull(),
   unitPrice: money("unit_price"),
+  unitCost: money("unit_cost"),
   lineTotal: money("line_total"),
   createdAt: created(),
 }, (t) => [index("seller_pos_items_sale").on(t.saleId), index("seller_pos_items_seller").on(t.sellerId)]);

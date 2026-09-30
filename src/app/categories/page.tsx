@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { Img } from "@/components/ui";
 import { categoriesWithCounts } from "@/lib/queries";
 import { faNum } from "@/lib/util";
+import { stripHtml } from "@/lib/html";
 
 export const metadata = { title: "دسته‌بندی محصولات" };
 
@@ -28,7 +29,7 @@ export default async function Categories() {
                   <div className="absolute bottom-3 right-4 text-white"><b className="text-xl">{c.name}</b><div className="text-xs opacity-80">{faNum(c.n)} کالا</div></div>
                 </Link>
                 <div className="space-y-2 p-4">
-                  {c.description && <p className="text-sm text-slate-500">{c.description}</p>}
+                  {c.description && <p className="line-clamp-3 text-sm leading-7 text-slate-500">{stripHtml(c.description, 180)}</p>}
                   {kids.length > 0 && <div className="flex flex-wrap gap-1.5">{kids.map((k) => <Link key={k.id} href={`/shop?cat=${k.id}`} className="rounded-full bg-slate-100 px-3 py-1 text-xs hover:bg-emerald-100">{k.name} ({faNum(k.n)})</Link>)}</div>}
                   <Link href={`/shop?cat=${c.id}`} className="flex items-center gap-1 text-sm font-bold text-emerald-700">مشاهده محصولات<ArrowLeft className="h-4 w-4" /></Link>
                 </div>

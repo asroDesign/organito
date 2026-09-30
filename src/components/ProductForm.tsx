@@ -23,6 +23,10 @@ export type ProductInitial = Partial<{
   lowStockThreshold: number; imageIds: number[]; variants: Variant[]; options: Opt[];
 }>;
 
+function F({ name, label, dv, type = "text", ltr, req, half = true }: { name: string; label: string; dv?: string | number | null; type?: string; ltr?: boolean; req?: boolean; half?: boolean }) {
+  return <label className={`flex flex-col gap-1 text-sm ${half ? "" : "sm:col-span-2"}`}><span className="text-slate-600">{label}{req && <span className="text-rose-500"> *</span>}</span><input name={name} type={type} defaultValue={dv ?? ""} required={req} className="input" dir={ltr ? "ltr" : undefined} /></label>;
+}
+
 export function ProductForm({ initial = {}, categories, mode, backTo }: { initial?: ProductInitial; categories: { id: number; name: string }[]; mode: "admin" | "seller"; backTo: string }) {
   const router = useRouter();
   const [images, setImages] = useState<number[]>(initial.imageIds ?? []);
@@ -38,10 +42,6 @@ export function ProductForm({ initial = {}, categories, mode, backTo }: { initia
   const [tab, setTab] = useState("base");
   const isEdit = !!initial.id;
   const tabs: [string, string][] = [["base", "اطلاعات پایه"], ["content", "توضیحات و بررسی تخصصی"], ["specs", "مشخصات و شناسنامه ارگانیک"], ["media", "تصاویر"], ["price", mode === "admin" ? "قیمت، تنوع و موجودی" : "قیمت و موجودی"], ["seo", "سئو"]];
-  const F = ({ name, label, dv, type = "text", ltr, req, half = true }: { name: string; label: string; dv?: string | number | null; type?: string; ltr?: boolean; req?: boolean; half?: boolean }) => (
-    <label className={`flex flex-col gap-1 text-sm ${half ? "" : "sm:col-span-2"}`}><span className="text-slate-600">{label}{req && <span className="text-rose-500"> *</span>}</span>
-      <input name={name} type={type} defaultValue={dv ?? ""} required={req} className="input" dir={ltr ? "ltr" : undefined} /></label>
-  );
   return (
     <form className="space-y-4" onSubmit={async (e) => {
       e.preventDefault();
@@ -99,7 +99,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo }: { initia
           {mode === "seller" && !isEdit && (
             <div className="grid gap-4 rounded-xl bg-emerald-50 p-4 sm:grid-cols-3">
               <b className="sm:col-span-3 text-sm text-emerald-800">پیشنهاد فروش شما (پس از تأیید محصول فعال می‌شود)</b>
-              <F name="offerPrice" label="قیمت فروش" type="number" req /><F name="offerStock" label="موجودی" type="number" req /><F name="offerShipping" label="هزینه ارسال" type="number" />
+              <F name="offerPrice" label="قیمت فروش" type="number" req /><F name="offerCostPrice" label="قیمت خرید / تمام‌شده" type="number" req /><F name="offerStock" label="موجودی" type="number" req /><F name="offerShipping" label="هزینه ارسال" type="number" />
               <F name="offerPrepDays" label="زمان آماده‌سازی (روز)" type="number" dv={1} /><F name="offerWarranty" label="ضمانت" half={false} />
             </div>
           )}

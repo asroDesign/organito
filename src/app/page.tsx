@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { eq } from "drizzle-orm";
+import Image from "next/image";
+import type { Metadata } from "next";
+import { and, desc, eq, lte } from "drizzle-orm";
 import { ShieldCheck, Truck, Leaf, Wallet, Flame, ArrowLeft, Sprout, Tractor, HeartPulse, FlaskConical, Star, Quote, BadgePercent, MapPin } from "lucide-react";
 import { db } from "@/db";
-import { sellers } from "@/db/schema";
+import { blogPosts, sellers } from "@/db/schema";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { ProductCard } from "@/components/ProductCard";
+import { BlogCard } from "@/components/BlogCard";
 import { VehicleFinder } from "@/components/VehicleFinder";
 import { Countdown } from "@/components/Countdown";
 import { categoriesWithCounts, listShopProducts, vehicleMakes } from "@/lib/queries";
@@ -13,17 +16,24 @@ import { activeFestivals } from "@/lib/marketing";
 import { ensureSeeded } from "@/lib/seed";
 import { getSettings } from "@/lib/settings";
 import { faNum } from "@/lib/util";
+import { jsonLd, seoMetadata, siteBase } from "@/lib/seo";
 
 const CAT_STYLE = [
   ["🍯", "from-amber-100 to-amber-200"], ["🌿", "from-lime-100 to-emerald-200"], ["🌰", "from-orange-100 to-amber-200"],
   ["🫒", "from-lime-100 to-lime-200"], ["🥬", "from-emerald-100 to-green-200"], ["🥚", "from-yellow-50 to-orange-100"],
 ];
 
+export async function generateMetadata(): Promise<Metadata> {
+  const s = await getSettings();
+  return seoMetadata(s, { title: s.homeSeoTitle, description: s.homeSeoDescription, keywords: s.homeSeoKeywords, path: "/" });
+}
+
 export default async function Home() {
   await ensureSeeded();
-  const [all, cats, makes, fests, farms, st] = await Promise.all([
+  const [all, cats, makes, fests, farms, st, latestPosts] = await Promise.all([
     listShopProducts({}), categoriesWithCounts(), vehicleMakes(), activeFestivals(),
     db.select().from(sellers).where(eq(sellers.status, "approved")).limit(6), getSettings(),
+    db.select().from(blogPosts).where(and(eq(blogPosts.status, "published"), lte(blogPosts.publishedAt, new Date()))).orderBy(desc(blogPosts.publishedAt)).limit(3),
   ]);
   const mv = !!st.multiVendor;
   const deals = [...all].filter((p) => p.inStock && p.discountPct > 0).sort((a, b) => b.discountPct - a.discountPct).slice(0, 6);
@@ -36,11 +46,12 @@ export default async function Home() {
   return (
     <>
       <SiteHeader />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd({ "@context": "https://schema.org", "@type": "OnlineStore", name: st.siteName, description: st.homeSeoDescription, url: siteBase(st.siteUrl).toString(), telephone: st.supportPhone, address: { "@type": "PostalAddress", addressLocality: st.senderCity, streetAddress: st.senderAddress }, currenciesAccepted: "IRR" }) }} />
       {/* HERO */}
       <section className="relative overflow-hidden">
         {st.heroMediaId && st.heroType === "video"
           ? <video src={`/api/media/${st.heroMediaId}`} autoPlay muted loop playsInline preload="auto" poster="/images/home-harvest.jpg" className="absolute inset-0 h-full w-full object-cover" />
-          : /* eslint-disable-next-line @next/next/no-img-element */ <img src={st.heroMediaId ? `/api/media/${st.heroMediaId}` : "/images/home-harvest.jpg"} alt="" className="absolute inset-0 h-full w-full object-cover" />}
+          : <Image src={st.heroMediaId ? `/api/media/${st.heroMediaId}` : "/images/home-harvest.jpg"} alt="چیدمان محصولات تازه و ارگانیک سبزینه" fill priority sizes="100vw" className="object-cover" />}
         <div className="absolute inset-0 bg-gradient-to-l from-emerald-950/95 via-emerald-900/75 to-emerald-900/10" />
         <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 lg:grid-cols-[1.25fr_1fr] lg:py-24">
           <div className="space-y-6 text-white">
@@ -162,6 +173,11 @@ export default async function Home() {
           <Title title="تازه رسیده‌ها" sub="محصولات فصل و جدیدترین‌ها" href="/shop?sort=new" />
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">{fresh.map((p) => <ProductCard key={p.id} p={p} />)}</div>
         </section>
+
+        {latestPosts.length > 0 && <section>
+          <Title title="از مجله سبزینه" sub="راهنمای انتخاب آگاهانه و زندگی سالم" href="/blog" />
+          <div className="grid gap-5 md:grid-cols-3">{latestPosts.map((post) => <BlogCard key={post.id} post={post} />)}</div>
+        </section>}
 
         {/* TESTIMONIALS */}
         <section>

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { JsonForm } from "./client";
 
-type Init = { price: number; salePrice: number | null; stock: number; shippingCost: number; prepDays: number; warranty: string | null; shipCity: string | null };
+type Init = { price: number; costPrice: number; salePrice: number | null; stock: number; shippingCost: number; prepDays: number; warranty: string | null; shipCity: string | null };
 export function OfferEditor({ productId, initial, label }: { productId: number; initial?: Init; label: string }) {
   const [open, setOpen] = useState(false);
   return (
@@ -16,6 +16,7 @@ export function OfferEditor({ productId, initial, label }: { productId: number; 
             <p className="mb-3 text-xs text-amber-700">تغییر بیش از ۲۰٪ قیمت یا وضعیت کالا نیازمند تأیید مجدد مدیر است.</p>
             <JsonForm url="/api/seller/offers" extra={{ productId }} submit="ذخیره پیشنهاد" onDone={() => setOpen(false)} fields={[
               { name: "price", label: "قیمت فروش (تومان)", type: "number", required: true, half: true, defaultValue: initial?.price },
+              { name: "costPrice", label: "قیمت خرید / تمام‌شده", type: "number", required: true, half: true, defaultValue: initial?.costPrice },
               { name: "salePrice", label: "قیمت تخفیف‌خورده", type: "number", half: true, defaultValue: initial?.salePrice ?? "" },
               { name: "stock", label: "موجودی", type: "number", required: true, half: true, defaultValue: initial?.stock ?? 0 },
               { name: "shippingCost", label: "هزینه ارسال مستقل", type: "number", half: true, defaultValue: initial?.shippingCost ?? 0 },

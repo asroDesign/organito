@@ -1,13 +1,15 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { Toaster } from "@/components/client";
+import { getSettings } from "@/lib/settings";
+import { siteBase } from "@/lib/seo";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = {
-  title: { default: "سبزینه | مارکت‌پلیس محصولات ارگانیک و طبیعی", template: "%s | سبزینه" },
-  description: "خرید آنلاین محصولات ارگانیک، طبیعی و محلی مستقیم از کشاورزان و تولیدکنندگان معتبر",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const s = await getSettings();
+  return { metadataBase: siteBase(s.siteUrl), title: { default: s.homeSeoTitle, template: `%s | ${s.siteName}` }, description: s.homeSeoDescription, applicationName: s.siteName, category: "shopping" };
+}
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#047857" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

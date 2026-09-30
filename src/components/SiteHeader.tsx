@@ -71,6 +71,7 @@ export async function SiteHeader() {
             <Link href="/shop?sort=discount" className="flex items-center gap-1 rounded-lg px-3 py-3 font-medium text-rose-600 hover:bg-rose-50"><Flame className="h-4 w-4" />تخفیف‌ها و جشنواره</Link>
             <Link href="/shop?sort=best" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">پرفروش‌ترین‌ها</Link>
             <Link href="/shop?sort=new" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">جدیدترین‌ها</Link>
+            <Link href="/blog" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">مجله سبزینه</Link>
             <Link href="/customer/supply" className="flex items-center gap-1 rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700"><PackageSearch className="h-4 w-4" />سفارش ویژه</Link>
             {mv && !!st.allowSellerSignup && <Link href="/login" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">تولیدکننده شوید</Link>}
             <Link href="/contact" className="mr-auto flex items-center gap-1 py-3 text-xs text-slate-500"><Headphones className="h-4 w-4" />پشتیبانی <span dir="ltr">021-91000000</span></Link>

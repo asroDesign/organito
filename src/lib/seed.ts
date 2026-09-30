@@ -136,7 +136,7 @@ async function seed() {
   await db.update(products).set({ onHand: sql`${products.onHand} + 37`, options: [{ name: vol, values: ["۵۰۰ میلی‌لیتر", "۱ لیتر"] }, { name: grade, values: ["فرابکر", "بکر"] }] }).where(eq(products.id, pids[4]));
 
   const offer = async (pi: number, s: typeof s1, price: number, stock: number, ship: number, prep: number, buy = false, status = "approved", sale: number | null = null) =>
-    (await db.insert(sellerOffers).values({ productId: pids[pi], sellerId: s.id, price, salePrice: sale, stock, shippingCost: ship, prepDays: prep, shipCity: s.city, warranty: "ضمانت تازگی و بازگشت وجه", status, isBuyBox: buy }).returning())[0];
+    (await db.insert(sellerOffers).values({ productId: pids[pi], sellerId: s.id, price, costPrice: Math.round((sale ?? price) * 0.75), salePrice: sale, stock, shippingCost: ship, prepDays: prep, shipCity: s.city, warranty: "ضمانت تازگی و بازگشت وجه", status, isBuyBox: buy }).returning())[0];
   const o1 = await offer(0, s1, 1390000, 25, 60000, 1, true);
   await offer(0, s2, 1420000, 10, 45000, 2);
   const o3 = await offer(1, s1, 6750000, 8, 80000, 1, true);

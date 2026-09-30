@@ -75,8 +75,8 @@ export async function vehicleMakes() {
 }
 
 export async function categoriesWithCounts() {
-  const r = await db.execute(sql`select c.id, c.name, c.slug, c.parent_id, c.description, (select count(*) from products p where (p.category_id = c.id or p.category_id in (select id from categories x where x.parent_id = c.id)) and p.status in ('active','out_of_stock'))::int as n, (select main_image_id from products p where p.category_id = c.id and p.main_image_id is not null limit 1) as img from categories c order by c.sort_order, c.id`);
-  return (r.rows as { id: number; name: string; slug: string; parent_id: number | null; description: string | null; n: number; img: number | null }[]);
+  const r = await db.execute(sql`select c.id, c.name, c.slug, c.parent_id, c.description, c.seo_title, c.meta_description, c.seo_keywords, c.canonical_url, c.faqs, (select count(*) from products p where (p.category_id = c.id or p.category_id in (select id from categories x where x.parent_id = c.id)) and p.status in ('active','out_of_stock'))::int as n, (select main_image_id from products p where p.category_id = c.id and p.main_image_id is not null limit 1) as img from categories c order by c.sort_order, c.id`);
+  return (r.rows as { id: number; name: string; slug: string; parent_id: number | null; description: string | null; seo_title: string | null; meta_description: string | null; seo_keywords: string | null; canonical_url: string | null; faqs: { question: string; answer: string }[]; n: number; img: number | null }[]);
 }
 
 export async function categoryOptions() {

@@ -17,6 +17,14 @@ function parseDate(v: unknown) {
   return d;
 }
 
+function faqs(v: unknown) {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, 30).map((x) => {
+    const row = x && typeof x === "object" ? x as Record<string, unknown> : {};
+    return { question: str(row.question, 300), answer: str(row.answer, 2000) };
+  }).filter((x) => x.question && x.answer);
+}
+
 export const extraRoutes: Route[] = [
   // ---------- categories ----------
   { method: "POST", pattern: "admin/categories", handler: async (req, _p, m) => {
@@ -24,7 +32,7 @@ export const extraRoutes: Route[] = [
     const b = await body(req);
     const name = str(b.name, 80);
     if (!name) throw new HttpError(400, "نام دسته الزامی است");
-    const [c] = await db.insert(categories).values({ name, slug: slugify(str(b.slug, 80) || name), parentId: b.parentId ? int(b.parentId, 1) : null, description: str(b.description, 500) || null, sortOrder: int(b.sortOrder ?? 0, 0, 1000) }).returning();
+    const [c] = await db.insert(categories).values({ name, slug: slugify(str(b.slug, 80) || name), parentId: b.parentId ? int(b.parentId, 1) : null, description: str(b.description, 50000) || null, seoTitle: str(b.seoTitle, 160) || null, metaDescription: str(b.metaDescription, 320) || null, seoKeywords: str(b.seoKeywords, 500) || null, canonicalUrl: str(b.canonicalUrl, 500) || null, faqs: faqs(b.faqs), sortOrder: int(b.sortOrder ?? 0, 0, 1000) }).returning();
     await audit(db, { userId: u.id, ...m }, "category.create", "category", c.id, null, c);
     return c;
   } },
@@ -44,7 +52,7 @@ export const extraRoutes: Route[] = [
     }
     const parentId = b.parentId ? int(b.parentId, 1) : null;
     if (parentId === id) throw new HttpError(400, "دسته نمی‌تواند والد خودش باشد");
-    const patch = { name: str(b.name, 80) || old.name, slug: slugify(str(b.slug, 80) || old.slug), parentId, description: str(b.description, 500) || null, sortOrder: int(b.sortOrder ?? old.sortOrder, 0, 1000) };
+    const patch = { name: str(b.name, 80) || old.name, slug: slugify(str(b.slug, 80) || old.slug), parentId, description: str(b.description, 50000) || null, seoTitle: str(b.seoTitle, 160) || null, metaDescription: str(b.metaDescription, 320) || null, seoKeywords: str(b.seoKeywords, 500) || null, canonicalUrl: str(b.canonicalUrl, 500) || null, faqs: faqs(b.faqs), sortOrder: int(b.sortOrder ?? old.sortOrder, 0, 1000) };
     await db.update(categories).set(patch).where(eq(categories.id, id));
     await audit(db, { userId: u.id, ...m }, "category.update", "category", id, old, patch);
     return { ok: true };

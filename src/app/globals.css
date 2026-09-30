@@ -40,7 +40,14 @@ body { font-feature-settings: "ss01"; }
 .rich-editor .ck-editor__editable_inline { min-height: var(--re-min, 260px); max-height: 640px; direction: rtl; text-align: right; font-family: Vazirmatn, sans-serif; line-height: 2; }
 .rich-editor .ck.ck-editor__main > .ck-editor__editable { border-bottom-left-radius: .75rem; border-bottom-right-radius: .75rem; }
 .rich-editor .ck.ck-toolbar { border-top-left-radius: .75rem; border-top-right-radius: .75rem; background: #f8faf5; }
-.rich-editor { --ck-font-face: Vazirmatn, sans-serif; --ck-color-focus-border: #10b981; }
+.rich-editor { min-width: 0; max-width: 100%; overflow: hidden; --ck-font-face: Vazirmatn, sans-serif; --ck-color-focus-border: #10b981; }
+.rich-editor .ck-editor, .rich-editor .ck-editor__main { min-width: 0; max-width: 100%; }
+.rich-editor .ck.ck-toolbar, .rich-editor .ck-toolbar__items { flex-wrap: wrap !important; }
+
+@media (max-width: 640px) {
+  .rich-editor .ck-editor__editable_inline { min-height: 320px; max-height: none; }
+  .rich-editor .ck.ck-toolbar { padding: .25rem; }
+}
 
 /* Rendered rich content */
 .prose-rich { line-height: 2.1; color: #334155; }

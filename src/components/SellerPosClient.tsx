@@ -6,7 +6,7 @@ import { faNum, toman } from "@/lib/util";
 import { InvoiceModal } from "./InvoiceModal";
 import { JalaliDatePicker } from "@/components/JalaliDatePicker";
 
-type Product = { offerId:number; productId:number; name:string; brand:string; sku:string; price:number; stock:number };
+type Product = { offerId:number; productId:number; name:string; brand:string; sku:string; price:number; cost:number; stock:number };
 type SaleResult = { ok:boolean; id:number; number:string; subtotal:number; discount:number; total:number; commission:number; rewardCode?:string|null };
 type Terminal={id:number;name:string;bankName:string|null;terminalCode:string|null};
 const phoneDigits=(value:string)=>value.replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
@@ -17,14 +17,15 @@ export default function SellerPosClient({products:initial,endpoint="/api/seller/
   useEffect(()=>{let active=true;api<Terminal[]>(central?"/api/admin/pos/terminals":"/api/seller/pos/terminals","GET").then(ts=>{if(active){setTerminals(ts);setTerminalId(ts[0]?String(ts[0].id):"")}}).catch(e=>{if(active)toast((e as Error).message,false)});return()=>{active=false}},[central]);
   const filtered=useMemo(()=>products.filter(p=>`${p.name} ${p.brand} ${p.sku}`.toLowerCase().includes(query.trim().toLowerCase())),[products,query]);
   const lines=Object.entries(cart).map(([id,qty])=>({p:products.find(x=>x.offerId===Number(id))!,qty})).filter(x=>x.p);
-  const subtotal=lines.reduce((sum,x)=>sum+x.p.price*x.qty,0),discount=Math.floor(subtotal*discountPercent/100),total=subtotal-discount,cashPaid=Math.min(cash,total),card=total-cashPaid;
+  const subtotal=lines.reduce((sum,x)=>sum+x.p.price*x.qty,0),maxDiscountPercent=lines.length?Math.min(90,...lines.map(({p})=>Math.max(0,Math.floor(((p.price-p.cost)*100)/p.price)))):90,discount=Math.floor(subtotal*discountPercent/100),total=subtotal-discount,cashPaid=Math.min(cash,total),card=total-cashPaid,discountInvalid=discountPercent>maxDiscountPercent;
   const add=(p:Product)=>setCart(old=>({...old,[p.offerId]:Math.min(p.stock,(old[p.offerId]??0)+1)}));
   const qty=(id:number,value:number)=>setCart(old=>{const next={...old};if(value<=0)delete next[id];else{const p=products.find(x=>x.offerId===id);next[id]=Math.min(value,p?.stock??value)}return next});
-  const applyReward=async()=>{try{const r=await api<{discountPercent:number;minSubtotal:number}>(`/api/seller/loyalty/rewards/${encodeURIComponent(rewardCode)}`,"GET");if(subtotal<r.minSubtotal)return toast(`حداقل مبلغ این کد ${toman(r.minSubtotal)} است`,false);setDiscountPercent(r.discountPercent);setRewardApplied(true);toast(`${faNum(r.discountPercent)}٪ تخفیف باشگاه اعمال شد`)}catch(e){toast((e as Error).message,false)}};
+  const applyReward=async()=>{try{const r=await api<{discountPercent:number;minSubtotal:number}>(`/api/seller/loyalty/rewards/${encodeURIComponent(rewardCode)}`,"GET");if(subtotal<r.minSubtotal)return toast(`حداقل مبلغ این کد ${toman(r.minSubtotal)} است`,false);if(r.discountPercent>maxDiscountPercent)return toast(`برای اقلام این فاکتور حداکثر ${faNum(maxDiscountPercent)}٪ تخفیف مجاز است`,false);setDiscountPercent(r.discountPercent);setRewardApplied(true);toast(`${faNum(r.discountPercent)}٪ تخفیف باشگاه اعمال شد`)}catch(e){toast((e as Error).message,false)}};
   const submit=async()=>{
     if(!lines.length)return toast("ابتدا یک محصول به فاکتور اضافه کنید",false);
     if(!/^09\d{9}$/.test(phoneDigits(phone).replace(/\D/g,"")))return toast("شمارهٔ همراه مشتری را درست وارد کنید",false);
     if(rewardCode&&!rewardApplied)return toast("ابتدا کد باشگاه را بررسی و اعمال کنید",false);
+    if(discountInvalid)return toast(`حداکثر تخفیف مجاز این فاکتور ${faNum(maxDiscountPercent)}٪ است`,false);
     const paymentMethod=cashPaid===0?"card":cashPaid===total?"cash":"mixed";
     if(card>0&&!terminalId)return toast("ابتدا کارتخوان فروشگاه را در تنظیمات تعریف و انتخاب کنید",false);
     setBusy(true);
@@ -39,11 +40,11 @@ export default function SellerPosClient({products:initial,endpoint="/api/seller/
       {!central&&<div className="mt-3 flex items-center gap-2"><input aria-label="کد تخفیف باشگاه" className="input" value={rewardCode} disabled={rewardApplied} onChange={e=>setRewardCode(e.target.value.toUpperCase())} placeholder="کد تخفیف باشگاه برای مراجعهٔ بعدی"/><button type="button" className="btn-sm shrink-0" disabled={!rewardCode||rewardApplied} onClick={applyReward}>{rewardApplied?"اعمال شد":"بررسی کد"}</button>{rewardApplied&&<button type="button" className="text-xs text-rose-600" onClick={()=>{setRewardApplied(false);setRewardCode("");setDiscountPercent(0)}}>حذف</button>}</div>}
       <label className="mt-3 flex items-center gap-2 text-xs text-slate-600"><input type="checkbox" checked={smsConsent} onChange={e=>setSmsConsent(e.target.checked)} className="accent-emerald-700"/>{central?"مشتری برای عضویت در باشگاه مرکزی و دریافت پیامک‌های مناسبتی رضایت داده است":"مشتری برای دریافت پیامک‌های باشگاه مشتریان رضایت داده است"}</label>
       <div className="mt-4 rounded-xl bg-emerald-50 p-3"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sendNextReward} onChange={e=>setSendNextReward(e.target.checked)}/>صدور و پیامک کد تخفیف خرید بعدی</label>{sendNextReward&&<label className="mt-2 block text-xs">درصد هدیه (اعتبار ۳۰ روز)<input type="number" min="1" max="50" className="input mt-1" value={nextRewardPercent} onChange={e=>setNextRewardPercent(Number(e.target.value))}/><span className="mt-1 block">پیامک فقط با رضایت مشتری ارسال می‌شود.</span></label>}</div>
-      <label className="mt-4 block text-xs font-bold">تخفیف فاکتور (%)<input type="number" min="0" max="90" className="input mt-1" value={discountPercent} disabled={rewardApplied} onChange={e=>setDiscountPercent(Math.min(90,Math.max(0,Number(e.target.value)||0)))}/></label>
+      <label className="mt-4 block text-xs font-bold">تخفیف فاکتور (%)<input type="number" min="0" max={maxDiscountPercent} className={`input mt-1 ${discountInvalid?"!border-rose-400":""}`} value={discountPercent} disabled={rewardApplied} onChange={e=>setDiscountPercent(Math.min(maxDiscountPercent,Math.max(0,Number(e.target.value)||0)))}/><span className={`mt-1 block font-normal ${discountInvalid?"text-rose-600":"text-slate-500"}`}>حداکثر مجاز برای اقلام فاکتور: {faNum(maxDiscountPercent)}٪؛ قیمت پس از تخفیف از قیمت خرید کمتر نمی‌شود.</span></label>
       {card>0&&<label className="mt-3 block text-xs font-bold">دستگاه پوز<select className="input mt-1" value={terminalId} onChange={e=>setTerminalId(e.target.value)}><option value="">انتخاب کارتخوان</option>{terminals.map(t=><option key={t.id} value={t.id}>{t.name}{t.bankName?` · ${t.bankName}`:""}</option>)}</select>{!terminals.length&&<span className="mt-1 block font-normal text-amber-700">ابتدا کارتخوان را از بخش تنظیمات تعریف کنید.</span>}</label>}
       <label className="mt-3 block text-xs font-bold">دریافت نقدی (تومان)<input type="number" min="0" max={total} className="input mt-1" value={cashPaid} onChange={e=>setCash(Math.min(total,Math.max(0,Number(e.target.value)||0)))}/></label>
       <div className="mt-3 space-y-2 border-t pt-3 text-sm"><div className="flex justify-between text-slate-500"><span>جمع کالاها</span><span>{toman(subtotal)}</span></div><div className="flex justify-between text-slate-500"><span>تخفیف</span><span>− {toman(discount)}</span></div><div className="flex justify-between font-black"><span>مبلغ فاکتور</span><span>{toman(total)}</span></div><div className="flex justify-between text-xs text-slate-500"><span>کارتخوان</span><span>{toman(card)}</span></div>{!central&&<div className="flex justify-between text-xs font-bold text-emerald-700"><span>کمیسیون مارکت‌پلیس</span><span>۰ تومان</span></div>}</div>
-      <button disabled={busy||!lines.length||(card>0&&!terminalId)} onClick={submit} className="btn-primary mt-4 w-full disabled:opacity-50">{busy?"در حال ثبت…":"ثبت و تسویهٔ فروش حضوری"}</button>
+      <button disabled={busy||!lines.length||discountInvalid||(card>0&&!terminalId)} onClick={submit} className="btn-primary mt-4 w-full disabled:opacity-50">{busy?"در حال ثبت…":"ثبت و تسویهٔ فروش حضوری"}</button>
     </section>
   </div>;
 }

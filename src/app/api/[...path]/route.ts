@@ -13,11 +13,12 @@ import { kycRoutes } from "@/lib/api/kyc";
 import { communityRoutes } from "@/lib/api/community";
 import { sellerPosRoutes } from "@/lib/api/seller-pos";
 import { centralPosRoutes } from "@/lib/api/central-pos";
+import { contentRoutes } from "@/lib/api/content";
 import { ensureSeeded } from "@/lib/seed";
 import { expireStaleOrders } from "@/lib/services/orders";
 
 export const dynamic = "force-dynamic";
-const routes = [...commerceRoutes, ...crmRoutes, ...centralPosRoutes, ...sellerPosRoutes, ...communityRoutes, ...kycRoutes, ...warehouseRoutes, ...gatewayRoutes, ...paymentRoutes, ...marketingRoutes, ...extraRoutes, ...publicRoutes, ...staffRoutes];
+const routes = [...contentRoutes, ...commerceRoutes, ...crmRoutes, ...centralPosRoutes, ...sellerPosRoutes, ...communityRoutes, ...kycRoutes, ...warehouseRoutes, ...gatewayRoutes, ...paymentRoutes, ...marketingRoutes, ...extraRoutes, ...publicRoutes, ...staffRoutes];
 
 type Ctx = { params: Promise<{ path: string[] }> };
 async function handle(req: NextRequest, ctx: Ctx) {

@@ -29,8 +29,8 @@ export default async function SellerProducts() {
             <Td><div className="flex flex-wrap gap-1">
               {o.status === "approved" && <ActionButton url={`/api/seller/offers/${o.id}/status`} data={{ status: "inactive" }} className="btn-sm">غیرفعال</ActionButton>}
               {o.status === "inactive" && <ActionButton url={`/api/seller/offers/${o.id}/status`} data={{ status: "approved" }} className="btn-sm">فعال‌سازی</ActionButton>}
-              <OfferEditor productId={p.id} initial={{ price: o.price, salePrice: o.salePrice, stock: o.stock, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, shipCity: o.shipCity }} label="ویرایش" />
-              <ActionButton url="/api/seller/offers" data={{ productId: p.id, price: o.price, salePrice: o.salePrice, stock: o.reserved, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, shipCity: o.shipCity, condition: o.condition }} confirm="موجودی آزاد صفر شود (اعلام ناموجودی)؟" className="btn-sm">اعلام ناموجودی</ActionButton>
+              <OfferEditor productId={p.id} initial={{ price: o.price, costPrice: o.costPrice, salePrice: o.salePrice, stock: o.stock, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, shipCity: o.shipCity }} label="ویرایش" />
+              <ActionButton url="/api/seller/offers" data={{ productId: p.id, price: o.price, costPrice: o.costPrice, salePrice: o.salePrice, stock: o.reserved, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, shipCity: o.shipCity, condition: o.condition }} confirm="موجودی آزاد صفر شود (اعلام ناموجودی)؟" className="btn-sm">اعلام ناموجودی</ActionButton>
             </div></Td>
           </tr>
         ))}

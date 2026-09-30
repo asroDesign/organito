@@ -68,14 +68,14 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
-export function FeatureIntro({ icon: Icon, title, text, action, tone = "green" }: { icon: LucideIcon; title: string; text: ReactNode; action?: ReactNode; tone?: "green" | "blue" | "yellow" | "violet" }) {
+export function FeatureIntro({ icon: Icon, title, text, action, tone = "green", className = "" }: { icon: LucideIcon; title: string; text: ReactNode; action?: ReactNode; tone?: "green" | "blue" | "yellow" | "violet"; className?: string }) {
   const style = {
     green: "border-emerald-200 bg-emerald-50/70 text-emerald-800",
     blue: "border-sky-200 bg-sky-50/70 text-sky-800",
     yellow: "border-amber-200 bg-amber-50/70 text-amber-900",
     violet: "border-violet-200 bg-violet-50/70 text-violet-800",
   }[tone];
-  return <div className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 ${style}`}>
+  return <div className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 ${style} ${className}`}>
     <div className="flex min-w-0 items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/80 shadow-sm"><Icon className="h-5 w-5" /></span><div><h2 className="font-extrabold">{title}</h2><div className="mt-1 text-sm leading-7 opacity-80">{text}</div></div></div>
     {action}
   </div>;

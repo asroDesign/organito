@@ -37,7 +37,7 @@ export const sellerPosRoutes: Route[] = [
       .innerJoin(products, eq(products.id, sellerOffers.productId))
       .where(and(eq(sellerOffers.sellerId, sellerId), eq(sellerOffers.status, "approved"), eq(products.status, "active")))
       .orderBy(products.nameFa);
-    return rows.map(({ offer, product }) => ({ offerId: offer.id, productId: product.id, name: product.nameFa, brand: product.brand, sku: product.sku, price: offer.salePrice ?? offer.price, stock: Math.max(0, offer.stock - offer.reserved) }));
+    return rows.map(({ offer, product }) => ({ offerId: offer.id, productId: product.id, name: product.nameFa, brand: product.brand, sku: product.sku, price: offer.salePrice ?? offer.price, cost: offer.costPrice, stock: Math.max(0, offer.stock - offer.reserved) }));
   } },
   { method: "GET", pattern: "seller/pos/recent", handler: async () => {
     const { sellerId } = await sellerUser();
@@ -96,7 +96,14 @@ export const sellerPosRoutes: Route[] = [
         if (subtotal < reward.minSubtotal) throw new HttpError(400, `حداقل خرید برای این کد ${reward.minSubtotal.toLocaleString("fa-IR")} تومان است`);
         appliedPercent = reward.discountPercent;
       }
+      for (const row of normalized) {
+        const price = row.offer.salePrice ?? row.offer.price;
+        const max = Math.max(0, Math.floor(((price - row.offer.costPrice) * 100) / price));
+        if (appliedPercent > max) throw new HttpError(400, `حداکثر تخفیف مجاز برای «${row.product.nameFa}» ${max.toLocaleString("fa-IR")}٪ است؛ قیمت فروش نباید از قیمت خرید کمتر شود`);
+      }
       const discount = Math.floor(subtotal * appliedPercent / 100), total = subtotal - discount;
+      const minimumTotal = normalized.reduce((sum, row) => sum + Number(row.offer.costPrice ?? 0) * row.qty, 0);
+      if (total < minimumTotal) throw new HttpError(400, `مبلغ نهایی فاکتور نباید از بهای خرید کالاها (${minimumTotal.toLocaleString("fa-IR")} تومان) کمتر باشد`);
       if (!method || cash + card !== total || (method === "cash" && (cash !== total || card !== 0)) || (method === "card" && (card !== total || cash !== 0)) || (method === "mixed" && (!cash || !card))) {
         throw new HttpError(400, `جمع تسویه نقدی و کارتی باید دقیقاً ${total.toLocaleString("fa-IR")} تومان باشد`);
       }
@@ -109,8 +116,8 @@ export const sellerPosRoutes: Route[] = [
           .where(and(eq(sellerOffers.id, row.offer.id), eq(sellerOffers.sellerId, sellerId), eq(sellerOffers.status, "approved"), sql`${sellerOffers.stock} - ${sellerOffers.reserved} >= ${row.qty}`)).returning({ id: sellerOffers.id });
         if (!updated) throw new HttpError(409, `موجودی «${row.product.nameFa}» هم‌زمان تغییر کرد؛ فاکتور دوباره ثبت نشد`);
         const lineTotal = (row.offer.salePrice ?? row.offer.price) * row.qty;
-        await tx.insert(sellerPosItems).values({ saleId: createdSale.id, sellerId, offerId: row.offer.id, productId: row.product.id, title: row.product.nameFa, quantity: row.qty, unitPrice: row.offer.salePrice ?? row.offer.price, lineTotal });
-        await tx.insert(stockMovements).values({ productId: row.product.id, offerId: row.offer.id, type: "pos_sale", qty: -row.qty, refType: "seller_pos_sale", refId: createdSale.id, note: `فروش حضوری تأمین‌کننده ${number} · بدون کمیسیون`, userId: user.id });
+        await tx.insert(sellerPosItems).values({ saleId: createdSale.id, sellerId, offerId: row.offer.id, productId: row.product.id, title: row.product.nameFa, quantity: row.qty, unitPrice: row.offer.salePrice ?? row.offer.price, unitCost: row.offer.costPrice, lineTotal });
+        await tx.insert(stockMovements).values({ productId: row.product.id, offerId: row.offer.id, type: "pos_sale", qty: -row.qty, unitCost: row.offer.costPrice, refType: "seller_pos_sale", refId: createdSale.id, note: `فروش حضوری تأمین‌کننده ${number} · بدون کمیسیون`, userId: user.id });
       }
       await tx.insert(sellerLoyaltyMembers).values({ clubId: club.id, name: customerName, phone, birthdate, smsConsent: b.smsConsent === true, visits: 1, totalSpent: total, lastVisitAt: new Date() })
         .onConflictDoUpdate({ target: [sellerLoyaltyMembers.clubId, sellerLoyaltyMembers.phone], set: { name: customerName, ...(birthdate ? { birthdate } : {}), visits: sql`${sellerLoyaltyMembers.visits} + 1`, totalSpent: sql`${sellerLoyaltyMembers.totalSpent} + ${total}`, smsConsent: sql`${sellerLoyaltyMembers.smsConsent} OR ${b.smsConsent === true}`, lastVisitAt: new Date(), updatedAt: new Date() } });

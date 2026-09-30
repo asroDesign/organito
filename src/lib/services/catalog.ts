@@ -67,7 +67,7 @@ export function parseProductInput(b: Record<string, unknown>) {
       videoMediaId: b.videoMediaId ? int(b.videoMediaId, 1) : null,
     },
     imageIds, variants,
-    offer: b.offerPrice ? { price: int(b.offerPrice, 1), stock: int(b.offerStock ?? 0, 0, 100000), shippingCost: int(b.offerShipping ?? 0), prepDays: int(b.offerPrepDays ?? 1, 0, 60), warranty: str(b.offerWarranty, 200) || null } : null,
+    offer: b.offerPrice ? { price: int(b.offerPrice, 1), costPrice: b.offerCostPrice ? int(b.offerCostPrice, 1) : int(b.offerPrice, 1), stock: int(b.offerStock ?? 0, 0, 100000), shippingCost: int(b.offerShipping ?? 0), prepDays: int(b.offerPrepDays ?? 1, 0, 60), warranty: str(b.offerWarranty, 200) || null } : null,
   };
 }
 
@@ -170,11 +170,12 @@ export async function setProductStatus(ctx: Ctx & { userId: number }, u: Session
 export async function upsertOffer(ctx: Ctx & { userId: number }, sellerId: number, b: Record<string, unknown>) {
   const productId = int(b.productId, 1);
   const data = {
-    price: int(b.price, 1000), salePrice: b.salePrice ? int(b.salePrice, 1000) : null, stock: int(b.stock ?? 0, 0, 100000),
+    price: int(b.price, 1000), costPrice: b.costPrice ? int(b.costPrice, 1) : int(b.price, 1000), salePrice: b.salePrice ? int(b.salePrice, 1000) : null, stock: int(b.stock ?? 0, 0, 100000),
     shippingCost: int(b.shippingCost ?? 0, 0, 10_000_000), prepDays: int(b.prepDays ?? 1, 0, 60), shipCity: str(b.shipCity, 60) || null,
     warranty: str(b.warranty, 200) || null, condition: ["new", "used", "refurbished"].includes(String(b.condition)) ? String(b.condition) : "new",
   };
   if (data.salePrice && data.salePrice > data.price) throw new HttpError(400, "قیمت تخفیفی نباید بیشتر از قیمت فروش باشد");
+  if (data.costPrice > (data.salePrice ?? data.price)) throw new HttpError(400, "قیمت فروش نباید از قیمت خرید کمتر باشد");
   return db.transaction(async (tx) => {
     const [sel] = await tx.select().from(sellers).where(eq(sellers.id, sellerId));
     if (!sel || sel.status !== "approved") throw new HttpError(403, "تأمین‌کننده تأیید نشده است");
@@ -230,10 +231,14 @@ export async function receiveStock(ctx: Ctx & { userId: number }, productId: num
     const [p] = await tx.select().from(products).where(eq(products.id, productId)).for("update");
     if (!p) throw new HttpError(404, "محصول یافت نشد");
     if (qty === 0) throw new HttpError(400, "تعداد نامعتبر");
+    const variants = await tx.select().from(productVariants).where(eq(productVariants.productId, productId)).for("update");
+    const stockVariant = variants.find((variant) => variant.title === "پیش‌فرض") ?? (variants.length === 1 ? variants[0] : null);
     if (qty > 0) {
       const landed = unitCost * qty + freight + customs;
       const newAvg = Math.round((p.onHand * p.avgCost + landed) / (p.onHand + qty));
       await tx.update(products).set({ onHand: p.onHand + qty, avgCost: newAvg, status: p.status === "out_of_stock" ? "active" : p.status }).where(eq(products.id, productId));
+      if (stockVariant) await tx.update(productVariants).set({ onHand: stockVariant.onHand + qty, isActive: true }).where(eq(productVariants.id, stockVariant.id));
+      else await tx.insert(productVariants).values({ productId, title: "پیش‌فرض", attrs: {}, sku: `${p.sku}-DEFAULT-${p.id}`, price: p.basePrice, onHand: variants.length ? qty : p.onHand + qty, reserved: variants.length ? 0 : p.reserved, isActive: true });
       await tx.insert(stockMovements).values({ productId, type: "purchase_in", qty, unitCost: Math.round(landed / qty), refType: "purchase", note, userId: ctx.userId });
       await postJournal(tx, `خرید و ورود کالا ${p.sku}`, [
         { code: "1201", debit: landed }, { code: "2104", credit: unitCost * qty }, { code: "1101", credit: freight + customs, description: "حمل و گمرک" },
@@ -242,7 +247,9 @@ export async function receiveStock(ctx: Ctx & { userId: number }, productId: num
     } else {
       const out = -qty;
       if (p.onHand - p.reserved < out) throw new HttpError(400, "موجودی آزاد کافی نیست");
+      if (stockVariant && stockVariant.onHand - stockVariant.reserved < out) throw new HttpError(400, "موجودی آزاد تنوع پیش‌فرض برای ثبت کسری کافی نیست");
       await tx.update(products).set({ onHand: p.onHand - out }).where(eq(products.id, productId));
+      if (stockVariant) await tx.update(productVariants).set({ onHand: stockVariant.onHand - out }).where(eq(productVariants.id, stockVariant.id));
       await tx.insert(stockMovements).values({ productId, type: "adjust_out", qty, unitCost: p.avgCost, note, userId: ctx.userId });
       await postJournal(tx, `کسری/ضایعات انبار ${p.sku}`, [{ code: "5101", debit: p.avgCost * out }, { code: "1201", credit: p.avgCost * out }], { type: "product", id: productId }, ctx.userId);
       await audit(tx, ctx, "inventory.adjust", "product", productId, { onHand: p.onHand }, { onHand: p.onHand - out, note });
