@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments } from "@/db/schema";
+import { orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal, reverseJournal } from "../accounting";
@@ -85,12 +85,16 @@ export const staffRoutes: Route[] = [
   } },
   { method: "GET", pattern: "seller/report.csv", handler: async () => {
     const u = await requireSeller();
-    const rows = await db.select({ product: orderItems.title, qty: sql<number>`sum(${orderItems.qty})::int`, gross: sql<number>`sum(${orderItems.lineTotal})::bigint` })
-      .from(orderItems).innerJoin(sellerShipments, eq(sellerShipments.id, orderItems.shipmentId))
-      .where(and(eq(orderItems.sellerId, u.sellerId), sql`${sellerShipments.status} <> 'cancelled'`)).groupBy(orderItems.title);
-    const [s] = await db.select().from(sellers).where(eq(sellers.id, u.sellerId));
+    const result = await db.execute(sql`select product, sum(qty)::int qty, sum(gross)::bigint gross, sum(commission)::bigint commission from (
+      select oi.title product, oi.qty, oi.line_total gross, round(oi.line_total * s.commission_rate / 100.0)::bigint commission
+        from order_items oi join seller_shipments sh on sh.id = oi.shipment_id join orders o on o.id = oi.order_id join sellers s on s.id = sh.seller_id
+        where oi.seller_id = ${u.sellerId} and o.payment_status = 'paid' and sh.status <> 'cancelled'
+      union all select pi.title product, pi.quantity qty, pi.line_total gross, 0::bigint commission
+        from seller_pos_items pi where pi.seller_id = ${u.sellerId}
+    ) sales group by product order by gross desc`);
+    const rows = result.rows as { product: string; qty: number; gross: number; commission: number }[];
     const lines = ["product,qty,gross,commission,net", ...rows.map((r) => {
-      const c = Math.round((Number(r.gross) * s.commissionRate) / 100);
+      const c = Number(r.commission);
       return `"${r.product.replace(/"/g, "'")}",${r.qty},${r.gross},${c},${Number(r.gross) - c}`;
     })];
     return new Response("\uFEFF" + lines.join("\n"), { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=seller-report.csv" } });

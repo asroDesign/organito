@@ -154,7 +154,7 @@ export const publicRoutes: Route[] = [
     const key = str(b.idempotencyKey, 100);
     if (key.length < 8) throw new HttpError(400, "کلید یکتا الزامی است");
     const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null });
-    return { id: order.id, number: order.number };
+    return { id: order.id, number: order.number, paid:order.paymentStatus==="paid" };
   } },
   { method: "POST", pattern: "orders/:id/confirm", handler: async (_r, p, m) => {
     const u = await requireApi();

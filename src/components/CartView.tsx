@@ -131,6 +131,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone }: { loggedIn: bo
             <Row k="مالیات" v={t(quote.tax)} />
             {quote.festivalDiscount > 0 && <Row k="تخفیف جشنواره" v={`- ${t(quote.festivalDiscount)}`} />}
             {quote.codeDiscount > 0 && <Row k={`کد تخفیف (${quote.code?.code})`} v={`- ${t(quote.codeDiscount)}`} />}
+            {quote.creditAmount>0&&<Row k="کارت هدیه / اعتبار خرید" v={`- ${t(quote.creditAmount)}`}/>}
             <div className="flex justify-between border-t pt-2 text-base font-extrabold"><span>مبلغ نهایی</span><span className="text-emerald-700">{t(quote.finalTotal)}</span></div>
             <p className="text-[11px] text-slate-400">قیمت و موجودی نهایی هنگام ثبت در سرور اعتبارسنجی می‌شود.</p>
           </div>
@@ -140,7 +141,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone }: { loggedIn: bo
             <div className="flex items-center justify-between text-sm"><span className="text-emerald-700">✓ کد <b dir="ltr">{quote.code.code}</b> — {quote.code.title}</span><button className="text-xs text-rose-600" onClick={() => { setCode(""); setCodeInput(""); }}>حذف</button></div>
           ) : (
             <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); setCode(codeInput.trim()); }}>
-              <input value={codeInput} onChange={(e) => setCodeInput(e.target.value.toUpperCase())} placeholder="کد تخفیف" dir="ltr" className="input" />
+              <input value={codeInput} onChange={(e) => setCodeInput(e.target.value.toUpperCase())} placeholder="کد تخفیف، کارت هدیه یا WALLET" dir="ltr" className="input" />
               <button className="btn-ghost whitespace-nowrap">اعمال</button>
             </form>
           )}
@@ -152,13 +153,13 @@ export function CartView({ loggedIn, defaultName, defaultPhone }: { loggedIn: bo
             const fd = new FormData(e.currentTarget);
             setPlacing(true);
             try {
-              const r = await api<{ id: number }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty }) => ({ productId, offerId, variantId, qty })), address: Object.fromEntries(fd), idempotencyKey: idem.current, code: quote?.code?.ok ? code : "", carrierId: quote?.carrierId });
+              const r = await api<{ id: number;paid:boolean }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty }) => ({ productId, offerId, variantId, qty })), address: Object.fromEntries(fd), idempotencyKey: idem.current, code: quote?.code?.ok ? code : "", carrierId: quote?.carrierId });
               writeCart([]);
-              if (payMethod === "gateway") {
+              if (payMethod === "gateway"&&!r.paid) {
                 toast("سفارش ثبت شد؛ در حال انتقال به درگاه زرین‌پال…");
                 try { const g = await api<{ url: string }>(`/api/orders/${r.id}/gateway`, "POST", {}); window.location.href = g.url; return; }
                 catch (ge) { toast(`اتصال به درگاه ناموفق بود: ${(ge as Error).message}. از صفحه سفارش دوباره تلاش کنید.`, false); }
-              } else toast("سفارش ثبت شد؛ اطلاعات کارت به کارت را در صفحه سفارش ثبت کنید");
+              } else toast(r.paid?"سفارش با اعتبار خرید تسویه شد":"سفارش ثبت شد؛ اطلاعات کارت به کارت را در صفحه سفارش ثبت کنید");
               router.push(`/customer/orders/${r.id}`);
             } catch (e2) { toast((e2 as Error).message, false); idem.current = uid(); } finally { setPlacing(false); }
           }}>

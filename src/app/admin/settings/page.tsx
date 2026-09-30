@@ -3,6 +3,7 @@ import { getSettings } from "@/lib/settings";
 import { Card, PageHeader } from "@/components/ui";
 import { JsonForm } from "@/components/client";
 import { HeroEditor } from "@/components/HeroEditor";
+import PosTerminalManager from "@/components/PosTerminalManager";
 
 export default async function SettingsPage() {
   await requirePage({ perm: "SETTINGS_MANAGE" });
@@ -19,6 +20,7 @@ export default async function SettingsPage() {
         <p className="mt-3 text-xs leading-6 text-slate-500">در حالت تک‌فروشنده، فهرست و مقایسه فروشندگان، تعداد فروشنده روی کارت‌ها، بخش تولیدکنندگان و لینک «تولیدکننده شوید» پنهان می‌شود و در صفحه محصول فقط یک گزینه خرید (موجودی فروشگاه یا بهترین پیشنهاد) با نام فروشگاه نمایش داده می‌شود. پنل و سفارش‌های فروشندگان فعلی حفظ می‌شود.</p>
       </Card>
       <Card title="هیرو صفحه اصلی (تصویر / GIF / ویدیو)" className="mb-6"><HeroEditor initial={{ heroMediaId: s.heroMediaId, heroType: s.heroType, heroTitle: s.heroTitle, heroSubtitle: s.heroSubtitle }} /></Card>
+      <Card title="کارتخوان‌های فروش حضوری" className="mb-6"><p className="text-xs leading-6 text-slate-500">کارتخوان‌های فعال این فهرست هنگام ثبت فروش حضوری انبار مرکزی انتخاب می‌شوند.</p><PosTerminalManager listUrl="/api/admin/settings/pos-terminals" manageUrl="/api/admin/settings/pos-terminals" /></Card>
       <Card title="تنظیمات عمومی">
         <JsonForm url="/api/admin/settings" submit="ذخیره تنظیمات" resetOnDone={false} fields={[
           { name: "siteName", label: "نام سامانه", half: true, defaultValue: s.siteName },

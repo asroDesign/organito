@@ -1,3 +1,4 @@
+import { RequestReturnButton } from "./CommerceClient";
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -111,6 +112,7 @@ export async function OrderDetail({ id, user, view }: { id: number; user: Sessio
             <KV k="تحویل‌گیرنده" v={o.address.fullName} /><KV k="تلفن" v={view === "seller" ? o.address.phone.replace(/(\d{4})\d{4}(\d{3})/, "$1****$2") : o.address.phone} />
             <KV k="شهر" v={o.address.city} /><p className="mt-2 text-sm text-slate-600">{o.address.address}</p><KV k="کد پستی" v={o.address.postalCode || "—"} />
           </Card>
+          {view==="customer"&&o.paymentStatus==="paid"&&["shipped","completed"].includes(o.status)&&<RequestReturnButton orderId={o.id}/>}
           <Link href={view === "admin" ? "/admin/orders" : view === "seller" ? "/seller/orders" : "/customer"} className="btn-ghost w-full">بازگشت به فهرست</Link>
         </div>
       </div>

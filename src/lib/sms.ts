@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { smsLogs, smsTemplates } from "@/db/schema";
+import { smsLogs, smsTemplates, sellerSmsSettings } from "@/db/schema";
 import { getSettings } from "./settings";
 import { maskPhone } from "./util";
 
@@ -17,6 +17,7 @@ export const SMS_EVENTS: Record<string, { title: string; vars: string[]; body: s
   order_delivered: { title: "تحویل سفارش", vars: ["order"], body: "سفارش {order} تحویل شد. از خرید شما سپاسگزاریم." },
   ticket_reply: { title: "پاسخ تیکت", vars: ["ticket"], body: "به تیکت {ticket} پاسخ داده شد." },
   withdrawal_requested: { title: "ثبت برداشت", vars: ["amount"], body: "درخواست برداشت {amount} تومان ثبت شد." },
+  birthday: { title: "تبریک تولد باشگاه مشتریان", vars: ["name"], body: "{name} عزیز، زادروزتان مبارک! از طرف خانواده سبزینه برایتان سلامتی و شادی آرزو می‌کنیم." },
   settlement_paid: { title: "پرداخت تسویه", vars: ["amount", "tracking"], body: "مبلغ {amount} تومان واریز شد. پیگیری: {tracking}" },
 };
 
@@ -104,3 +105,51 @@ export async function retryLog(logId: number) {
 }
 
 export { maskPhone };
+
+/** متن پیام باشگاه مشتریان را با پنل مستقل همان تأمین‌کننده ارسال و ثبت می‌کند. */
+export async function sendDirectSms(event: string, phone: string, body: string): Promise<"sent" | "simulated" | "failed"> {
+  const settings = await getSettings();
+  const provider = settings.smsProvider;
+  let status: "sent" | "simulated" | "failed" = "failed", response = "";
+  try {
+    if (provider === "kavenegar") {
+      const key = process.env.KAVENEGAR_API_KEY;
+      if (!key) { status = "simulated"; response = "کلید کاوه‌نگار تنظیم نشده؛ شبیه‌سازی شد"; }
+      else {
+        const r = await fetch(`https://api.kavenegar.com/v1/${encodeURIComponent(key)}/sms/send.json`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: new URLSearchParams({ receptor: phone, message: body, ...(settings.smsSender ? { sender: settings.smsSender } : {}) }), signal: AbortSignal.timeout(10000), cache: "no-store" });
+        response = (await r.text()).slice(0, 500); status = r.ok ? "sent" : "failed";
+      }
+    } else if (provider === "smsir") {
+      const key = process.env.SMSIR_API_KEY;
+      if (!key) { status = "simulated"; response = "کلید SMS.ir تنظیم نشده؛ شبیه‌سازی شد"; }
+      else {
+        const r = await fetch("https://api.sms.ir/v1/send", { method: "POST", headers: { "Content-Type": "application/json", "X-API-KEY": key }, body: JSON.stringify({ lineNumber: Number((settings.smsSender ?? "").replace(/\D/g, "")) || 30007732000000, messageText: body, mobiles: [phone] }), signal: AbortSignal.timeout(10000), cache: "no-store" });
+        response = (await r.text()).slice(0, 500); const parsed = (() => { try { return JSON.parse(response); } catch { return null; } })(); status = r.ok && (parsed?.status === 1 || parsed?.status === 2) ? "sent" : "failed";
+      }
+    } else response = "سرویس پیامک ناشناخته است";
+  } catch (error) { response = (error as Error).message.slice(0, 500); }
+  try { await db.insert(smsLogs).values({ event, phone, provider, body, status, response, attempts: 1 }); } catch {}
+  return status;
+}
+
+export async function sendSellerClubSms(sellerId: number, phone: string, body: string): Promise<"sent" | "simulated" | "failed"> {
+  const [config] = await db.select().from(sellerSmsSettings).where(eq(sellerSmsSettings.sellerId, sellerId));
+  const provider = config?.provider ?? "simulate";
+  let status: "sent" | "simulated" | "failed" = "failed", response = "";
+  try {
+    if (!config?.enabled) response = "پنل پیامک غیرفعال است";
+    else if (provider === "simulate") { status = "simulated"; response = "شبیه‌سازی؛ پیام به سرویس بیرونی ارسال نشد"; }
+    else if (!config.apiKey) response = "کلید API ثبت نشده است";
+    else if (provider === "kavenegar") {
+      const result = await fetch(`https://api.kavenegar.com/v1/${encodeURIComponent(config.apiKey)}/sms/send.json`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: new URLSearchParams({ receptor: phone, message: body, ...(config.senderNumber ? { sender: config.senderNumber } : {}) }), signal: AbortSignal.timeout(10000), cache: "no-store" });
+      response = (await result.text()).slice(0, 500); status = result.ok ? "sent" : "failed";
+    } else if (provider === "smsir") {
+      const result = await fetch("https://api.sms.ir/v1/send", { method: "POST", headers: { "Content-Type": "application/json", "X-API-KEY": config.apiKey }, body: JSON.stringify({ lineNumber: Number((config.senderNumber ?? "").replace(/\D/g, "")) || 30007732000000, messageText: body, mobiles: [phone] }), signal: AbortSignal.timeout(10000), cache: "no-store" });
+      response = (await result.text()).slice(0, 500);
+      const parsed = (() => { try { return JSON.parse(response); } catch { return null; } })();
+      status = result.ok && (parsed?.status === 1 || parsed?.status === 2) ? "sent" : "failed";
+    } else response = "سرویس پیامک ناشناخته است";
+  } catch (error) { response = (error as Error).message.slice(0, 500); }
+  try { await db.insert(smsLogs).values({ event: `seller_club:${sellerId}`, phone, provider, body, status, response, attempts: 1 }); } catch {}
+  return status;
+}

@@ -1,6 +1,6 @@
 import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/db";
-import { carrierRates, carriers, discountCodes, discountUsages, festivals } from "@/db/schema";
+import { carrierRates, carriers, discountCodes, discountUsages, festivals, users } from "@/db/schema";
 import type { DB } from "./types";
 
 export type Festival = typeof festivals.$inferSelect;
@@ -54,6 +54,10 @@ export async function evaluateCode(tx: DB, rawCode: string, userId: number | nul
   if (d.startsAt && d.startsAt > now) return fail("زمان استفاده از این کد هنوز فرا نرسیده");
   if (d.endsAt && d.endsAt < now) return fail("این کد تخفیف منقضی شده است");
   if (d.usageLimit !== null && d.usedCount >= d.usageLimit) return fail("ظرفیت استفاده از این کد تمام شده است");
+  if (d.targetPhone) {
+    const [customer]=userId?await tx.select({phone:users.phone}).from(users).where(eq(users.id,userId)):[];
+    if(customer?.phone!==d.targetPhone)return fail("این کد مخصوص شماره همراه مشتری دیگری است");
+  }
   if (d.customerId) {
     if (!userId) return fail("برای استفاده از این کد وارد حساب شوید");
     if (d.customerId !== userId) return fail("این کد مخصوص مشتری دیگری است");

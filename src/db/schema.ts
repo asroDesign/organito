@@ -14,6 +14,9 @@ export const users = pgTable("users", {
   email: text("email"),
   passwordHash: text("password_hash").notNull(),
   role: text("role").notNull().default("customer"),
+  roleId: integer("role_id"),
+  birthdate: timestamp("birthdate", { withTimezone: true }),
+  smsConsent: boolean("sms_consent").notNull().default(false),
   extraPermissions: jsonb("extra_permissions").$type<string[]>().notNull().default([]),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: created(),
@@ -198,6 +201,51 @@ export const sellerOffers = pgTable("seller_offers", {
   updatedAt: updated(),
 }, (t) => [uniqueIndex("offer_product_seller").on(t.productId, t.sellerId)]);
 
+export const posTerminals = pgTable("pos_terminals", {
+  id: serial("id").primaryKey(), sellerId: integer("seller_id"), name: text("name").notNull(), bankName: text("bank_name"), terminalCode: text("terminal_code"), enabled: boolean("enabled").notNull().default(true), createdAt: created(), updatedAt: updated(),
+}, (t) => [index("pos_terminal_seller_enabled").on(t.sellerId, t.enabled)]);
+
+export const centralPosSales = pgTable("central_pos_sales", {
+  status: text("status").notNull().default("completed"),
+  rewardCode: text("reward_code"),
+  id: serial("id").primaryKey(), number: text("number").notNull().unique(), idempotencyKey: text("idempotency_key").notNull().unique(), terminalId: integer("terminal_id"), createdBy: integer("created_by").notNull(), customerName: text("customer_name").notNull(), customerPhone: text("customer_phone").notNull(), subtotal: money("subtotal"), discount: money("discount"), total: money("total"), paymentMethod: text("payment_method").notNull(), settlement: jsonb("settlement").$type<{ cash: number; card: number }>().notNull().default({ cash: 0, card: 0 }), createdAt: created(),
+}, (t) => [index("central_pos_created").on(t.createdAt)]);
+
+export const centralPosItems = pgTable("central_pos_items", {
+  id: serial("id").primaryKey(), saleId: integer("sale_id").notNull(), variantId: integer("variant_id").notNull(), productId: integer("product_id").notNull(), title: text("title").notNull(), quantity: integer("quantity").notNull(), unitPrice: money("unit_price"), lineTotal: money("line_total"), unitCost: money("unit_cost"), createdAt: created(),
+}, (t) => [index("central_pos_items_sale").on(t.saleId)]);
+
+export const sellerPosSales = pgTable("seller_pos_sales", {
+  status: text("status").notNull().default("completed"),
+  id: serial("id").primaryKey(),
+  number: text("number").notNull().unique(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  terminalId: integer("terminal_id"),
+  sellerId: integer("seller_id").notNull(),
+  createdBy: integer("created_by").notNull(),
+  customerName: text("customer_name").notNull(),
+  customerPhone: text("customer_phone").notNull(),
+  subtotal: money("subtotal"),
+  discount: money("discount"),
+  total: money("total"),
+  paymentMethod: text("payment_method").notNull(),
+  settlement: jsonb("settlement").$type<{ cash: number; card: number }>().notNull().default({ cash: 0, card: 0 }),
+  createdAt: created(),
+}, (t) => [index("seller_pos_seller_created").on(t.sellerId, t.createdAt)]);
+
+export const sellerPosItems = pgTable("seller_pos_items", {
+  id: serial("id").primaryKey(),
+  saleId: integer("sale_id").notNull(),
+  sellerId: integer("seller_id").notNull(),
+  offerId: integer("offer_id").notNull(),
+  productId: integer("product_id").notNull(),
+  title: text("title").notNull(),
+  quantity: integer("quantity").notNull(),
+  unitPrice: money("unit_price"),
+  lineTotal: money("line_total"),
+  createdAt: created(),
+}, (t) => [index("seller_pos_items_sale").on(t.saleId), index("seller_pos_items_seller").on(t.sellerId)]);
+
 export const stockMovements = pgTable("stock_movements", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").notNull(),
@@ -216,6 +264,8 @@ export const stockMovements = pgTable("stock_movements", {
 export type Address = { fullName: string; phone: string; city: string; address: string; postalCode: string };
 
 export const orders = pgTable("orders", {
+  creditAmount: money("credit_amount"),
+  giftCardId: integer("gift_card_id"),
   id: serial("id").primaryKey(),
   number: text("number").notNull().unique(),
   customerId: integer("customer_id").notNull(),
@@ -467,6 +517,52 @@ export const smsLogs = pgTable("sms_logs", {
   createdAt: created(),
 });
 
+export const centralLoyaltyMembers = pgTable("central_loyalty_members", {
+  id: serial("id").primaryKey(), name: text("name").notNull(), phone: text("phone").notNull().unique(), birthdate: timestamp("birthdate", { withTimezone: true }), smsConsent: boolean("sms_consent").notNull().default(false), visits: integer("visits").notNull().default(0), totalSpent: money("total_spent"), lastPurchaseAt: timestamp("last_purchase_at", { withTimezone: true }), createdAt: created(), updatedAt: updated(),
+}, (t) => [index("central_loyalty_consent_birthday").on(t.smsConsent, t.birthdate), index("central_loyalty_updated").on(t.updatedAt)]);
+
+export const centralBirthdaySms = pgTable("central_birthday_sms", {
+  id: serial("id").primaryKey(), memberId: integer("member_id").notNull(), birthdayDate: text("birthday_date").notNull(), status: text("status").notNull(), sentAt: created(),
+}, (t) => [uniqueIndex("central_birthday_sms_member_date").on(t.memberId, t.birthdayDate)]);
+
+export const sellerLoyaltyClubs = pgTable("seller_loyalty_clubs", {
+  id: serial("id").primaryKey(),
+  sellerId: integer("seller_id").notNull().unique(),
+  name: text("name").notNull(),
+  rewardPercent: integer("reward_percent").notNull().default(10),
+  rewardMinSubtotal: money("reward_min_subtotal").notNull().default(300000),
+  rewardValidityDays: integer("reward_validity_days").notNull().default(60),
+  createdAt: created(),
+});
+
+export const sellerLoyaltyMembers = pgTable("seller_loyalty_members", {
+  id: serial("id").primaryKey(),
+  clubId: integer("club_id").notNull(),
+  name: text("name").notNull(),
+  phone: text("phone").notNull(),
+  birthdate: timestamp("birthdate", { withTimezone: true }),
+  smsConsent: boolean("sms_consent").notNull().default(false),
+  visits: integer("visits").notNull().default(0),
+  totalSpent: money("total_spent"),
+  lastVisitAt: timestamp("last_visit_at", { withTimezone: true }),
+  createdAt: created(),
+  updatedAt: updated(),
+}, (t) => [uniqueIndex("seller_loyalty_member_phone").on(t.clubId, t.phone), index("seller_loyalty_member_club").on(t.clubId)]);
+
+export const sellerLoyaltyRewards = pgTable("seller_loyalty_rewards", {
+  id: serial("id").primaryKey(), sellerId: integer("seller_id").notNull(), clubId: integer("club_id").notNull(), memberPhone: text("member_phone").notNull(), code: text("code").notNull().unique(), saleId: integer("sale_id"), discountPercent: integer("discount_percent").notNull(), minSubtotal: money("min_subtotal").notNull(), expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(), redeemedAt: timestamp("redeemed_at", { withTimezone: true }), createdAt: created(),
+}, (t) => [index("seller_loyalty_reward_owner").on(t.sellerId, t.memberPhone, t.expiresAt)]);
+
+export const sellerSmsSettings = pgTable("seller_sms_settings", {
+  id: serial("id").primaryKey(),
+  sellerId: integer("seller_id").notNull().unique(),
+  provider: text("provider").notNull().default("simulate"),
+  apiKey: text("api_key"),
+  senderNumber: text("sender_number"),
+  enabled: boolean("enabled").notNull().default(false),
+  updatedAt: updated(),
+});
+
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: jsonb("value").notNull(),
@@ -544,6 +640,7 @@ export const carrierRates = pgTable("carrier_rates", {
 });
 
 export const discountCodes = pgTable("discount_codes", {
+  targetPhone: text("target_phone"),
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(),
   title: text("title").notNull(),
@@ -668,3 +765,52 @@ export const otpCodes = pgTable("otp_codes", {
   ip: text("ip"),
   createdAt: created(),
 }, (t) => [index("otp_phone").on(t.phone)]);
+
+
+export const accessRoles = pgTable("access_roles", {
+  id: serial("id").primaryKey(), name: text("name").notNull().unique(),
+  permissions: jsonb("permissions").$type<string[]>().notNull().default([]), createdAt: created(),
+});
+export const customerGroups = pgTable("customer_groups", {
+  id: serial("id").primaryKey(), sellerId: integer("seller_id"), name: text("name").notNull(), createdAt: created(),
+});
+export const customerGroupMembers = pgTable("customer_group_members", {
+  id: serial("id").primaryKey(), groupId: integer("group_id").notNull().references(()=>customerGroups.id,{onDelete:"cascade"}), phone: text("phone").notNull(),
+},t=>[uniqueIndex("customer_group_phone").on(t.groupId,t.phone)]);
+export const marketingCampaigns = pgTable("marketing_campaigns", {
+  id: serial("id").primaryKey(), sellerId: integer("seller_id"), name: text("name").notNull(),
+  type: text("type").notNull(), body: text("body").notNull(), groupId: integer("group_id").references(()=>customerGroups.id),
+  status: text("status").notNull().default("active"), scheduleAt: timestamp("schedule_at",{withTimezone:true}), sendHour: integer("send_hour").notNull().default(9),
+  rewardPercent: integer("reward_percent").notNull().default(0), minOrder: money("min_order"), validityDays: integer("validity_days").notNull().default(30),
+  lastRunAt: timestamp("last_run_at",{withTimezone:true}), createdAt: created(),
+});
+export const campaignDeliveries = pgTable("campaign_deliveries", {
+  id: serial("id").primaryKey(), campaignId: integer("campaign_id").notNull().references(()=>marketingCampaigns.id),
+  phone: text("phone").notNull(), name: text("name").notNull(), eventKey: text("event_key").notNull(),
+  status: text("status").notNull().default("pending"), body: text("body").notNull(), rewardCode: text("reward_code"),
+  createdAt: created(), processedAt: timestamp("processed_at",{withTimezone:true}),
+},t=>[uniqueIndex("campaign_delivery_event").on(t.campaignId,t.eventKey,t.phone),index("campaign_delivery_pending").on(t.status)]);
+export const customerBalances = pgTable("customer_balances", {
+  phone: text("phone").primaryKey(), balance: money("balance"), updatedAt: updated(),
+});
+export const customerCreditEntries = pgTable("customer_credit_entries", {
+  id: serial("id").primaryKey(), phone: text("phone").notNull(), amount: bigint("amount",{mode:"number"}).notNull(),
+  reference: text("reference").notNull().unique(), note: text("note").notNull(), createdAt: created(),
+});
+export const giftCards = pgTable("gift_cards", {
+  id: serial("id").primaryKey(), code: text("code").notNull().unique(), amount: money("amount"), balance: money("balance"),
+  buyerName: text("buyer_name").notNull(), buyerPhone: text("buyer_phone").notNull(), targetPhone: text("target_phone"), message: text("message"),
+  paymentMethod: text("payment_method").notNull(), settlement: jsonb("settlement").$type<{cash:number;card:number}>().notNull(), terminalId: integer("terminal_id"),
+  revoked: boolean("revoked").notNull().default(false), createdBy: integer("created_by").notNull(), idempotencyKey: text("idempotency_key").notNull().unique(), createdAt: created(),
+});
+export const giftCardEntries = pgTable("gift_card_entries", {
+  id: serial("id").primaryKey(), cardId: integer("card_id").notNull().references(()=>giftCards.id), amount: bigint("amount",{mode:"number"}).notNull(),
+  reference: text("reference").notNull().unique(), createdAt: created(),
+});
+export const returnRequests = pgTable("return_requests", {
+  id: serial("id").primaryKey(), kind: text("kind").notNull(), saleId: integer("sale_id").notNull(), number: text("number").notNull(),
+  customerPhone: text("customer_phone").notNull(), customerName: text("customer_name").notNull(), sellerId: integer("seller_id"),
+  reason: text("reason").notNull(), status: text("status").notNull().default("pending"), amount: money("amount"),
+  adminNote: text("admin_note"), refundReference: text("refund_reference"), createdBy: integer("created_by").notNull(), processedBy: integer("processed_by"),
+  createdAt: created(), processedAt: timestamp("processed_at",{withTimezone:true}),
+},t=>[uniqueIndex("return_sale_unique").on(t.kind,t.saleId)]);

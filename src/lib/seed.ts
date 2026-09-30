@@ -266,6 +266,8 @@ export async function ensureExtras() {
     }
     await ensureMarketing();
     await ensureCommunity();
+    const [birthdayTpl] = await db.select().from(smsTemplates).where(eq(smsTemplates.event, "birthday"));
+    if (!birthdayTpl) await db.insert(smsTemplates).values({ event: "birthday", title: SMS_EVENTS.birthday.title, body: SMS_EVENTS.birthday.body, variables: ["name"], patternId: "", isActive: true, isSystem: true });
     const [otpTpl] = await db.select().from(smsTemplates).where(eq(smsTemplates.event, "otp_login"));
     if (!otpTpl) await db.insert(smsTemplates).values({ event: "otp_login", title: "کد ورود یک‌بارمصرف (OTP)", body: SMS_EVENTS.otp_login.body, variables: ["code"], patternId: "100099", isSystem: true });
   } finally {

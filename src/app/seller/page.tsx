@@ -17,7 +17,7 @@ export default async function SellerHome() {
     (select count(*) from seller_offers where seller_id = ${sid} and status = 'pending')::int pending_offers,
     (select count(*) from seller_shipments sh join orders o on o.id = sh.order_id where sh.seller_id = ${sid} and sh.status = 'pending' and o.payment_status = 'paid')::int new_orders,
     (select count(*) from seller_shipments where seller_id = ${sid} and status in ('preparing','ready','shipped'))::int open_ship,
-    (select coalesce(sum(sh.items_total),0) from seller_shipments sh join orders o on o.id = sh.order_id where sh.seller_id = ${sid} and o.payment_status='paid' and sh.created_at > now() - interval '30 days')::bigint sales30,
+    (coalesce((select sum(sh.items_total) from seller_shipments sh join orders o on o.id = sh.order_id where sh.seller_id = ${sid} and o.payment_status='paid' and sh.created_at > now() - interval '30 days'),0) + coalesce((select sum(ps.total) from seller_pos_sales ps where ps.seller_id = ${sid} and ps.created_at > now() - interval '30 days'),0))::bigint sales30,
     (select count(*) from seller_shipments where seller_id = ${sid})::int total_ship,
     (select count(*) from seller_shipments where seller_id = ${sid} and status = 'cancelled')::int cancelled,
     (select count(*) from seller_shipments where seller_id = ${sid} and shipped_at > created_at + (prep_days + 1) * interval '1 day')::int late`);
@@ -25,7 +25,7 @@ export default async function SellerHome() {
   const pct = (n: number) => (s.total_ship ? `${faNum(Math.round((n / s.total_ship) * 100))}٪` : "۰٪");
   return (
     <>
-      <PageHeader title="داشبورد تأمین‌کننده" subtitle={u.name} actions={<><Link href="/seller/products/new" className="btn-primary">تعریف محصول جدید</Link><Link href="/seller/orders" className="btn-ghost">سفارش‌ها</Link></>} />
+      <PageHeader title="داشبورد تأمین‌کننده" subtitle={u.name} actions={<><Link href="/seller/products/new" className="btn-primary">تعریف محصول جدید</Link><Link href="/seller/orders" className="btn-ghost">سفارش‌ها</Link><Link href="/seller/pos" className="btn-ghost">فروش حضوری</Link><Link href="/seller/loyalty" className="btn-ghost">باشگاه مشتریان</Link></>} />
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Stat label="محصولات / پیشنهادها" value={`${faNum(s.products)} / ${faNum(s.offers)}`} icon={Package} />
         <Stat label="پیشنهادهای در انتظار تأیید" value={faNum(s.pending_offers)} icon={Clock} tone="yellow" />

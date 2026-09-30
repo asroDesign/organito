@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
-import { sellers, sessions, users } from "@/db/schema";
+import { sellers, sessions, users, accessRoles } from "@/db/schema";
 import { permissionsOf, isStaff, type Permission } from "./rbac";
 import { HttpError } from "./util";
 import { ensureSeeded } from "./seed";
@@ -53,10 +53,12 @@ export async function getUser(): Promise<SessionUser | null> {
     .leftJoin(sellers, eq(sellers.userId, users.id))
     .where(and(eq(sessions.id, sha(t)), gt(sessions.expiresAt, new Date())));
   if (!row || !row.u.isActive) return null;
+  const [customRole] = row.u.roleId ? await db.select().from(accessRoles).where(eq(accessRoles.id,row.u.roleId)) : [];
+  const permissions = permissionsOf(row.u.role, [...row.u.extraPermissions,...(customRole?.permissions??[])]);
   return {
     id: row.u.id, name: row.u.name, phone: row.u.phone, role: row.u.role,
-    permissions: permissionsOf(row.u.role, row.u.extraPermissions),
-    sellerId: row.s?.id ?? null, sellerStatus: row.s?.status ?? null, staff: isStaff(row.u.role),
+    permissions,
+    sellerId: row.s?.id ?? null, sellerStatus: row.s?.status ?? null, staff: isStaff(row.u.role) || (row.u.role!=="seller" && permissions.length>0),
   };
 }
 

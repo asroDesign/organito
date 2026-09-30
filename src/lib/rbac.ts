@@ -39,3 +39,5 @@ export function permissionsOf(role: string, extra: string[] = []): Permission[] 
 export function isStaff(role: string) {
   return role !== "customer" && role !== "seller";
 }
+
+export const PERMISSION_LABELS:Record<Permission,string>={PRODUCTS_VIEW:'مشاهده محصولات',PRODUCTS_CREATE:'ثبت محصول',PRODUCTS_EDIT:'ویرایش محصول',PRODUCTS_APPROVE:'تأیید محصول',PRODUCTS_DISABLE:'غیرفعال‌سازی محصول',ORDERS_VIEW:'مشاهده سفارش‌ها',ORDERS_MANAGE:'مدیریت سفارش و مرجوعی',SUPPLY_REQUESTS_VIEW:'مشاهده تأمین',SUPPLY_REQUESTS_MANAGE:'مدیریت تأمین',SUPPLIER_OFFERS_MANAGE:'پیشنهادهای تأمین‌کنندگان',INVENTORY_MANAGE:'انبار و فروش حضوری',SHIPMENTS_MANAGE:'مدیریت ارسال',PAYMENTS_MANAGE:'پرداخت و کارت هدیه',ACCOUNTING_MANAGE:'حسابداری',SELLER_SETTLEMENT_MANAGE:'تسویه فروشنده',WITHDRAWALS_MANAGE:'برداشت‌ها',TICKETS_MANAGE:'تیکت‌ها',SMS_MANAGE:'پیامک، باشگاه و کمپین‌ها',SETTINGS_MANAGE:'تنظیمات',AUDIT_LOG_VIEW:'گزارش ممیزی',USERS_MANAGE:'کاربران و گروه‌های دسترسی',MARKETING_MANAGE:'کد تخفیف و جشنواره'};

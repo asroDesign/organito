@@ -31,7 +31,7 @@ export default async function Inventory() {
       </div>
       <h2 className="mb-3 mt-8 text-lg font-extrabold">گردش موجودی (Stock Movements)</h2>
       <Table head={["تاریخ", "کالا", "نوع", "تعداد", "بهای واحد", "مرجع"]}>
-        {moves.map(({ m, name }) => <tr key={m.id}><Td>{jdate(m.createdAt, true)}</Td><Td>{name}</Td><Td>{m.type}</Td><Td>{faNum(m.qty)}</Td><Td>{toman(m.unitCost)}</Td><Td>{m.refType} {m.refId ?? ""}</Td></tr>)}
+        {moves.map(({ m, name }) => <tr key={m.id}><Td>{jdate(m.createdAt, true)}</Td><Td>{name}</Td><Td>{m.type === "central_pos_sale" ? "فروش حضوری انبار مرکزی" : m.type === "pos_sale" ? "فروش حضوری تأمین‌کننده" : m.type}</Td><Td>{faNum(m.qty)}</Td><Td>{toman(m.unitCost)}</Td><Td>{m.refType} {m.refId ?? ""}</Td></tr>)}
       </Table>
     </>
   );

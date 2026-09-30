@@ -42,7 +42,7 @@ export function JalaliDatePicker({ name, defaultValue, value: controlled, onChan
             <button type="button" onClick={() => move(-1)} className="rounded-lg p-1 hover:bg-slate-100"><ChevronRight className="h-4 w-4" /></button>
             <div className="flex items-center gap-1 text-sm font-bold">
               <select value={vm} onChange={(e) => setView([vy, Number(e.target.value)])} className="rounded border-0 bg-transparent">{J_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select>
-              <select value={vy} onChange={(e) => setView([Number(e.target.value), vm])} className="rounded border-0 bg-transparent">{Array.from({ length: 21 }, (_, i) => vy - 10 + i).map((y) => <option key={y} value={y}>{fa(y)}</option>)}</select>
+              <select value={vy} onChange={(e) => setView([Number(e.target.value), vm])} className="rounded border-0 bg-transparent">{Array.from({ length: 131 }, (_, i) => Math.max(vy,g2j(...todayIso().split("-").map(Number) as [number,number,number])[0])+5-i).map((y) => <option key={y} value={y}>{fa(y)}</option>)}</select>
             </div>
             <button type="button" onClick={() => move(1)} className="rounded-lg p-1 hover:bg-slate-100"><ChevronLeft className="h-4 w-4" /></button>
           </div>

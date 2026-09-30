@@ -1,3 +1,4 @@
+import { quoteCredit,reserveCredit,restoreCredit } from "../credit";
 import { and, eq, inArray, sql, ne } from "drizzle-orm";
 import { db } from "@/db";
 import {
@@ -24,6 +25,7 @@ export type QuoteLine = {
 export type QuoteGroup = { key: string; sellerId: number | null; name: string; lines: QuoteLine[]; itemsTotal: number; shippingCost: number; prepDays: number; packages: number; weight: number };
 export type CarrierOption = { id: number; name: string; cost: number; minDays: number; maxDays: number };
 export type Quote = {
+  creditAmount:number; giftCardId:number|null;
   lines: QuoteLine[]; groups: QuoteGroup[]; itemsSubtotal: number; sellerShippingTotal: number; centralShipping: number; discount: number; tax: number; finalTotal: number; valid: boolean;
   festivalDiscount: number; codeDiscount: number; code: { ok: boolean; error?: string; code?: string; title?: string; codeId?: number } | null;
   carriers: CarrierOption[]; carrierId: number | null; city: string;
@@ -149,7 +151,9 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   // discount code on post-festival amounts
   let code: Quote["code"] = null;
   let codeDiscount = 0;
-  if (opts.code?.trim()) {
+  const creditCode=opts.code?.trim().toUpperCase()??"";
+  const isCredit=creditCode==="WALLET"||creditCode.startsWith("GIFT-");
+  if (opts.code?.trim()&&!isCredit) {
     const r = await evaluateCode(tx, opts.code, opts.userId ?? null, lines.filter((l) => l.ok).map((l) => ({ productId: l.productId, categoryId: l.categoryId, amount: l.lineTotal - Math.round((l.lineTotal * l.festivalPct) / 100) })), !!opts.lockCode);
     code = { ok: r.ok, error: r.error, code: r.code, title: r.title, codeId: r.codeId };
     if (r.ok) codeDiscount = r.amount;
@@ -160,15 +164,20 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   }
   const discount = festivalDiscount + codeDiscount;
   const tax = Math.round((Math.max(0, itemsSubtotal - discount) * s.taxRate) / 100);
+  const gross=itemsSubtotal+sellerShippingTotal+centralShipping+tax-discount;
+  let creditAmount=0,giftCardId:number|null=null;
+  if(isCredit){const r=await quoteCredit(tx,creditCode,opts.userId??null,gross,!!opts.lockCode);code={ok:r.ok,error:r.error,code:creditCode,title:creditCode==="WALLET"?"اعتبار خرید":"کارت هدیه"};if(r.ok){creditAmount=r.amount;giftCardId=r.giftCardId}}
   return {
+    creditAmount,giftCardId,
     lines, groups: [...groupsMap.values()], itemsSubtotal, sellerShippingTotal, centralShipping, discount, tax,
-    finalTotal: itemsSubtotal + sellerShippingTotal + centralShipping + tax - discount,
+    finalTotal: gross-creditAmount,
     valid: lines.length > 0 && lines.every((l) => l.ok), festivalDiscount, codeDiscount, code, carriers: carrierOpts, carrierId, city,
   };
 }
 
 export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null } = {}) {
   const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idemKey}))`);
     const [existing] = await tx.select().from(orders).where(eq(orders.idempotencyKey, idemKey));
     if (existing) {
       if (existing.customerId !== ctx.userId) throw new HttpError(409, "کلید تکراری");
@@ -181,9 +190,10 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
     const [order] = await tx.insert(orders).values({
       number: genNumber("SB"), customerId: ctx.userId, status: "pending_payment", paymentStatus: "unpaid",
       itemsSubtotal: q.itemsSubtotal, sellerShippingTotal: q.sellerShippingTotal, centralShipping: q.centralShipping,
-      discount: q.discount, tax: q.tax, total: q.finalTotal, address, idempotencyKey: idemKey,
+      discount: q.discount, tax: q.tax, total: q.finalTotal, creditAmount:q.creditAmount,giftCardId:q.giftCardId,address, idempotencyKey: idemKey,
       festivalDiscount: q.festivalDiscount, codeDiscount: q.codeDiscount, discountCodeId: q.code?.ok ? q.code.codeId ?? null : null, discountCode: q.code?.ok ? q.code.code ?? null : null, carrierId: q.carrierId,
     }).returning();
+    if(q.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,ctx.userId));await reserveCredit(tx,customer.phone,q.creditAmount,q.giftCardId,order.id);}
     if (q.code?.ok && q.code.codeId) {
       await tx.update(discountCodes).set({ usedCount: sql`${discountCodes.usedCount} + 1` }).where(eq(discountCodes.id, q.code.codeId));
       await tx.insert(discountUsages).values({ codeId: q.code.codeId, userId: ctx.userId, orderId: order.id, amount: q.codeDiscount });
@@ -225,11 +235,12 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
     const [u] = await db.select().from(users).where(eq(users.id, ctx.userId));
     if (u) void sendSms("order_created", u.phone, { name: u.name, order: result.order.number });
   }
+  if(result.order.total===0&&result.order.status==="pending_payment"){await payOrder(ctx,result.order.id,`credit:${result.order.id}`,false,{method:"credit"});const [paid]=await db.select().from(orders).where(eq(orders.id,result.order.id));return paid;}
   return result.order;
 }
 
 export type PayInfo = {
-  method: "gateway" | "card_to_card" | "bank_transfer" | "cash" | "pos";
+  method: "gateway" | "card_to_card" | "bank_transfer" | "cash" | "pos" | "credit";
   gateway?: string; authority?: string; cardMasked?: string; payerName?: string; bankName?: string; trackingCode?: string;
   paidAt?: Date; note?: string; receiptMediaId?: number | null; details?: Record<string, string>; existingPaymentId?: number;
 };
@@ -263,7 +274,7 @@ export async function payOrder(ctx: Ctx & { userId: number }, orderId: number, i
       [pay] = await tx.insert(payments).values({ ...base, orderId: o.id, refCode: `${method === "gateway" ? "PG" : "MN"}${Date.now()}`, idempotencyKey: idemKey } as typeof payments.$inferInsert).returning();
     }
     const shipments = await tx.select().from(sellerShipments).where(eq(sellerShipments.orderId, o.id));
-    const lines: Line[] = [{ code: "1101", debit: o.total, description: `دریافت وجه سفارش ${o.number}` }];
+    const lines: Line[] = [{ code: "1101", debit: o.total, description: `دریافت وجه سفارش ${o.number}` },{code:"2103",debit:o.creditAmount,description:"مصرف کارت هدیه یا اعتبار خرید"}];
     for (const sh of shipments) {
       if (sh.sellerId) {
         const gross = sh.itemsTotal + sh.shippingCost;
@@ -511,6 +522,7 @@ export async function cancelOrder(ctx: Ctx & { userId: number }, orderId: number
       }
       await tx.update(payments).set({ status: "refunded" }).where(eq(payments.orderId, o.id));
     }
+    if(o.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,o.customerId));await restoreCredit(tx,customer.phone,o.creditAmount,o.giftCardId,o.id);}
     if (o.discountCodeId) {
       await tx.update(discountCodes).set({ usedCount: sql`greatest(${discountCodes.usedCount} - 1, 0)` }).where(eq(discountCodes.id, o.discountCodeId));
       await tx.delete(discountUsages).where(eq(discountUsages.orderId, o.id));

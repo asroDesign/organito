@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Inbox, type LucideIcon } from "lucide-react";
+import { Inbox, Loader2, type LucideIcon } from "lucide-react";
 
 const tones: Record<string, string> = {
   gray: "bg-slate-100 text-slate-700 ring-slate-200", green: "bg-emerald-50 text-emerald-700 ring-emerald-200",
@@ -66,6 +66,27 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
     </div>
   );
+}
+
+export function FeatureIntro({ icon: Icon, title, text, action, tone = "green" }: { icon: LucideIcon; title: string; text: ReactNode; action?: ReactNode; tone?: "green" | "blue" | "yellow" | "violet" }) {
+  const style = {
+    green: "border-emerald-200 bg-emerald-50/70 text-emerald-800",
+    blue: "border-sky-200 bg-sky-50/70 text-sky-800",
+    yellow: "border-amber-200 bg-amber-50/70 text-amber-900",
+    violet: "border-violet-200 bg-violet-50/70 text-violet-800",
+  }[tone];
+  return <div className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border p-5 ${style}`}>
+    <div className="flex min-w-0 items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/80 shadow-sm"><Icon className="h-5 w-5" /></span><div><h2 className="font-extrabold">{title}</h2><div className="mt-1 text-sm leading-7 opacity-80">{text}</div></div></div>
+    {action}
+  </div>;
+}
+
+export function PanelTabs({ items }: { items: { href: string; label: string; active?: boolean; icon?: LucideIcon }[] }) {
+  return <nav className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">{items.map(({ href, label, active, icon: Icon }) => <Link key={href} href={href} className={active ? "btn-primary" : "btn-ghost"}>{Icon && <Icon className="h-4 w-4" />}{label}</Link>)}</nav>;
+}
+
+export function LoadingBlock({ text = "در حال بارگذاری…" }: { text?: string }) {
+  return <div className="flex min-h-40 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm text-slate-500 shadow-sm"><Loader2 className="h-5 w-5 animate-spin text-emerald-600" />{text}</div>;
 }
 
 export function Table({ head, children, empty }: { head: string[]; children: ReactNode; empty?: boolean }) {
