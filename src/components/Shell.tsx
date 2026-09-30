@@ -15,6 +15,7 @@ const ADMIN_NAV: (NavItem & { perm?: Permission | Permission[] })[] = [
   { href: "/admin/products", label: "محصولات و کاتالوگ", icon: "Package", perm: "PRODUCTS_VIEW" },
   { href: "/admin/reviews", label: "دیدگاه‌ها و پرسش‌ها", icon: "MessageSquare", perm: "PRODUCTS_APPROVE" },
   { href: "/admin/categories", label: "دسته‌بندی‌ها", icon: "FolderTree", perm: "PRODUCTS_EDIT" },
+  { href: "/admin/media", label: "مرکز فایل", icon: "FileImage", perm: "PRODUCTS_EDIT" },
   { href: "/admin/blog", label: "وبلاگ و سئو", icon: "FileText", perm: "PRODUCTS_EDIT" },
   { href: "/admin/marketplace", label: "مارکت‌پلیس و تأمین‌کنندگان", icon: "Store", perm: ["SUPPLIER_OFFERS_MANAGE", "SELLER_SETTLEMENT_MANAGE", "WITHDRAWALS_MANAGE"] },
   { href: "/admin/returns", label: "درخواست‌های مرجوعی", icon: "ClipboardList", perm: "ORDERS_MANAGE" },

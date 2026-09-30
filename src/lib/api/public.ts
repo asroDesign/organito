@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   media, notifications, productImages, ticketDepartments, detailAccounts, products, productVariants, sellerOffers, sellers, supplyRequests, ticketMessages, tickets, users, wallets, auditLogs,
@@ -11,6 +11,7 @@ import { cancelOrder, confirmReceipt, payOrder, placeOrder, quoteCart, sanitizeC
 import { customerSupplyAction } from "../services/supply";
 import { sendSms } from "../sms";
 import { body, idParam, type Route } from "./router";
+import { newMediaPath, readMediaFile, removeMediaFile, writeMediaFile } from "../media-storage";
 
 function sniff(buf: Buffer): string | null {
   if (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
@@ -87,9 +88,16 @@ export const publicRoutes: Route[] = [
     return db.transaction((tx) => quoteCart(tx, items, false, { userId: u?.id ?? null, code: str(b.code, 30), city: str(b.city, 60), carrierId: b.carrierId ? int(b.carrierId, 1) : null }));
   } },
 
+  { method: "GET", pattern: "media/library", handler: async (req) => {
+    const u = await requireApi();
+    const q = str(req.nextUrl.searchParams.get("q"), 100), type = str(req.nextUrl.searchParams.get("type"), 20), folder = req.nextUrl.searchParams.get("folder");
+    const filters = [u.staff ? undefined : eq(media.uploadedBy, u.id), q ? ilike(media.filename, `%${q}%`) : undefined, type === "image" ? ilike(media.mime, "image/%") : undefined, folder === "root" ? isNull(media.folderId) : folder ? eq(media.folderId, int(folder, 1)) : undefined].filter(Boolean) as ReturnType<typeof eq>[];
+    const rows = await db.select({ id: media.id, filename: media.filename, alt: media.alt, folderId: media.folderId, mime: media.mime, size: media.size, isPublic: media.isPublic, createdAt: media.createdAt }).from(media).where(filters.length ? and(...filters) : undefined).orderBy(desc(media.createdAt)).limit(120);
+    return rows.map((row) => ({ ...row, url: `/api/media/${row.id}` }));
+  } },
   { method: "GET", pattern: "media/:id", handler: async (req, p) => {
     const id = idParam(p.id);
-    const [m] = await db.select({ id: media.id, mime: media.mime, size: media.size, uploadedBy: media.uploadedBy, isPublic: media.isPublic }).from(media).where(eq(media.id, id));
+    const [m] = await db.select({ id: media.id, mime: media.mime, size: media.size, uploadedBy: media.uploadedBy, isPublic: media.isPublic, storagePath: media.storagePath, externalUrl: media.externalUrl }).from(media).where(eq(media.id, id));
     if (!m) throw new HttpError(404, "یافت نشد");
     let pub = m.isPublic;
     if (!pub) pub = (await db.select({ id: productImages.id }).from(productImages).where(eq(productImages.mediaId, id)).limit(1)).length > 0;
@@ -97,6 +105,8 @@ export const publicRoutes: Route[] = [
       const u = await getUser();
       if (!u || (u.id !== m.uploadedBy && !u.staff)) throw new HttpError(404, "یافت نشد");
     }
+    let content:Buffer;
+    try{content=await readMediaFile(m.storagePath)}catch{if(m.externalUrl&&/^https:\/\//i.test(m.externalUrl))return Response.redirect(m.externalUrl,307);throw new HttpError(404,"فایل در دایرکتوری مدیا یافت نشد")}
     const headers: Record<string, string> = {
       "Content-Type": m.mime, "Cache-Control": pub ? "public, max-age=86400" : "private, max-age=300", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes",
       ...(m.mime === "application/pdf" ? { "Content-Disposition": `inline; filename="doc-${m.id}.pdf"`, "Content-Security-Policy": "sandbox" } : {}),
@@ -104,17 +114,15 @@ export const publicRoutes: Route[] = [
     const range = req.headers.get("range");
     const rm = range && /^bytes=(\d*)-(\d*)$/.exec(range);
     if (rm && m.mime.startsWith("video/")) {
-      let start = rm[1] ? Number(rm[1]) : Math.max(0, m.size - Number(rm[2] || 0));
-      let end = rm[1] && rm[2] ? Number(rm[2]) : m.size - 1;
-      end = Math.min(end, m.size - 1, start + 2 * 1024 * 1024 - 1);
-      if (start >= m.size || start > end) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${m.size}` } });
-      const r = await db.execute(sql`select substring(data from ${start + 1} for ${end - start + 1}) as chunk from media where id = ${id}`);
-      const chunk = (r.rows[0] as { chunk: Buffer }).chunk;
+      let start = rm[1] ? Number(rm[1]) : Math.max(0, content.length - Number(rm[2] || 0));
+      let end = rm[1] && rm[2] ? Number(rm[2]) : content.length - 1;
+      end = Math.min(end, content.length - 1, start + 2 * 1024 * 1024 - 1);
+      if (start >= content.length || start > end) return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${content.length}` } });
+      const chunk=content.subarray(start,end+1);
       start = Math.max(0, start);
-      return new Response(new Uint8Array(chunk), { status: 206, headers: { ...headers, "Content-Range": `bytes ${start}-${end}/${m.size}`, "Content-Length": String(chunk.length) } });
+      return new Response(new Uint8Array(chunk), { status: 206, headers: { ...headers, "Content-Range": `bytes ${start}-${end}/${content.length}`, "Content-Length": String(chunk.length) } });
     }
-    const [full] = await db.select({ data: media.data }).from(media).where(eq(media.id, id));
-    return new Response(new Uint8Array(full.data), { headers: { ...headers, "Content-Length": String(full.data.length) } });
+    return new Response(new Uint8Array(content), { headers: { ...headers, "Content-Length": String(content.length) } });
   } },
   { method: "POST", pattern: "media", handler: async (req, _p, m) => {
     const u = await requireApi();
@@ -129,6 +137,7 @@ export const publicRoutes: Route[] = [
       video: { types: ["video/mp4", "video/webm"], mb: 40, label: "MP4 یا WebM" },
       hero: { types: ["image/jpeg", "image/png", "image/webp", "image/gif", "video/mp4", "video/webm"], mb: 40, label: "تصویر، GIF یا ویدیو (MP4/WebM)", staffOnly: true },
       editor: { types: ["image/jpeg", "image/png", "image/webp", "image/gif"], mb: 3, label: "تصویر یا GIF" },
+      library: { types: ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", "video/mp4", "video/webm"], mb: 40, label: "تصویر، PDF یا ویدیو", staffOnly: true },
     };
     const k = KINDS[kind] ?? KINDS.image;
     if (k.staffOnly && !u.staff) throw new HttpError(403, "دسترسی غیرمجاز");
@@ -139,7 +148,9 @@ export const publicRoutes: Route[] = [
     const real = sniff(buf);
     if (!real || !k.types.includes(real) || (real.startsWith("video/") !== file.type.startsWith("video/"))) throw new HttpError(400, "محتوای فایل با نوع اعلام‌شده مطابقت ندارد");
     const filename = (file.name || "upload").replace(/[/\\]/g, "_").replace(/\.\.+/g, ".").replace(/[^\w.\-\u0600-\u06FF]/g, "_").slice(0, 100);
-    const [row] = await db.insert(media).values({ filename, mime: real, size: buf.length, data: buf, uploadedBy: u.id, isPublic: kind === "editor" }).returning({ id: media.id });
+    const folderId = form?.get("folderId") ? int(form.get("folderId"), 1) : null;
+    const storagePath=newMediaPath(filename);await writeMediaFile(storagePath,buf);
+    let row:{id:number}|undefined;try{[row]=await db.insert(media).values({ filename, alt: str(form?.get("alt"), 190) || null, folderId, mime: real, size: buf.length, storagePath, uploadedBy: u.id, isPublic: kind === "editor" || kind === "library" }).returning({ id: media.id })}catch(error){await removeMediaFile(storagePath);throw error}if(!row){await removeMediaFile(storagePath);throw new HttpError(500,"ثبت فایل انجام نشد")}
     await audit(db, { userId: u.id, ...m }, "media.upload", "media", row.id, null, { filename, size: buf.length, kind });
     return { id: row.id, url: `/api/media/${row.id}`, mime: real };
   } },

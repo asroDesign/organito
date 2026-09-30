@@ -10,6 +10,7 @@ import { CHART, postJournal } from "./accounting";
 import { DEFAULT_SETTINGS } from "./settings";
 import { SMS_EVENTS } from "./sms";
 import { normalizePn } from "./util";
+import { newMediaPath, writeMediaFile } from "./media-storage";
 
 let seeding: Promise<void> | null = null;
 
@@ -88,7 +89,8 @@ async function seed() {
     const p = path.join(process.cwd(), "seed-assets", `${f}.jpg`);
     if (existsSync(p)) {
       const data = readFileSync(p);
-      const [m] = await db.insert(media).values({ filename: `${f}.jpg`, mime: "image/jpeg", size: data.length, data, uploadedBy: admin.id }).returning();
+      const storagePath=newMediaPath(`${f}.jpg`);await writeMediaFile(storagePath,data);
+      const [m] = await db.insert(media).values({ filename: `${f}.jpg`, mime: "image/jpeg", size: data.length, storagePath, uploadedBy: admin.id }).returning();
       img[f] = m.id;
     } else img[f] = null;
   }

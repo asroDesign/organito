@@ -1,8 +1,7 @@
 import {
-  pgTable, serial, text, integer, bigint, boolean, timestamp, jsonb, customType, index, uniqueIndex, real,
+  pgTable, serial, text, integer, bigint, boolean, timestamp, jsonb, index, uniqueIndex, real,
 } from "drizzle-orm/pg-core";
 
-const bytea = customType<{ data: Buffer }>({ dataType: () => "bytea" });
 const money = (name: string) => bigint(name, { mode: "number" }).notNull().default(0);
 const created = () => timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
 const updated = () => timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
@@ -144,16 +143,34 @@ export const blogTags = pgTable("blog_tags", {
   updatedAt: updated(),
 }, (t) => [uniqueIndex("blog_tags_name_unique").on(t.name)]);
 
+export const mediaFolders = pgTable("media_folders", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  parentId: integer("parent_id"),
+  color: text("color"),
+  legacyId: integer("legacy_id"),
+  createdBy: integer("created_by"),
+  createdAt: created(),
+  updatedAt: updated(),
+}, (t) => [index("media_folders_parent").on(t.parentId), uniqueIndex("media_folders_legacy_unique").on(t.legacyId)]);
+
 export const media = pgTable("media", {
   id: serial("id").primaryKey(),
   filename: text("filename").notNull(),
+  alt: text("alt"),
+  folderId: integer("folder_id"),
   mime: text("mime").notNull(),
   size: integer("size").notNull(),
-  data: bytea("data").notNull(),
+  storagePath: text("storage_path").notNull(),
+  externalUrl: text("external_url"),
+  legacySource: text("legacy_source"),
+  legacyId: integer("legacy_id"),
   uploadedBy: integer("uploaded_by"),
   isPublic: boolean("is_public").notNull().default(false),
   createdAt: created(),
-});
+  updatedAt: updated(),
+}, (t) => [index("media_folder_created").on(t.folderId, t.createdAt), uniqueIndex("media_legacy_unique").on(t.legacySource, t.legacyId)]);
 
 export type Spec = { k: string; v: string };
 export type Compat = { make: string; model: string; years: string };

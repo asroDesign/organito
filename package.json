@@ -7,7 +7,9 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:import-legacy-media": "node scripts/import-legacy-media.mjs",
+    "db:cache-legacy-media": "node scripts/cache-legacy-media.mjs"
   },
   "dependencies": {
     "@ckeditor/ckeditor5-react": "^11.2.0",
