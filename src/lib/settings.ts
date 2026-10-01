@@ -6,7 +6,7 @@ import { setCurrencyUnit } from "./util";
 export const DEFAULT_SETTINGS = {
   siteName: "سبزینه",
   siteTagline: "بازار آنلاین محصولات ارگانیک و طبیعی",
-  siteUrl: "http://localhost:3000",
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://localhost:3000",
   homeSeoTitle: "سبزینه | خرید محصولات ارگانیک و طبیعی",
   homeSeoDescription: "خرید آنلاین محصولات ارگانیک، طبیعی و محلی مستقیم از کشاورزان و تولیدکنندگان معتبر با تضمین کیفیت.",
   homeSeoKeywords: "محصولات ارگانیک، خرید عسل طبیعی، روغن ارگانیک، غذای سالم",
