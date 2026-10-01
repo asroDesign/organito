@@ -32,6 +32,8 @@ export const DEFAULT_SETTINGS = {
   watermarkOpacity: 45,
   smsProvider: "kavenegar",
   smsSender: "10008663",
+  smsApiKey: "",
+  smsirParameterMap: "",
   inventoryPolicy: "reserve_on_order",
   supplyDefaultMargin: 15,
   supplyShippingCost: 90000,

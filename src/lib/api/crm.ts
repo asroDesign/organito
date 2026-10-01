@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '@/db';
 import { accessRoles, users, sessions, centralLoyaltyMembers, customerGroups, customerGroupMembers, marketingCampaigns, campaignDeliveries,customerBalances,customerCreditEntries,customerWallets,centralPosSales,discountCodes,giftCards,returnRequests } from '@/db/schema';
 import { requireApi,hashPassword } from '../auth';
@@ -10,7 +10,23 @@ import { automaticTypes,CAMPAIGN_TYPES,dateOnly,validPhone } from '../commerce-c
 import { audit } from '../audit';
 
 export const crmRoutes:Route[]=[
- {method:'GET',pattern:'admin/users',handler:async()=>{await requireApi('USERS_MANAGE');return {roles:await db.select().from(accessRoles),users:await db.select({id:users.id,name:users.name,phone:users.phone,email:users.email,role:users.role,roleId:users.roleId,birthdate:users.birthdate,smsConsent:users.smsConsent,isActive:users.isActive,extraPermissions:users.extraPermissions,createdAt:users.createdAt,orderCount:sql<number>`(select count(*)::int from orders where customer_id=${users.id} and payment_status='paid')+(select count(*)::int from central_pos_sales where customer_phone=${users.phone} and status='completed')`,totalSpent:sql<number>`(select coalesce(sum(total+credit_amount),0)::float8 from orders where customer_id=${users.id} and payment_status='paid')+(select coalesce(sum(total),0)::float8 from central_pos_sales where customer_phone=${users.phone} and status='completed')`,balance:sql<number>`coalesce((select balance::float8 from customer_wallets where user_id=${users.id}),0)`}).from(users).orderBy(desc(users.createdAt))}}},
+ {method:'GET',pattern:'admin/users',handler:async(req)=>{
+   await requireApi('USERS_MANAGE');
+   const params=new URL(req.url).searchParams, requestedPage=Math.max(1,Math.floor(Number(params.get('page'))||1));
+   const requestedSize=Number(params.get('pageSize')),pageSize=[10,25,50,100].includes(requestedSize)?requestedSize:25;
+   const q=(params.get('q')??'').trim().slice(0,120),role=(params.get('role')??'').trim();
+   const where:SQL[]=[];
+   if(q)where.push(or(ilike(users.name,`%${q}%`),ilike(users.phone,`%${q}%`),ilike(users.email,`%${q}%`))!);
+   if(role&&role in ROLES)where.push(eq(users.role,role));
+   const condition=where.length?and(...where):undefined;
+   const [{total=0}={}] = await db.select({total:count()}).from(users).where(condition);
+   const page=Math.min(requestedPage,Math.max(1,Math.ceil(total/pageSize)));
+   const [userRows,roleRows]=await Promise.all([
+     db.select({id:users.id,name:users.name,phone:users.phone,email:users.email,role:users.role,roleId:users.roleId,birthdate:users.birthdate,smsConsent:users.smsConsent,isActive:users.isActive,extraPermissions:users.extraPermissions,createdAt:users.createdAt,orderCount:sql<number>`(select count(*)::int from orders where customer_id=${users.id} and payment_status='paid')+(select count(*)::int from central_pos_sales where customer_phone=${users.phone} and status='completed')`,totalSpent:sql<number>`(select coalesce(sum(total+credit_amount),0)::float8 from orders where customer_id=${users.id} and payment_status='paid')+(select coalesce(sum(total),0)::float8 from central_pos_sales where customer_phone=${users.phone} and status='completed')`,balance:sql<number>`coalesce((select balance::float8 from customer_wallets where user_id=${users.id}),0)`}).from(users).where(condition).orderBy(desc(users.createdAt)).limit(pageSize).offset((page-1)*pageSize),
+     db.select().from(accessRoles),
+   ]);
+   return {roles:roleRows,users:userRows,total,page,pageSize};
+ }},
  {method:'POST',pattern:'admin/users',handler:async(req,_p,m)=>{const actor=await requireApi('USERS_MANAGE'),b=await body(req),role=str(b.role,40)||'customer',name=str(b.name,100),phone=validPhone(b.phone),password=str(b.password,100);if(!name||password.length<8||!(role in ROLES)||role==='seller')throw new HttpError(400,'نام، نقش یا رمز معتبر نیست');if(actor.role!=='super_admin'&&role!=='customer')throw new HttpError(403,'ایجاد حساب سازمانی نیازمند دسترسی مدیر کل است');const [u]=await db.insert(users).values({name,phone,role,passwordHash:hashPassword(password),email:str(b.email,150)||null,birthdate:dateOnly(b.birthdate),smsConsent:b.smsConsent===true}).returning({id:users.id});await audit(db,{userId:actor.id,...m},'user.create','user',u.id,null,{role});return u}},
  {method:'POST',pattern:'admin/users/:id',handler:async(req,p,m)=>{const actor=await requireApi('USERS_MANAGE'),id=idParam(p.id),b=await body(req);
   await db.transaction(async tx=>{await tx.execute(sql`select pg_advisory_xact_lock(99128)`);const [old]=await tx.select().from(users).where(eq(users.id,id)).for('update');if(!old)throw new HttpError(404,'کاربر یافت نشد');if(old.role==='super_admin'&&actor.role!=='super_admin')throw new HttpError(403,'ویرایش مدیر کل مجاز نیست');

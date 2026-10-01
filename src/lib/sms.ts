@@ -25,19 +25,29 @@ export function renderTemplate(body: string, vars: Record<string, string | numbe
   return body.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : `{${k}}`));
 }
 
-async function callProvider(provider: string, phone: string, patternId: string | null, body: string, vars: Record<string, string | number>) {
+function smsIrParameterName(name: string, mapping: string) {
+  const pairs = mapping.split(/[\n,;]+/).map((item) => item.trim()).filter(Boolean);
+  for (const pair of pairs) {
+    const [variable, parameter] = pair.split(/[:=]/).map((part) => part.trim());
+    if (variable === name && parameter) return parameter;
+  }
+  return name;
+}
+
+async function callProvider(provider: string, phone: string, patternId: string | null, body: string, vars: Record<string, string | number>, configuredKey = "", parameterMap = "") {
   if (provider === "kavenegar") {
-    const key = process.env.KAVENEGAR_API_KEY;
+    const key = configuredKey || process.env.KAVENEGAR_API_KEY;
     if (!key) return { ok: true, simulated: true, response: "simulated (no KAVENEGAR_API_KEY)" };
     const params = new URLSearchParams({ receptor: phone, template: patternId ?? "", token: String(Object.values(vars)[0] ?? "") });
     const r = await fetch(`https://api.kavenegar.com/v1/${key}/verify/lookup.json?${params}`, { signal: AbortSignal.timeout(8000) });
     return { ok: r.ok, simulated: false, response: (await r.text()).slice(0, 500) };
   }
-  const key = process.env.SMSIR_API_KEY;
+  const key = configuredKey || process.env.SMSIR_API_KEY;
   if (!key) return { ok: true, simulated: true, response: "simulated (no SMSIR_API_KEY)" };
+  if (!patternId || !/^\d+$/.test(patternId)) return { ok: false, simulated: false, response: "برای ارسال SMS.ir باید شناسه عددی قالب را در الگوی همین رویداد ثبت کنید" };
   const r = await fetch("https://api.sms.ir/v1/send/verify", {
-    method: "POST", headers: { "Content-Type": "application/json", "x-api-key": key },
-    body: JSON.stringify({ mobile: phone, templateId: Number(patternId), parameters: Object.entries(vars).map(([name, value]) => ({ name, value: String(value) })) }),
+    method: "POST", headers: { "Content-Type": "application/json", Accept: "text/plain", "x-api-key": key },
+    body: JSON.stringify({ mobile: phone, templateId: Number(patternId), parameters: Object.entries(vars).map(([name, value]) => ({ name: smsIrParameterName(name, parameterMap), value: String(value) })) }),
     signal: AbortSignal.timeout(8000),
   });
   return { ok: r.ok, simulated: false, response: (await r.text()).slice(0, 500) };
@@ -47,13 +57,13 @@ export function extractVars(body: string) {
   return Array.from(new Set(Array.from(body.matchAll(/\{(\w+)\}/g)).map((m) => m[1])));
 }
 
-async function deliver(event: string, phone: string, provider: string, patternId: string | null, body: string, vars: Record<string, string | number>) {
+async function deliver(event: string, phone: string, provider: string, patternId: string | null, body: string, vars: Record<string, string | number>, configuredKey = "", parameterMap = "") {
   let attempts = 0;
   let last = { ok: false, simulated: false, response: "" };
   while (attempts < 3) {
     attempts++;
     try {
-      last = await callProvider(provider, phone, patternId, body, vars);
+      last = await callProvider(provider, phone, patternId, body, vars, configuredKey, parameterMap);
       if (last.ok) break;
     } catch (e) {
       last = { ok: false, simulated: false, response: (e as Error).message };
@@ -77,7 +87,7 @@ export async function sendSms(event: string, phone: string, vars: Record<string,
     let body = "";
     for (const tpl of tpls) {
       body = renderTemplate(tpl.body, vars);
-      out.push(await deliver(event, phone, s.smsProvider, tpl.patternId, body, vars));
+      out.push(await deliver(event, phone, s.smsProvider, tpl.patternId, body, vars, s.smsApiKey, s.smsirParameterMap));
     }
     return { status: out.join(","), body };
   } catch {
@@ -91,7 +101,7 @@ export async function sendTemplateTo(templateId: number, phones: string[], vars:
   const s = await getSettings();
   let sent = 0, failed = 0;
   for (const phone of phones) {
-    const st = await deliver(`manual:${tpl.event}`, phone, s.smsProvider, tpl.patternId, renderTemplate(tpl.body, vars), vars);
+    const st = await deliver(`manual:${tpl.event}`, phone, s.smsProvider, tpl.patternId, renderTemplate(tpl.body, vars), vars, s.smsApiKey, s.smsirParameterMap);
     if (st === "failed") failed++; else sent++;
   }
   return { sent, failed };
@@ -101,7 +111,7 @@ export async function retryLog(logId: number) {
   const [l] = await db.select().from(smsLogs).where(eq(smsLogs.id, logId));
   if (!l || l.status !== "failed" || !/^09\d{9}$/.test(l.phone)) return null;
   const s = await getSettings();
-  return deliver(l.event, l.phone, s.smsProvider, null, l.body, {});
+  return deliver(l.event, l.phone, s.smsProvider, null, l.body, {}, s.smsApiKey, s.smsirParameterMap);
 }
 
 export { maskPhone };
@@ -113,14 +123,14 @@ export async function sendDirectSms(event: string, phone: string, body: string):
   let status: "sent" | "simulated" | "failed" = "failed", response = "";
   try {
     if (provider === "kavenegar") {
-      const key = process.env.KAVENEGAR_API_KEY;
+      const key = settings.smsApiKey || process.env.KAVENEGAR_API_KEY;
       if (!key) { status = "simulated"; response = "کلید کاوه‌نگار تنظیم نشده؛ شبیه‌سازی شد"; }
       else {
         const r = await fetch(`https://api.kavenegar.com/v1/${encodeURIComponent(key)}/sms/send.json`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" }, body: new URLSearchParams({ receptor: phone, message: body, ...(settings.smsSender ? { sender: settings.smsSender } : {}) }), signal: AbortSignal.timeout(10000), cache: "no-store" });
         response = (await r.text()).slice(0, 500); status = r.ok ? "sent" : "failed";
       }
     } else if (provider === "smsir") {
-      const key = process.env.SMSIR_API_KEY;
+      const key = settings.smsApiKey || process.env.SMSIR_API_KEY;
       if (!key) { status = "simulated"; response = "کلید SMS.ir تنظیم نشده؛ شبیه‌سازی شد"; }
       else {
         const r = await fetch("https://api.sms.ir/v1/send", { method: "POST", headers: { "Content-Type": "application/json", "X-API-KEY": key }, body: JSON.stringify({ lineNumber: Number((settings.smsSender ?? "").replace(/\D/g, "")) || 30007732000000, messageText: body, mobiles: [phone] }), signal: AbortSignal.timeout(10000), cache: "no-store" });

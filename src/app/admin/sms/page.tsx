@@ -8,17 +8,27 @@ import { Card, PageHeader, StatusBadge, Table, Td, Badge } from "@/components/ui
 import { ActionButton } from "@/components/client";
 import { SmsTemplateEditor, SmsSender } from "@/components/SmsPanel";
 import { jdate, maskPhone } from "@/lib/util";
+import { JsonForm } from "@/components/client";
 
 export default async function SmsPage() {
   await requirePage({ perm: "SMS_MANAGE" });
   const [tpls, logs, s] = await Promise.all([db.select().from(smsTemplates).orderBy(smsTemplates.event, smsTemplates.id), db.select().from(smsLogs).orderBy(desc(smsLogs.createdAt)).limit(40), getSettings()]);
-  const keyOk = s.smsProvider === "kavenegar" ? !!process.env.KAVENEGAR_API_KEY : !!process.env.SMSIR_API_KEY;
+  const keyOk = !!s.smsApiKey || (s.smsProvider === "kavenegar" ? !!process.env.KAVENEGAR_API_KEY : !!process.env.SMSIR_API_KEY);
   const events: [string, string, string[]][] = [...Object.entries(SMS_EVENTS).map(([k, v]) => [k, v.title, v.vars] as [string, string, string[]]), ["manual", "ارسال دستی / کمپین", []]];
   const stats = { sent: logs.filter((l) => l.status === "sent" || l.status === "simulated").length, failed: logs.filter((l) => l.status === "failed").length };
   return (
     <>
       <PageHeader title="پنل پیامک پیشرفته" subtitle={`Provider: ${s.smsProvider === "kavenegar" ? "کاوه‌نگار" : "SMS.ir"} · کلید API: ${keyOk ? "تنظیم‌شده (مخفی)" : "تنظیم نشده — حالت شبیه‌سازی"} · ${stats.sent.toLocaleString("fa-IR")} موفق / ${stats.failed.toLocaleString("fa-IR")} ناموفق اخیر`}
         actions={<SmsTemplateEditor events={events} label="+ الگوی جدید" />} />
+      <Card title="تنظیمات اتصال پنل پیامک" className="mb-6">
+        <p className="mb-4 text-xs leading-6 text-slate-500">تنظیمات اتصال فقط در این بخش مدیریت می‌شود. کلید API در پایگاه داده نگهداری می‌شود و نمایش داده نمی‌شود؛ برای حفظ آن ورودی را خالی بگذارید. در SMS.ir، شناسه قالب را برای هر رویداد در فیلد Template ID همان الگو وارد کنید.</p>
+        <JsonForm url="/api/admin/settings" submit="ذخیره تنظیمات پیامک" resetOnDone={false} fields={[
+          { name: "smsProvider", label: "سرویس پیامک", type: "select", half: true, defaultValue: s.smsProvider, options: [["kavenegar", "کاوه‌نگار"], ["smsir", "SMS.ir"]] },
+          { name: "smsSender", label: "شماره خط / Line Number", half: true, defaultValue: s.smsSender },
+          { name: "smsApiKey", label: "کلید API (خالی = حفظ مقدار قبلی)", type: "password", half: true, defaultValue: "", placeholder: keyOk ? "کلید API ثبت شده؛ برای حفظ خالی بگذارید" : "کلید API پنل" },
+          { name: "smsirParameterMap", label: "نگاشت نام پارامترهای SMS.ir (اختیاری)", type: "textarea", defaultValue: s.smsirParameterMap, placeholder: "code=PARAMETER1,name=PARAMETER2" },
+        ]} />
+      </Card>
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <div className="space-y-4">
           {events.map(([ev, title, vars]) => {

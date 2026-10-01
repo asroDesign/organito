@@ -234,9 +234,10 @@ export const staffRoutes: Route[] = [
     const changes: Record<string, unknown> = {};
     for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) {
       if (!(k in b)) continue;
+      if (k === "smsApiKey" && !str(b[k], 1000)) continue;
       const v = typeof def === "number" ? int(b[k], 0, 1_000_000_000) : str(b[k], 1000);
       if (k === "paymentGateway" && v !== "zarinpal" && v !== "zibal") throw new HttpError(400, "درگاه پرداخت نامعتبر است");
-      changes[k] = v;
+      changes[k] = k === "smsApiKey" ? "[configured]" : v;
       await db.insert(settings).values({ key: k, value: v }).onConflictDoUpdate({ target: settings.key, set: { value: v } });
     }
     await audit(db, { userId: u.id, ...m }, "settings.update", "settings", null, null, changes);

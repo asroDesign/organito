@@ -26,7 +26,8 @@ export function SmsTemplateEditor({ events, label, initial = {}, small }: { even
             <label className="block">رویداد
               <select disabled={f.isSystem} value={f.event} onChange={(e) => setF({ ...f, event: e.target.value })} className="input mt-1">{events.map(([k, t]) => <option key={k} value={k}>{t} ({k})</option>)}</select></label>
             <label className="block">عنوان الگو<input value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} className="input mt-1" /></label>
-            <label className="block">Pattern ID (کد الگو در سرویس‌دهنده)<input value={f.patternId} onChange={(e) => setF({ ...f, patternId: e.target.value })} className="input mt-1" dir="ltr" /></label>
+            <label className="block">Template ID / Pattern ID در سرویس‌دهنده<input value={f.patternId} onChange={(e) => setF({ ...f, patternId: e.target.value })} className="input mt-1" dir="ltr" /></label>
+            <p className="-mt-2 text-xs leading-5 text-slate-500">برای SMS.ir شناسه قالب عددی را از پنل وارد کنید. پارامترهای متن قالب باید با متغیرهای پیام یا نگاشت پارامترهای SMS.ir در تنظیمات این صفحه منطبق باشند.</p>
             <label className="block">متن
               <textarea value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} className="input mt-1 min-h-28" /></label>
             {evVars.length > 0 && <div className="flex flex-wrap gap-1">{evVars.map((v) => <button key={v} type="button" className="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700" onClick={() => setF({ ...f, body: `${f.body ?? ""}{${v}}` })}>{`{${v}}`}</button>)}</div>}

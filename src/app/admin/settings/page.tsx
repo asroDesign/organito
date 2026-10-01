@@ -38,8 +38,6 @@ export default async function SettingsPage() {
           { name: "orderExpiryMinutes", label: "لغو خودکار سفارش پرداخت‌نشده (دقیقه، ۰=غیرفعال)", type: "number", half: true, defaultValue: s.orderExpiryMinutes },
           { name: "paymentGateway", label: "درگاه پرداخت", type: "select", half: true, defaultValue: s.paymentGateway, options: [["zarinpal", "زرین‌پال"], ["zibal", "زیبال"]] },
           { name: "zibalMerchant", label: "شناسه مرچنت زیبال (خالی = مقدار سرور)", half: true, defaultValue: s.zibalMerchant },
-          { name: "smsProvider", label: "Provider پیامک", type: "select", half: true, defaultValue: s.smsProvider, options: [["kavenegar", "کاوه‌نگار"], ["smsir", "SMS.ir"]] },
-          { name: "smsSender", label: "شماره فرستنده پیامک", half: true, defaultValue: s.smsSender },
           { name: "inventoryPolicy", label: "سیاست موجودی", type: "select", half: true, defaultValue: s.inventoryPolicy, options: [["reserve_on_order", "رزرو در ثبت سفارش"]] },
           { name: "supplyDefaultMargin", label: "حاشیه پیش‌فرض تأمین (%)", type: "number", half: true, defaultValue: s.supplyDefaultMargin },
           { name: "supplyShippingCost", label: "هزینه ارسال تأمین سفارشی", type: "number", half: true, defaultValue: s.supplyShippingCost },

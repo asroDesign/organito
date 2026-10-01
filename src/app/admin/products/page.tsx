@@ -6,20 +6,25 @@ import { categories, products, sellers } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
 import { Img, PageHeader, StatusBadge, Table, Td, Badge } from "@/components/ui";
 import { PRODUCT_STATUS, faNum, toman } from "@/lib/util";
+import { Pagination } from "@/components/Pagination";
+import { paginationParams } from "@/lib/pagination";
 
-export default async function AdminProducts({ searchParams }: { searchParams: Promise<{ q?: string; status?: string }> }) {
+export default async function AdminProducts({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string; pageSize?: string }> }) {
   const u = await requirePage({ perm: "PRODUCTS_VIEW" });
   const sp = await searchParams;
   const conds: SQL[] = [];
   if (sp.status) conds.push(eq(products.status, sp.status)); else conds.push(sql`${products.status} <> 'deleted'`);
   if (sp.q) conds.push(or(ilike(products.nameFa, `%${sp.q}%`), ilike(products.sku, `%${sp.q}%`), ilike(products.partNumber, `%${sp.q}%`))!);
+  const [{ total = 0 } = {}] = await db.select({ total: sql<number>`count(*)::int` }).from(products).where(and(...conds));
+  const { pageSize, offset } = paginationParams(sp);
+  const page = Math.min(paginationParams(sp).page, Math.max(1, Math.ceil(total / pageSize)));
   const list = await db.select({ p: products, cat: categories.name, shop: sellers.shopName, offers: sql<number>`(select count(*) from seller_offers o where o.product_id = ${products.id})::int` })
     .from(products).leftJoin(categories, eq(categories.id, products.categoryId)).leftJoin(sellers, eq(sellers.id, products.ownerSellerId))
-    .where(and(...conds)).orderBy(desc(products.updatedAt)).limit(200);
+    .where(and(...conds)).orderBy(desc(products.updatedAt)).limit(pageSize).offset((page - 1) * pageSize);
   const statuses = Object.entries(PRODUCT_STATUS);
   return (
     <>
-      <PageHeader title="محصولات و کاتالوگ" subtitle={`${faNum(list.length)} محصول`} actions={u.permissions.includes("PRODUCTS_CREATE") && <Link href="/admin/products/new" className="btn-primary"><Plus className="h-4 w-4" />افزودن محصول کامل</Link>} />
+      <PageHeader title="محصولات و کاتالوگ" subtitle={`${faNum(total)} محصول`} actions={u.permissions.includes("PRODUCTS_CREATE") && <Link href="/admin/products/new" className="btn-primary"><Plus className="h-4 w-4" />افزودن محصول کامل</Link>} />
       <form className="mb-4 flex flex-wrap gap-2">
         <input name="q" defaultValue={sp.q} placeholder="نام، SKU یا کد محصول" className="input !w-64" />
         <select name="status" defaultValue={sp.status ?? ""} className="input !w-44"><option value="">همه وضعیت‌ها</option>{statuses.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
@@ -40,6 +45,7 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
           </tr>
         ))}
       </Table>
+      <div className="mt-4"><Pagination page={page} pageSize={pageSize} total={total} /></div>
     </>
   );
 }

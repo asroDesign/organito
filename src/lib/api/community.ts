@@ -17,7 +17,7 @@ const normalizePhone = (value: unknown) => str(value, 30)
   .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
   .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
   .replace(/\D/g, "").replace(/^0098/, "0").replace(/^98/, "0").replace(/^9/, "09");
-const smsConfigured = async () => { const s = await getSettings(); return s.smsProvider === "kavenegar" ? !!process.env.KAVENEGAR_API_KEY : !!process.env.SMSIR_API_KEY; };
+const smsConfigured = async () => { const s = await getSettings(); return !!s.smsApiKey || (s.smsProvider === "kavenegar" ? !!process.env.KAVENEGAR_API_KEY : !!process.env.SMSIR_API_KEY); };
 
 async function assertProduct(id: number) {
   const [p] = await db.select({ id: products.id, nameFa: products.nameFa, status: products.status, ownerSellerId: products.ownerSellerId, slug: products.slug }).from(products).where(eq(products.id, id));

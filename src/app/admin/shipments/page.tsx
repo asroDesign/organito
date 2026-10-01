@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { and, desc, eq, ilike, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, ilike, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import { orders, sellers, sellerShipments } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
@@ -7,16 +7,21 @@ import { activeCarriers } from "@/lib/marketing";
 import { PageHeader, StatusBadge, Table, Td } from "@/components/ui";
 import { ShipmentActions, ShipmentInfoEditor } from "@/components/ShipmentActions";
 import { SHIPMENT_STATUS, faNum, jdate, toman } from "@/lib/util";
+import { Pagination } from "@/components/Pagination";
+import { paginationParams } from "@/lib/pagination";
 
-export default async function AdminShipments({ searchParams }: { searchParams: Promise<{ status?: string; q?: string }> }) {
+export default async function AdminShipments({ searchParams }: { searchParams: Promise<{ status?: string; q?: string; page?: string; pageSize?: string }> }) {
   await requirePage({ perm: "SHIPMENTS_MANAGE" });
   const sp = await searchParams;
   const c: SQL[] = [];
   if (sp.status) c.push(eq(sellerShipments.status, sp.status));
   if (sp.q) c.push(ilike(orders.number, `%${sp.q}%`));
+  const [{ total }] = await db.select({ total: count() }).from(sellerShipments).innerJoin(orders, eq(orders.id, sellerShipments.orderId)).where(and(eq(orders.paymentStatus, "paid"), ...c));
+  const { page: requestedPage, pageSize } = paginationParams(sp);
+  const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / pageSize)));
   const [list, carriers] = await Promise.all([
     db.select({ sh: sellerShipments, o: orders, shop: sellers.shopName }).from(sellerShipments).innerJoin(orders, eq(orders.id, sellerShipments.orderId)).leftJoin(sellers, eq(sellers.id, sellerShipments.sellerId))
-      .where(and(eq(orders.paymentStatus, "paid"), ...c)).orderBy(desc(sellerShipments.createdAt)).limit(200),
+      .where(and(eq(orders.paymentStatus, "paid"), ...c)).orderBy(desc(sellerShipments.createdAt)).limit(pageSize).offset((page - 1) * pageSize),
     activeCarriers(),
   ]);
   const cl = carriers.map((x) => ({ id: x.id, name: x.name }));
@@ -47,6 +52,7 @@ export default async function AdminShipments({ searchParams }: { searchParams: P
           </tr>
         ))}
       </Table>
+      <div className="mt-4"><Pagination page={page} pageSize={pageSize} total={total} /></div>
     </>
   );
 }
