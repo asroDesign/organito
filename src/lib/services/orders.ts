@@ -138,10 +138,18 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   const central = groups.find((g) => !g.sellerId);
   const carrierOpts: CarrierOption[] = [];
   let carrierId: number | null = null;
-  if (central) {
-    for (const c of await activeCarriers(tx)) carrierOpts.push({ id: c.id, name: c.name, minDays: c.minDays, maxDays: c.maxDays, cost: await carrierCost(tx, c, city, central.weight, central.itemsTotal) });
-    const chosen = carrierOpts.find((c) => c.id === opts.carrierId) ?? carrierOpts.slice().sort((a, b) => a.cost - b.cost)[0];
-    if (chosen) { central.shippingCost = chosen.cost; carrierId = chosen.id; central.name = `${s.senderName} — ${chosen.name}`; }
+  const active = groups.length ? await activeCarriers(tx) : [];
+  for (const c of active) {
+    let cost = 0;
+    for (const group of groups) cost += await carrierCost(tx, c, city, group.weight, group.itemsTotal);
+    carrierOpts.push({ id: c.id, name: c.name, minDays: c.minDays, maxDays: c.maxDays, cost });
+  }
+  const chosen = carrierOpts.find((c) => c.id === opts.carrierId) ?? carrierOpts.slice().sort((a, b) => a.cost - b.cost)[0];
+  if (chosen) {
+    const carrier = active.find((c) => c.id === chosen.id)!;
+    carrierId = carrier.id;
+    for (const group of groups) group.shippingCost = await carrierCost(tx, carrier, city, group.weight, group.itemsTotal);
+    if (central) central.name = `${s.senderName} — ${carrier.name}`;
   }
   const sellerShippingTotal = groups.filter((g) => g.sellerId).reduce((a, g) => a + g.shippingCost, 0);
   const centralShipping = central?.shippingCost ?? 0;
@@ -166,7 +174,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   const tax = Math.round((Math.max(0, itemsSubtotal - discount) * s.taxRate) / 100);
   const gross=itemsSubtotal+sellerShippingTotal+centralShipping+tax-discount;
   let creditAmount=0,giftCardId:number|null=null;
-  if(isCredit){const r=await quoteCredit(tx,creditCode,opts.userId??null,gross,!!opts.lockCode);code={ok:r.ok,error:r.error,code:creditCode,title:creditCode==="WALLET"?"اعتبار خرید":"کارت هدیه"};if(r.ok){creditAmount=r.amount;giftCardId=r.giftCardId}}
+  if(isCredit){const r=await quoteCredit(tx,creditCode,opts.userId??null,gross,!!opts.lockCode);code={ok:r.ok,error:r.error,code:creditCode,title:creditCode==="WALLET"?"کیف پول":"کارت هدیه"};if(r.ok){creditAmount=r.amount;giftCardId=r.giftCardId}}
   return {
     creditAmount,giftCardId,
     lines, groups: [...groupsMap.values()], itemsSubtotal, sellerShippingTotal, centralShipping, discount, tax,
@@ -186,6 +194,7 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
     const q = await quoteCart(tx, items, true, { userId: ctx.userId, code: extra.code, city: address.city, carrierId: extra.carrierId, lockCode: true });
     if (!q.valid) throw new HttpError(409, q.lines.find((l) => !l.ok)?.error ?? "سبد نامعتبر");
     if (q.code && !q.code.ok) throw new HttpError(409, q.code.error ?? "کد تخفیف نامعتبر");
+    if (q.lines.some((line) => line.ok) && (!q.carriers.length || !extra.carrierId || !q.carriers.some((carrier) => carrier.id === extra.carrierId))) throw new HttpError(409, "برای ثبت سفارش باید یک شرکت پستی فعال انتخاب کنید");
     const carrierName = q.carriers.find((c) => c.id === q.carrierId)?.name ?? null;
     const [order] = await tx.insert(orders).values({
       number: genNumber("SB"), customerId: ctx.userId, status: "pending_payment", paymentStatus: "unpaid",
@@ -201,7 +210,7 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
     for (const g of q.groups) {
       const [sh] = await tx.insert(sellerShipments).values({
         orderId: order.id, sellerId: g.sellerId, itemsTotal: g.itemsTotal, shippingCost: g.shippingCost, prepDays: g.prepDays, packageCount: g.packages, weight: g.weight,
-        carrierId: g.sellerId ? null : q.carrierId, carrier: g.sellerId ? null : carrierName,
+        carrierId: q.carrierId, carrier: carrierName,
       }).returning();
       for (const l of g.lines) {
         await tx.insert(orderItems).values({
@@ -274,7 +283,7 @@ export async function payOrder(ctx: Ctx & { userId: number }, orderId: number, i
       [pay] = await tx.insert(payments).values({ ...base, orderId: o.id, refCode: `${method === "gateway" ? "PG" : "MN"}${Date.now()}`, idempotencyKey: idemKey } as typeof payments.$inferInsert).returning();
     }
     const shipments = await tx.select().from(sellerShipments).where(eq(sellerShipments.orderId, o.id));
-    const lines: Line[] = [{ code: "1101", debit: o.total, description: `دریافت وجه سفارش ${o.number}` },{code:"2103",debit:o.creditAmount,description:"مصرف کارت هدیه یا اعتبار خرید"}];
+    const lines: Line[] = [{ code: "1101", debit: o.total, description: `دریافت وجه سفارش ${o.number}` },{code:"2103",debit:o.creditAmount,description:"مصرف کارت هدیه یا کیف پول"}];
     for (const sh of shipments) {
       if (sh.sellerId) {
         const gross = sh.itemsTotal + sh.shippingCost;

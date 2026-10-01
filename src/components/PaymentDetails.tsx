@@ -2,7 +2,7 @@ import { inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { users, type payments } from "@/db/schema";
 import { PAY_METHOD, PAY_STATUS } from "@/lib/printAccess";
-import { faNum, jdate } from "@/lib/util";
+import { currencyUnit, faNum, jdate } from "@/lib/util";
 import { ActionButton } from "./client";
 import { StatusBadge } from "./ui";
 
@@ -18,7 +18,7 @@ export async function PaymentDetails({ pays, orderId, canManage }: { pays: P[]; 
     <div className="space-y-3">
       {pays.map((p) => (
         <div key={p.id} className={`rounded-xl border p-3 text-xs ${p.status === "pending_verification" ? "border-amber-300 bg-amber-50" : p.status === "success" ? "border-emerald-200 bg-emerald-50/40" : "border-slate-200 bg-slate-50"}`}>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><b className="text-sm">{PAY_METHOD[p.method] ?? p.method} — {faNum(p.amount)} تومان</b><StatusBadge status={p.status === "success" ? "paid" : p.status === "pending_verification" ? "pending" : p.status} map={{ paid: PAY_STATUS.success, pending: PAY_STATUS.pending_verification, rejected: PAY_STATUS.rejected, refunded: PAY_STATUS.refunded }} /></div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2"><b className="text-sm">{PAY_METHOD[p.method] ?? p.method} — {faNum(p.amount)} {currencyUnit()}</b><StatusBadge status={p.status === "success" ? "paid" : p.status === "pending_verification" ? "pending" : p.status} map={{ paid: PAY_STATUS.success, pending: PAY_STATUS.pending_verification, rejected: PAY_STATUS.rejected, refunded: PAY_STATUS.refunded }} /></div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-1">
             {[
               ["شناسه پرداخت", `#${p.id}`], ["شماره مرجع", p.refCode], ["درگاه", p.gateway], ["Authority", p.authority], ["کارت", p.cardMasked], ["شماره پیگیری", p.trackingCode],

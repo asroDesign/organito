@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Star, Store, Flame } from "lucide-react";
 import type { ShopProduct } from "@/lib/queries";
-import { AUTH_LABEL, faNum } from "@/lib/util";
+import { AUTH_LABEL, currencyUnit, faNum } from "@/lib/util";
 import { Img } from "./ui";
 import { QuickViewButton } from "./QuickView";
 import { FavoriteButton } from "./CustomerSelfService";
@@ -34,7 +34,7 @@ export function ProductCard({ p }: { p: ShopProduct }) {
           {p.compareAt > p.minPrice && p.inStock && <div className="text-left text-xs text-slate-400 line-through">{faNum(p.compareAt)}</div>}
           <div className="flex items-end justify-between">
             <span className="text-[11px] text-slate-400">{p.maxPrice > p.listPrice ? "شروع از" : ""}</span>
-            <span className="text-left text-base font-black text-slate-900">{p.minPrice ? faNum(p.minPrice) : "—"} <span className="text-[10px] font-normal text-slate-500">تومان</span></span>
+            <span className="text-left text-base font-black text-slate-900">{p.minPrice ? faNum(p.minPrice) : "—"} <span className="text-[10px] font-normal text-slate-500">{currencyUnit()}</span></span>
           </div>
         </div>
       </div>

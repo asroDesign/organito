@@ -1,16 +1,19 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Trash2, Truck, Package, AlertTriangle, Minus, Plus } from "lucide-react";
+import { Loader2, Trash2, Truck, Package, AlertTriangle, Minus, Plus, MapPin, X, PlusCircle } from "lucide-react";
 import { api, toast, uid, useCart, writeCart, type CartItem } from "./client";
 import type { Quote } from "@/lib/services/orders";
+import { toman } from "@/lib/util";
 
-const t = (n: number) => `${n.toLocaleString("fa-IR")} تومان`;
+const t = (n: number) => toman(n);
 const keyOf = (i: { productId: number; offerId: number | null; variantId: number | null }) => `${i.productId}:${i.offerId ?? 0}:${i.variantId ?? 0}`;
+const MapPicker = dynamic(() => import("./MapPicker"), { ssr: false, loading: () => <div className="skeleton h-56 rounded-xl" /> });
 
 type SavedAddress = { id:number; title:string; receiverName:string; receiverPhone:string; city:string; address:string; postalCode:string|null; latitude:string|null; longitude:string|null; isDefault:boolean };
-export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[] }: { loggedIn: boolean; defaultName: string; defaultPhone: string; savedAddresses?:SavedAddress[] }) {
+export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[], paymentGateway="zarinpal" }: { loggedIn: boolean; defaultName: string; defaultPhone: string; savedAddresses?:SavedAddress[]; paymentGateway?: string }) {
   const cart = useCart();
   const router = useRouter();
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -19,12 +22,17 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
   const idem = useRef(uid());
   const [codeInput, setCodeInput] = useState("");
   const [code, setCode] = useState("");
-  const [city, setCity] = useState("تهران");
-  const [cityQ, setCityQ] = useState("تهران");
+  const [addresses,setAddresses]=useState(savedAddresses);
+  const [city, setCity] = useState(savedAddresses.find(a=>a.isDefault)?.city??savedAddresses[0]?.city??"تهران");
+  const [cityQ, setCityQ] = useState(savedAddresses.find(a=>a.isDefault)?.city??savedAddresses[0]?.city??"تهران");
   const [carrierId, setCarrierId] = useState<number | null>(null);
   const [err, setErr] = useState("");
   const [payMethod, setPayMethod] = useState<"gateway" | "manual">("gateway");
-  const [selectedAddress,setSelectedAddress]=useState<SavedAddress|null>(savedAddresses.find(a=>a.isDefault)??null);
+  const [selectedAddress,setSelectedAddress]=useState<SavedAddress|null>(savedAddresses.find(a=>a.isDefault)??savedAddresses[0]??null);
+  const [addressModal,setAddressModal]=useState(false);
+  const [savingAddress,setSavingAddress]=useState(false);
+  const [addressError,setAddressError]=useState("");
+  const [mapLocation,setMapLocation]=useState<[number,number]>([35.6892,51.389]);
   useEffect(() => { const t = setTimeout(() => setCityQ(city), 500); return () => clearTimeout(t); }, [city]);
   useEffect(() => {
     if (!cart.length) { setQuote(null); setLoading(false); return; }
@@ -53,19 +61,6 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
               <b className="flex items-center gap-2"><Truck className="h-4 w-4 text-emerald-600" />مرسوله: {g.name}</b>
               <span className="text-xs text-slate-500">ارسال {t(g.shippingCost)} · آماده‌سازی {g.prepDays.toLocaleString("fa-IR")} روز · {g.packages.toLocaleString("fa-IR")} بسته · {(g.weight / 1000).toLocaleString("fa-IR")} کیلوگرم</span>
             </header>
-            {!g.sellerId && quote.carriers.length > 0 && (
-              <div className="border-b bg-emerald-50/40 px-4 py-3">
-                <div className="mb-2 text-xs font-bold text-slate-600">انتخاب شرکت پستی (بر اساس شهر مقصد «{quote.city || "—"}» و وزن):</div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {quote.carriers.map((c) => (
-                    <label key={c.id} className={`flex cursor-pointer items-center justify-between rounded-xl border bg-white p-2.5 text-sm ${quote.carrierId === c.id ? "border-emerald-500 ring-2 ring-emerald-100" : "border-slate-200"}`}>
-                      <span className="flex items-center gap-2"><input type="radio" checked={quote.carrierId === c.id} onChange={() => setCarrierId(c.id)} /><span><b>{c.name}</b><div className="text-[11px] text-slate-500">تحویل {c.minDays.toLocaleString("fa-IR")} تا {c.maxDays.toLocaleString("fa-IR")} روز کاری</div></span></span>
-                      <b className={c.cost === 0 ? "text-emerald-600" : ""}>{c.cost === 0 ? "رایگان" : t(c.cost)}</b>
-                    </label>
-                  ))}
-                </div>
-              </div>
-            )}
             <ul className="divide-y">
               {g.lines.map((l) => {
                 const item = cart.find((c) => keyOf(c) === l.key);
@@ -124,7 +119,14 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
         ))}
       </div>
       <aside className="h-fit space-y-4 rounded-2xl border border-slate-200 bg-white p-4 lg:sticky lg:top-36">
-        <b>خلاصه سفارش</b>
+        {loggedIn&&<section className="space-y-3 border-b border-slate-100 pb-4">
+          <div className="flex items-center justify-between"><b className="flex items-center gap-2"><MapPin className="size-4 text-emerald-700"/>آدرس ارسال</b><button type="button" className="text-xs font-bold text-emerald-700" onClick={()=>{setAddressError("");setAddressModal(true)}}><PlusCircle className="ml-1 inline size-4"/>افزودن آدرس</button></div>
+          {addresses.length>0&&<select className="input" value={selectedAddress?.id??""} onChange={e=>{const a=addresses.find(x=>x.id===Number(e.target.value))??null;setSelectedAddress(a);setCarrierId(null);if(a){setCity(a.city);setCityQ(a.city)}}}>{addresses.map(a=><option key={a.id} value={a.id}>{a.title} — {a.city}{a.isDefault?" (پیش‌فرض)":""}</option>)}</select>}
+          {selectedAddress?<div className="rounded-xl bg-slate-50 p-3 text-xs leading-6"><div className="font-bold">{selectedAddress.receiverName} · <span dir="ltr">{selectedAddress.receiverPhone}</span></div><div>{selectedAddress.city}، {selectedAddress.address}</div>{selectedAddress.postalCode&&<div>کد پستی: {selectedAddress.postalCode}</div>}</div>:<button type="button" onClick={()=>setAddressModal(true)} className="w-full rounded-xl border border-dashed border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">برای ادامه، آدرس ارسال را ثبت کنید</button>}
+        </section>}
+        {quote&&quote.carriers.length>0&&<section className="space-y-2 border-b border-slate-100 pb-4"><b className="flex items-center gap-2 text-sm"><Truck className="size-4 text-emerald-700"/>شرکت پستی</b><p className="text-[11px] text-slate-500">هزینه بر اساس آدرس «{quote.city||city}» و وزن مرسوله محاسبه شده؛ یکی را انتخاب کنید.</p><div className="grid gap-2">{quote.carriers.map(c=><label key={c.id} className={`flex cursor-pointer items-center justify-between rounded-xl border p-2.5 text-sm ${carrierId===c.id?"border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-100":"border-slate-200"}`}><span className="flex items-center gap-2"><input type="radio" name="carrier" checked={carrierId===c.id} onChange={()=>setCarrierId(c.id)}/><span><b>{c.name}</b><span className="block text-[11px] text-slate-500">تحویل {c.minDays.toLocaleString("fa-IR")} تا {c.maxDays.toLocaleString("fa-IR")} روز کاری</span></span></span><b className={c.cost===0?"text-emerald-600":""}>{c.cost===0?"رایگان":t(c.cost)}</b></label>)}</div></section>}
+        {quote&&quote.lines.some(l=>l.ok)&&quote.carriers.length===0&&<section className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><b className="flex items-center gap-2"><Truck className="size-4"/>شرکت پستی</b><p className="mt-1 text-xs leading-5">برای آدرس انتخاب‌شده شرکت پستی فعالی ثبت نشده است؛ تا فعال شدن گزینه ارسال، پرداخت امکان‌پذیر نیست.</p></section>}
+        <b>جزئیات خرید</b>
         {quote && (
           <div className="space-y-2 text-sm">
             <Row k="جمع اقلام" v={t(quote.itemsSubtotal)} />
@@ -133,8 +135,9 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
             <Row k="مالیات" v={t(quote.tax)} />
             {quote.festivalDiscount > 0 && <Row k="تخفیف جشنواره" v={`- ${t(quote.festivalDiscount)}`} />}
             {quote.codeDiscount > 0 && <Row k={`کد تخفیف (${quote.code?.code})`} v={`- ${t(quote.codeDiscount)}`} />}
-            {quote.creditAmount>0&&<Row k="کارت هدیه / اعتبار خرید" v={`- ${t(quote.creditAmount)}`}/>}
+            {quote.creditAmount>0&&<Row k="کارت هدیه / کیف پول" v={`- ${t(quote.creditAmount)}`}/>}
             <div className="flex justify-between border-t pt-2 text-base font-extrabold"><span>مبلغ نهایی</span><span className="text-emerald-700">{t(quote.finalTotal)}</span></div>
+            {quote.carriers.length>0&&carrierId===null&&<p className="text-[11px] text-amber-700">مبلغ نمایش‌داده‌شده برآوردی است؛ هزینه ارسال پس از انتخاب شرکت پستی نهایی می‌شود.</p>}
             <p className="text-[11px] text-slate-400">قیمت و موجودی نهایی هنگام ثبت در سرور اعتبارسنجی می‌شود.</p>
           </div>
         )}
@@ -150,40 +153,36 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
           {code && quote?.code && !quote.code.ok && <div className="mt-1 text-xs text-rose-600">{quote.code.error}</div>}
         </div>
         {!loggedIn ? <Link href="/login?next=/cart" className="btn-primary w-full">برای ثبت سفارش وارد شوید</Link> : (
-          <form key={selectedAddress?.id??"custom"} className="space-y-2" onSubmit={async (e) => {
+          <form className="space-y-2" onSubmit={async (e) => {
             e.preventDefault();
-            const fd = new FormData(e.currentTarget);
+            if(!selectedAddress){setAddressError("ابتدا آدرس ارسال را انتخاب کنید");setAddressModal(true);return;}
+            if(quote?.lines.some(l=>l.ok)&&(!quote.carriers.length||!quote.carriers.some(c=>c.id===carrierId))){toast("ابتدا یک شرکت پستی فعال را انتخاب کنید",false);return;}
             setPlacing(true);
             try {
-              const r = await api<{ id: number;paid:boolean }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty }) => ({ productId, offerId, variantId, qty })), address: Object.fromEntries(fd), idempotencyKey: idem.current, code: quote?.code?.ok ? code : "", carrierId: quote?.carrierId });
+              const r = await api<{ id: number;paid:boolean }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty }) => ({ productId, offerId, variantId, qty })), address: {fullName:selectedAddress.receiverName,phone:selectedAddress.receiverPhone,city:selectedAddress.city,address:selectedAddress.address,postalCode:selectedAddress.postalCode??"",latitude:selectedAddress.latitude??"",longitude:selectedAddress.longitude??""}, idempotencyKey: idem.current, code: quote?.code?.ok ? code : "", carrierId });
               writeCart([]);
               if (payMethod === "gateway"&&!r.paid) {
-                toast("سفارش ثبت شد؛ در حال انتقال به درگاه زرین‌پال…");
+                toast(`سفارش ثبت شد؛ در حال انتقال به درگاه ${paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}…`);
                 try { const g = await api<{ url: string }>(`/api/orders/${r.id}/gateway`, "POST", {}); window.location.href = g.url; return; }
                 catch (ge) { toast(`اتصال به درگاه ناموفق بود: ${(ge as Error).message}. از صفحه سفارش دوباره تلاش کنید.`, false); }
-              } else toast(r.paid?"سفارش با اعتبار خرید تسویه شد":"سفارش ثبت شد؛ اطلاعات کارت به کارت را در صفحه سفارش ثبت کنید");
+              } else toast(r.paid?"سفارش با کیف پول تسویه شد":"سفارش ثبت شد؛ اطلاعات کارت به کارت را در صفحه سفارش ثبت کنید");
               router.push(`/customer/orders/${r.id}`);
             } catch (e2) { toast((e2 as Error).message, false); idem.current = uid(); } finally { setPlacing(false); }
           }}>
-            {savedAddresses.length>0&&<select className="input" value={selectedAddress?.id??"custom"} onChange={e=>{const a=savedAddresses.find(x=>x.id===Number(e.target.value))??null;setSelectedAddress(a);if(a)setCity(a.city)}}><option value="custom">ثبت نشانی جدید</option>{savedAddresses.map(a=><option key={a.id} value={a.id}>{a.title} — {a.city}{a.isDefault?" (پیش‌فرض)":""}</option>)}</select>}
-            <input name="fullName" required defaultValue={selectedAddress?.receiverName??defaultName} placeholder="نام تحویل‌گیرنده" className="input" />
-            <input name="phone" required defaultValue={selectedAddress?.receiverPhone??defaultPhone} placeholder="موبایل" className="input" />
-            <div className="grid grid-cols-2 gap-2"><input name="city" required placeholder="شهر" value={selectedAddress?.city??city} onChange={(e) => {setCity(e.target.value);setSelectedAddress(null)}} className="input" /><input name="postalCode" defaultValue={selectedAddress?.postalCode??""} placeholder="کد پستی" className="input" /></div>
-            <textarea name="address" required minLength={10} defaultValue={selectedAddress?.address??""} placeholder="آدرس کامل" className="input min-h-20" />
-            <input type="hidden" name="latitude" value={selectedAddress?.latitude??""}/><input type="hidden" name="longitude" value={selectedAddress?.longitude??""}/>
             <div className="space-y-2 pt-1">
               <b className="text-xs text-slate-600">روش پرداخت</b>
-              {([["gateway", "پرداخت آنلاین — درگاه زرین‌پال", "همه کارت‌های عضو شتاب"], ["manual", "کارت به کارت / حواله بانکی", "ثبت فیش پس از ثبت سفارش؛ پردازش پس از تأیید مالی"]] as const).map(([k, l, d]) => (
+              {([["gateway", `پرداخت آنلاین — درگاه ${paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}`, "همه کارت‌های عضو شتاب"], ["manual", "کارت به کارت / حواله بانکی", "ثبت فیش پس از ثبت سفارش؛ پردازش پس از تأیید مالی"]] as const).map(([k, l, d]) => (
                 <label key={k} className={`flex cursor-pointer items-start gap-2 rounded-xl border p-2.5 text-sm ${payMethod === k ? "border-emerald-500 bg-emerald-50" : "border-slate-200"}`}>
                   <input type="radio" className="mt-1" checked={payMethod === k} onChange={() => setPayMethod(k)} /><span><b>{l}</b><div className="text-[11px] text-slate-500">{d}</div></span>
                 </label>
               ))}
             </div>
             {quote && !quote.valid && <div className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">برخی اقلام سبد قابل خرید نیستند؛ آن‌ها را اصلاح یا حذف کنید.</div>}
-            <button disabled={placing || loading || !quote?.valid} className="btn-primary w-full">{placing && <Loader2 className="h-4 w-4 animate-spin" />}{payMethod === "gateway" ? "ثبت سفارش و پرداخت" : "ثبت سفارش"}{quote?.valid ? ` — ${quote.finalTotal.toLocaleString("fa-IR")} تومان` : ""}</button>
+            <button disabled={placing || loading || !quote?.valid || !selectedAddress || Boolean(quote?.lines.some(l=>l.ok)&&(!quote.carriers.length||!quote.carriers.some(c=>c.id===carrierId)))} className="btn-primary w-full">{placing && <Loader2 className="h-4 w-4 animate-spin" />}{payMethod === "gateway" ? "ثبت سفارش و پرداخت" : "ثبت سفارش"}{quote?.valid ? ` — ${quote.finalTotal.toLocaleString("fa-IR")} تومان` : ""}</button>
           </form>
         )}
       </aside>
+      {addressModal&&loggedIn&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-3 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="cart-address-title"><div className="max-h-[94vh] w-full max-w-2xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6"><div className="mb-4 flex items-center justify-between"><div><h2 id="cart-address-title" className="text-lg font-extrabold">{addresses.length?"افزودن آدرس جدید":"ثبت آدرس ارسال"}</h2><p className="mt-1 text-xs text-slate-500">پس از ذخیره، همین آدرس برای این سفارش انتخاب می‌شود.</p></div><button type="button" onClick={()=>setAddressModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="بستن"><X className="size-5"/></button></div>{addressError&&<div className="mb-3 rounded-lg bg-rose-50 p-2 text-sm text-rose-700">{addressError}</div>}<form className="grid gap-3 sm:grid-cols-2" onSubmit={async e=>{e.preventDefault();setSavingAddress(true);setAddressError("");const fd=new FormData(e.currentTarget);const values=Object.fromEntries(fd);try{const created=await api<SavedAddress>("/api/customer/addresses","POST",{...values,latitude:String(mapLocation[0]),longitude:String(mapLocation[1]),isDefault:addresses.length===0});setAddresses(old=>[...old,created]);setSelectedAddress(created);setCarrierId(null);setCity(created.city);setCityQ(created.city);setAddressModal(false);toast("آدرس ذخیره و برای سفارش انتخاب شد")}catch(error){setAddressError((error as Error).message)}finally{setSavingAddress(false)}}}><input name="title" className="input" placeholder="عنوان آدرس؛ مثل خانه یا محل کار" defaultValue={addresses.length?"":"خانه"} required/><input name="receiverName" className="input" placeholder="نام تحویل‌گیرنده" defaultValue={defaultName} required/><input name="receiverPhone" className="input" placeholder="موبایل تحویل‌گیرنده" defaultValue={defaultPhone} required/><input name="city" className="input" placeholder="شهر" defaultValue={city} onChange={e=>{setCity(e.target.value);setCityQ(e.target.value)}} required/><input name="postalCode" className="input sm:col-span-2" placeholder="کد پستی"/><textarea name="address" className="input min-h-20 sm:col-span-2" placeholder="نشانی کامل" minLength={8} required/><div className="sm:col-span-2"><div className="mb-2 text-sm font-bold">موقعیت روی نقشه (اختیاری)</div><MapPicker value={mapLocation} onChange={setMapLocation}/><div className="mt-1 text-xs text-slate-400">مختصات: {mapLocation[0].toFixed(5)}، {mapLocation[1].toFixed(5)}</div></div><div className="flex justify-end gap-2 sm:col-span-2"><button type="button" className="btn-ghost" onClick={()=>setAddressModal(false)}>انصراف</button><button disabled={savingAddress} className="btn-primary">{savingAddress&&<Loader2 className="size-4 animate-spin"/>}ذخیره و انتخاب آدرس</button></div></form></div></div>}
     </div>
   );
 }

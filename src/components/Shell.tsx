@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { and, eq, count } from "drizzle-orm";
-import { Leaf } from "lucide-react";
 import { NotificationBell } from "./NotificationBell";
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
@@ -9,6 +8,8 @@ import type { SessionUser } from "@/lib/auth";
 import { ROLES, type Permission } from "@/lib/rbac";
 import { SideNav, type NavItem } from "./SideNav";
 import { LogoutButton } from "./client";
+import { getSettings } from "@/lib/settings";
+import { SiteBrand } from "./SiteBrand";
 
 const ADMIN_NAV: (NavItem & { perm?: Permission | Permission[] })[] = [
   { href: "/admin", label: "داشبورد", icon: "LayoutDashboard" },
@@ -61,7 +62,6 @@ const SELLER_NAV: NavItem[] = [
 const CUSTOMER_NAV: NavItem[] = [
   { href: "/customer", label: "داشبورد", icon: "LayoutDashboard" },
   { href: "/customer/orders", label: "سفارش‌های من", icon: "ShoppingBag" },
-  { href: "/customer/credit", label: "اعتبار خرید", icon: "Wallet" },
   { href: "/customer/wallet", label: "کیف پول و حساب بانکی", icon: "Wallet" },
   { href: "/customer/addresses", label: "آدرس‌های من", icon: "MapPin" },
   { href: "/customer/favorites", label: "علاقه‌مندی‌های من", icon: "Heart" },
@@ -79,12 +79,13 @@ export async function Shell({ user, area, children }: { user: SessionUser; area:
     ? ADMIN_NAV.filter((n) => !n.perm || (Array.isArray(n.perm) ? n.perm.some((p) => user.permissions.includes(p)) : user.permissions.includes(n.perm))).map((n) => ({ href: n.href, label: n.label, icon: n.icon }))
     : area === "seller" ? SELLER_NAV : CUSTOMER_NAV;
   const [{ n }] = await db.select({ n: count() }).from(notifications).where(and(eq(notifications.userId, user.id), eq(notifications.read, false)));
+  const settings = await getSettings();
   const title = area === "admin" ? "پنل مدیریت" : area === "seller" ? "پنل تأمین‌کننده" : "حساب کاربری";
   const side = (
     <div className="flex h-full flex-col">
       <Link href="/" className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 text-white"><Leaf className="h-5 w-5" /></span>
-        <div><div className="font-black text-slate-800">سبزینه</div><div className="text-[11px] text-slate-500">{title}</div></div>
+        <SiteBrand name={settings.siteName} logoMediaId={Number(settings.siteLogoMediaId)} boxClassName="h-9 w-9" />
+        <div><div className="font-black text-slate-800">{settings.siteName}</div><div className="text-[11px] text-slate-500">{title}</div></div>
       </Link>
       <SideNav items={items} />
       <div className="border-t border-slate-100 p-3">

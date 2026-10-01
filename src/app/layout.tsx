@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { Toaster } from "@/components/client";
 import { getSettings } from "@/lib/settings";
 import { siteBase } from "@/lib/seo";
+import { setCurrencyUnit } from "@/lib/util";
+import { CurrencyInitializer } from "@/components/CurrencyInitializer";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +14,9 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#047857" };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const s = await getSettings();
+  setCurrencyUnit(s.currency);
   return (
     <html lang="fa" dir="rtl">
       <head>
@@ -20,8 +24,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" />
       </head>
       <body className="bg-leaf-pattern min-h-screen text-slate-900 antialiased">
-        {children}
-        <Toaster />
+        <CurrencyInitializer currency={s.currency}>{children}<Toaster /></CurrencyInitializer>
       </body>
     </html>
   );

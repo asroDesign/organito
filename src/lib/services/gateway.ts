@@ -14,6 +14,7 @@ export type GatewayTarget = { orderId: number } | { supplyId: number } | { walle
 
 /** Step 1: create an initiated payment and return the selected gateway URL. */
 export async function startGatewayPayment(ctx: Ctx & { userId: number }, target: GatewayTarget, baseUrl: string) {
+  const settings = await getSettings();
   const [u] = await db.select().from(users).where(eq(users.id, ctx.userId));
   let amount = 0, description = "", ref: { orderId?: number; supplyRequestId?: number } = {}, number = "";
   if ("orderId" in target) {
@@ -21,22 +22,22 @@ export async function startGatewayPayment(ctx: Ctx & { userId: number }, target:
     if (!o || o.customerId !== ctx.userId) throw new HttpError(404, "سفارش یافت نشد");
     if (o.status !== "pending_payment") throw new HttpError(400, "این سفارش در وضعیت پرداخت نیست");
     if (o.paymentStatus === "pending_verification") throw new HttpError(400, "فیش پرداخت این سفارش در انتظار تأیید است");
-    amount = o.total; description = `پرداخت سفارش ${o.number} - سبزینه`; ref = { orderId: o.id }; number = o.number;
+    amount = o.total; description = `پرداخت سفارش ${o.number} - ${settings.siteName}`; ref = { orderId: o.id }; number = o.number;
   } else if ("supplyId" in target) {
     const [r] = await db.select().from(supplyRequests).where(eq(supplyRequests.id, target.supplyId));
     if (!r || r.customerId !== ctx.userId) throw new HttpError(404, "درخواست یافت نشد");
     if (r.status !== "payment_pending") throw new HttpError(400, "درخواست در وضعیت پرداخت نیست");
-    amount = r.quotationTotal; description = `پیش‌فاکتور تأمین ${r.number} - سبزینه`; ref = { supplyRequestId: r.id }; number = r.number;
+    amount = r.quotationTotal; description = `پیش‌فاکتور تأمین ${r.number} - ${settings.siteName}`; ref = { supplyRequestId: r.id }; number = r.number;
   } else {
-    amount = target.walletAmount; description = "شارژ کیف پول مشتری - سبزینه"; number = `WALLET-${ctx.userId}`;
+    amount = target.walletAmount; description = `شارژ کیف پول مشتری - ${settings.siteName}`; number = `WALLET-${ctx.userId}`;
   }
   if (amount < 1000) throw new HttpError(400, "حداقل مبلغ پرداخت اینترنتی ۱۰۰۰ تومان است");
   // expire previous unfinished attempts
   const cond = ref.orderId ? eq(payments.orderId, ref.orderId) : ref.supplyRequestId ? eq(payments.supplyRequestId, ref.supplyRequestId) : null;
   if(cond)await db.update(payments).set({ status: "expired" }).where(and(cond, eq(payments.status, "initiated")));
-  const settings = await getSettings();
-  const provider = settings.paymentGateway === "zibal" ? "zibal" : "zarinpal";
-  const mode = provider === "zibal" ? zibalMode() : zpMode();
+  if (settings.paymentGateway !== "zibal" && settings.paymentGateway !== "zarinpal") throw new HttpError(503, "درگاه پرداخت تنظیم‌شده پشتیبانی نمی‌شود");
+  const provider = settings.paymentGateway;
+  const mode = provider === "zibal" ? zibalMode(settings.zibalMerchant) : zpMode();
   const [pay] = await db.insert(payments).values({
     ...ref, amount, method: "gateway", status: "initiated", gateway: provider === "zibal" ? (mode === "sandbox" ? "zibal-sandbox" : "zibal") : mode === "simulator" ? "zarinpal-simulator" : mode === "sandbox" ? "zarinpal-sandbox" : "zarinpal",
     ip: ctx.ip ?? null, userAgent: ctx.ua?.slice(0, 300) ?? null, recordedBy: ctx.userId, idempotencyKey: `${provider === "zibal" ? "zi" : "zp"}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
@@ -44,7 +45,7 @@ export async function startGatewayPayment(ctx: Ctx & { userId: number }, target:
   }).returning();
   try {
     const r = provider === "zibal"
-      ? await zibalRequest({ amountRial: amount * 10, callbackUrl: `${baseUrl}/api/payments/zibal/callback`, description, mobile: u?.phone, orderId: number })
+      ? await zibalRequest({ amountRial: amount * 10, callbackUrl: `${baseUrl}/api/payments/zibal/callback`, description, mobile: u?.phone, orderId: number, merchantId: settings.zibalMerchant })
       : await zpRequest({ amountRial: amount * 10, callbackUrl: `${baseUrl}/api/payments/zarinpal/callback`, description, mobile: u?.phone, email: u?.email ?? undefined, orderId: number });
     await db.update(payments).set({ authority: r.authority }).where(eq(payments.id, pay.id));
     await audit(db, ctx, "payment.gateway_start", ref.orderId ? "order" : ref.supplyRequestId ? "supply_request" : "customer_wallet", ref.orderId ?? ref.supplyRequestId ?? ctx.userId, null, { paymentId: pay.id, amount, mode, provider });
@@ -72,7 +73,8 @@ export async function handleGatewayCallback(authority: string, status: string, s
   }
   let v;
   try {
-    v = provider === "zibal" ? await zibalVerify(authority, pay.amount * 10) : await zpVerify(authority, pay.amount * 10, zpMode() === "simulator" ? simulatedOk : undefined);
+    const settings = await getSettings();
+    v = provider === "zibal" ? await zibalVerify(authority, pay.amount * 10, settings.zibalMerchant) : await zpVerify(authority, pay.amount * 10, zpMode() === "simulator" ? simulatedOk : undefined);
   } catch (e) {
     return { ok: false, paymentId: pay.id, message: `خطا در تأیید تراکنش: ${(e as Error).message}. در صورت کسر وجه، ظرف ۷۲ ساعت بازمی‌گردد یا با پشتیبانی تماس بگیرید.` };
   }

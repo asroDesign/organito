@@ -235,6 +235,7 @@ export const staffRoutes: Route[] = [
     for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) {
       if (!(k in b)) continue;
       const v = typeof def === "number" ? int(b[k], 0, 1_000_000_000) : str(b[k], 1000);
+      if (k === "paymentGateway" && v !== "zarinpal" && v !== "zibal") throw new HttpError(400, "درگاه پرداخت نامعتبر است");
       changes[k] = v;
       await db.insert(settings).values({ key: k, value: v }).onConflictDoUpdate({ target: settings.key, set: { value: v } });
     }
@@ -269,4 +270,3 @@ export const staffRoutes: Route[] = [
     return { ok: true };
   } },
 ];
-

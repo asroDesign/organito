@@ -4,8 +4,11 @@ export class HttpError extends Error {
   }
 }
 
+let activeCurrencyUnit = "تومان";
+export function setCurrencyUnit(value: string) { activeCurrencyUnit = value.trim() || "تومان"; }
+export function currencyUnit() { return activeCurrencyUnit; }
 export function toman(n: number | null | undefined) {
-  return `${Number(n ?? 0).toLocaleString("fa-IR")} تومان`;
+  return Number(n ?? 0).toLocaleString("fa-IR") + " " + activeCurrencyUnit;
 }
 
 export function faNum(n: number | string | null | undefined) {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Leaf, Smartphone, KeyRound, ArrowRight, ShieldCheck, Pencil } from "lucide-react";
 import { api } from "./client";
+import { SiteBrand } from "./SiteBrand";
 
 const DEMO: [string, string][] = [
   ["مدیر کل", "09120000001"], ["مدیر مارکت‌پلیس", "09120000002"], ["مدیر خرید و تأمین", "09120000003"], ["مدیر انبار", "09120000004"],
@@ -12,7 +13,7 @@ const DEMO: [string, string][] = [
 ];
 const toEn = (s: string) => s.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
 
-export function LoginForm() {
+export function LoginForm({ siteName, siteLogoMediaId = 0 }: { siteName: string; siteLogoMediaId?: number }) {
   const router = useRouter();
   const [mode, setMode] = useState<"otp" | "password">("otp");
   const [step, setStep] = useState<"phone" | "code">("phone");
@@ -69,7 +70,7 @@ export function LoginForm() {
   return (
     <div className="grid w-full max-w-5xl overflow-hidden rounded-[2.5rem] bg-white shadow-2xl md:grid-cols-[1.1fr_1fr]">
       <div className="p-8 md:p-10">
-        <Link href="/" className="mb-8 flex items-center gap-2"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-lime-400 to-emerald-700 text-white"><Leaf className="h-5 w-5" /></span><b className="text-2xl font-black text-emerald-950">سبزینه</b></Link>
+        <Link href="/" className="mb-8 flex items-center gap-2"><SiteBrand name={siteName} logoMediaId={siteLogoMediaId}/><b className="text-2xl font-black text-emerald-950">{siteName}</b></Link>
         {mode === "otp" ? (
           step === "phone" ? (
             <form onSubmit={request} className="space-y-5">
@@ -77,7 +78,7 @@ export function LoginForm() {
               <div className="relative"><Smartphone className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-emerald-600" /><input value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoFocus required placeholder="09xxxxxxxxx" dir="ltr" className="input !h-14 !rounded-2xl !pr-12 text-center text-lg tracking-widest" /></div>
               {err && <div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{err}</div>}
               <button disabled={busy} className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-emerald-600 to-emerald-700 font-black text-white shadow-lg shadow-emerald-600/30">{busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5 rotate-180" />}دریافت کد تأیید</button>
-              <p className="text-center text-[11px] leading-6 text-slate-400">ورود شما به معنای پذیرش <Link href="/faq" className="underline">شرایط و قوانین</Link> سبزینه است.</p>
+              <p className="text-center text-[11px] leading-6 text-slate-400">ورود شما به معنای پذیرش <Link href="/faq" className="underline">شرایط و قوانین</Link> {siteName} است.</p>
             </form>
           ) : (
             <form onSubmit={verify} className="space-y-5">
@@ -93,7 +94,7 @@ export function LoginForm() {
               </div>
               {info?.isNew && (
                 <div className="space-y-3 rounded-2xl bg-[#faf7ef] p-4">
-                  <b className="text-sm text-emerald-950">به سبزینه خوش آمدید! 🌿</b>
+                  <b className="text-sm text-emerald-950">به {siteName} خوش آمدید! 🌿</b>
                   <input value={name} onChange={(e) => setName(e.target.value)} placeholder="نام و نام خانوادگی" className="input" />
                   {info.canSellerSignup && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={asSeller} onChange={(e) => setAsSeller(e.target.checked)} />ثبت‌نام به‌عنوان تولیدکننده / فروشنده</label>}
                   {asSeller && <div className="grid grid-cols-2 gap-2"><input value={shop.shopName} onChange={(e) => setShop({ ...shop, shopName: e.target.value })} placeholder="نام فروشگاه / مزرعه" className="input" /><input value={shop.city} onChange={(e) => setShop({ ...shop, city: e.target.value })} placeholder="شهر" className="input" /></div>}

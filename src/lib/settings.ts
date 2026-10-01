@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { settings } from "@/db/schema";
 import type { DB } from "./types";
+import { setCurrencyUnit } from "./util";
 
 export const DEFAULT_SETTINGS = {
   siteName: "سبزینه",
@@ -17,11 +18,13 @@ export const DEFAULT_SETTINGS = {
   blogSeoKeywords: "مجله سلامت، تغذیه سالم، محصولات ارگانیک، سبک زندگی سالم",
   defaultOgImageId: 0,
   currency: "تومان",
+  siteLogoMediaId: 0,
   taxRate: 10,
   defaultCommission: 8,
   minWithdrawal: 500000,
   releasePolicy: "on_customer_confirm",
   paymentGateway: "zarinpal",
+  zibalMerchant: "",
   watermarkEnabled: 0,
   watermarkText: "سبزینه",
   watermarkImageId: 0,
@@ -71,5 +74,6 @@ export async function getSettings(tx: DB = db): Promise<SettingsShape> {
   const rows = await tx.select().from(settings);
   const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
   for (const r of rows) out[r.key] = r.value;
+  setCurrencyUnit(String(out.currency ?? DEFAULT_SETTINGS.currency));
   return out as SettingsShape;
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ShoppingBag, Zap, Minus, Plus, Star, Truck, RotateCcw, ShieldCheck, Clock, ChevronDown, Store, Check, Flame, PackageSearch } from "lucide-react";
 import { addToCart } from "./client";
 import { Countdown } from "./Countdown";
+import { currencyUnit } from "@/lib/util";
 
 export type OfferView = { id: number; sellerId: number; shopName: string; rating: number; city: string; price: number; listPrice: number; available: number; shippingCost: number; prepDays: number; warranty: string | null; isBuyBox: boolean; condition: string };
 export type VariantView = { id: number; title: string; attrs: Record<string, string>; price: number; available: number };
@@ -62,7 +63,7 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
     <div className="flex items-end justify-between gap-2">
       <div>
         {strike > 0 && <div className="flex items-center gap-2"><s className="text-sm text-slate-400">{fa(strike)}</s><span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-black text-white">{fa(off)}٪</span></div>}
-        <div className={`${big ? "text-3xl" : "text-2xl"} font-black tracking-tight text-emerald-950`}>{cur ? fa(final) : "—"} <span className="text-sm font-medium text-slate-500">تومان</span></div>
+        <div className={`${big ? "text-3xl" : "text-2xl"} font-black tracking-tight text-emerald-950`}>{cur ? fa(final) : "—"} <span className="text-sm font-medium text-slate-500">{currencyUnit()}</span></div>
       </div>
       {cur?.variant && <span className="rounded-xl bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-200">{cur.variant.title}</span>}
     </div>
@@ -108,7 +109,7 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
             <div className="grid grid-cols-2 gap-2">
               {variantChoices.map((c) => (
                 <button key={c.key} type="button" onClick={() => setKey(c.key)} className={`rounded-2xl border-2 p-2.5 text-right text-xs transition ${key === c.key ? "border-emerald-600 bg-emerald-50" : "border-slate-200 hover:border-emerald-300"} ${c.available <= 0 ? "opacity-50" : ""}`}>
-                  <b className="block text-slate-900">{c.variant?.title}</b><span className="font-black text-emerald-800">{fa(fp(c.price))}</span> <span className="text-slate-400">تومان</span>
+                  <b className="block text-slate-900">{c.variant?.title}</b><span className="font-black text-emerald-800">{fa(fp(c.price))}</span> <span className="text-slate-400">{currencyUnit()}</span>
                 </button>
               ))}
             </div>
@@ -123,7 +124,7 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
             </div>
             {multiVendor && sellers.length > 1 && (
               <button type="button" onClick={() => setShowSellers(!showSellers)} className="mt-3 flex w-full items-center justify-between rounded-xl bg-white px-3 py-2 text-xs font-bold text-emerald-800 ring-1 ring-emerald-900/10">
-                <span>{fa(sellers.length - 1)} فروشنده دیگر — از {fa(fp(Math.min(...sellers.map((x) => x.price))))} تومان</span><ChevronDown className={`h-4 w-4 transition ${showSellers ? "rotate-180" : ""}`} />
+                <span>{fa(sellers.length - 1)} فروشنده دیگر — از {fa(fp(Math.min(...sellers.map((x) => x.price))))} {currencyUnit()}</span><ChevronDown className={`h-4 w-4 transition ${showSellers ? "rotate-180" : ""}`} />
               </button>
             )}
             {multiVendor && showSellers && (
@@ -153,7 +154,7 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
               </div>
               <button type="button" onClick={() => add(false)} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-gradient-to-l from-emerald-600 to-emerald-700 py-3.5 font-black text-white shadow-lg shadow-emerald-600/30 transition hover:from-emerald-700 hover:to-emerald-800"><ShoppingBag className="h-5 w-5" />افزودن به سبد</button>
             </div>
-            <button type="button" onClick={() => add(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-lime-400 py-3 font-black text-emerald-950 transition hover:bg-lime-300"><Zap className="h-4 w-4" />خرید فوری — {fa(final * qty)} تومان</button>
+            <button type="button" onClick={() => add(true)} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-lime-400 py-3 font-black text-emerald-950 transition hover:bg-lime-300"><Zap className="h-4 w-4" />خرید فوری — {fa(final * qty)} {currencyUnit()}</button>
           </div>
         ) : (
           <div className="space-y-2 rounded-2xl bg-slate-50 p-4 text-center">
@@ -165,7 +166,7 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
         {!compact && (
           <div className="grid grid-cols-2 gap-2 border-t border-slate-100 pt-4 text-[11px] text-slate-600">
             <span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-emerald-600" />آماده‌سازی {fa(cur?.prep ?? 1)} روز کاری</span>
-            <span className="flex items-center gap-1.5"><Truck className="h-4 w-4 text-emerald-600" />{cur?.ship ? `ارسال ${fa(cur.ship)} تومان` : `ارسال رایگان بالای ${fa(freeShippingOver / 1000000)} میلیون`}</span>
+            <span className="flex items-center gap-1.5"><Truck className="h-4 w-4 text-emerald-600" />{cur?.ship ? `ارسال ${fa(cur.ship)} ${currencyUnit()}` : `ارسال رایگان بالای ${fa(freeShippingOver / 1000000)} میلیون`}</span>
             <span className="flex items-center gap-1.5"><RotateCcw className="h-4 w-4 text-emerald-600" />{fa(returnDays)} روز ضمانت بازگشت</span>
             <span className="flex items-center gap-1.5"><ShieldCheck className="h-4 w-4 text-emerald-600" />{cur?.warranty ?? "ضمانت اصالت"}</span>
           </div>
@@ -174,7 +175,7 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
 
       {!compact && canBuy && (
         <div className="fixed inset-x-0 bottom-0 z-40 flex items-center gap-3 border-t border-emerald-900/10 bg-white/95 px-4 py-3 shadow-2xl backdrop-blur lg:hidden">
-          <div className="min-w-0 flex-1">{strike > 0 && <s className="text-[11px] text-slate-400">{fa(strike)}</s>}<div className="font-black text-emerald-950">{fa(final)} <span className="text-[11px] font-normal">تومان</span></div></div>
+          <div className="min-w-0 flex-1">{strike > 0 && <s className="text-[11px] text-slate-400">{fa(strike)}</s>}<div className="font-black text-emerald-950">{fa(final)} <span className="text-[11px] font-normal">{currencyUnit()}</span></div></div>
           <button type="button" onClick={() => add(false)} className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black text-white"><ShoppingBag className="h-4 w-4" />افزودن به سبد</button>
         </div>
       )}

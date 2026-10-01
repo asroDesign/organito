@@ -6,10 +6,12 @@ import { requirePage } from "@/lib/auth";
 import { Card, KV, PageHeader, StatusBadge } from "@/components/ui";
 import { ActionButton } from "@/components/client";
 import { GatewayPayButton } from "@/components/GatewayPayButton";
+import { getSettings } from "@/lib/settings";
 import { SUPPLY_STATUS, faNum, jdate, toman } from "@/lib/util";
 
 export default async function CustomerSupplyDetail({ params }: { params: Promise<{ id: string }> }) {
   const u = await requirePage();
+  const settings = await getSettings();
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
   const [r] = await db.select().from(supplyRequests).where(and(eq(supplyRequests.id, id), eq(supplyRequests.customerId, u.id)));
@@ -21,7 +23,7 @@ export default async function CustomerSupplyDetail({ params }: { params: Promise
       <PageHeader title={`درخواست تأمین ${r.number}`} subtitle={jdate(r.createdAt, true)} actions={<>
         <StatusBadge status={r.status} map={SUPPLY_STATUS} />
         {r.status === "quotation_sent" && <ActionButton url={`/api/supply/${r.id}/customer`} data={{ action: "approve" }} className="btn-success">تأیید پیش‌فاکتور</ActionButton>}
-        {r.status === "payment_pending" && <GatewayPayButton url={`/api/supply/${r.id}/gateway`} amount={r.quotationTotal} />}
+        {r.status === "payment_pending" && <GatewayPayButton url={`/api/supply/${r.id}/gateway`} amount={r.quotationTotal} label={`پرداخت آنلاین با ${settings.paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}`} />}
         {["pending", "reviewing", "quotation_sent", "payment_pending", "supplier_search", "rfq_sent", "supplier_found", "price_calculated", "internal_match_found"].includes(r.status) && <ActionButton url={`/api/supply/${r.id}/customer`} data={{ action: "cancel" }} className="btn-ghost" confirm="لغو درخواست؟">لغو</ActionButton>}
       </>} />
       <div className="grid gap-6 lg:grid-cols-3">

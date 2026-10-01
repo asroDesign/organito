@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeCheck, ChevronDown, Flame, Headphones, LayoutDashboard, Leaf, Menu, PackageSearch, RotateCcw, ShoppingCart, Truck, User } from "lucide-react";
+import { BadgeCheck, ChevronDown, Flame, Headphones, LayoutDashboard, Menu, PackageSearch, RotateCcw, ShoppingCart, Truck, User } from "lucide-react";
 import { getUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { LiveSearch } from "./LiveSearch";
@@ -7,6 +7,8 @@ import { activeFestivals } from "@/lib/marketing";
 import { categoriesWithCounts } from "@/lib/queries";
 import { CartCount } from "./client";
 import { Countdown } from "./Countdown";
+import { currencyUnit } from "@/lib/util";
+import { SiteBrand } from "./SiteBrand";
 
 export async function SiteHeader() {
   const [u, fests, cats, st] = await Promise.all([getUser(), activeFestivals(), categoriesWithCounts(), getSettings()]);
@@ -21,7 +23,7 @@ export async function SiteHeader() {
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2">
           <div className="flex items-center gap-5">
             <span className="flex items-center gap-1.5"><BadgeCheck className="h-3.5 w-3.5 text-lime-300" />تضمین ارگانیک بودن محصولات</span>
-            <span className="flex items-center gap-1.5"><Truck className="h-3.5 w-3.5 text-lime-300" />ارسال رایگان خرید بالای {(st.freeShippingOver / 1000000).toLocaleString("fa-IR")} میلیون تومان</span>
+            <span className="flex items-center gap-1.5"><Truck className="h-3.5 w-3.5 text-lime-300" />ارسال رایگان خرید بالای {(st.freeShippingOver / 1000000).toLocaleString("fa-IR")} میلیون {currencyUnit()}</span>
             <span className="flex items-center gap-1.5"><RotateCcw className="h-3.5 w-3.5 text-lime-300" />{st.returnDays.toLocaleString("fa-IR")} روز مهلت بازگشت با تست آزمایشگاه</span>
           </div>
           <span className="flex items-center gap-1.5"><Headphones className="h-3.5 w-3.5 text-lime-300" />پشتیبانی <b dir="ltr">{st.supportPhone}</b> · {st.supportHours}</span>
@@ -38,8 +40,8 @@ export async function SiteHeader() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
           <Link href="/" className="flex shrink-0 items-center gap-2">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-lime-400 to-emerald-700 text-white shadow-lg shadow-lime-200"><Leaf className="h-5 w-5" /></span>
-            <span className="hidden leading-tight sm:block"><b className="block text-xl font-black text-slate-900">سبزینه</b><span className="text-[10px] text-slate-500">مارکت‌پلیس ارگانیک</span></span>
+            <SiteBrand name={st.siteName} logoMediaId={Number(st.siteLogoMediaId)} />
+            <span className="hidden leading-tight sm:block"><b className="block text-xl font-black text-slate-900">{st.siteName}</b><span className="text-[10px] text-slate-500">{st.siteTagline}</span></span>
           </Link>
           <div className="hidden flex-1 md:block"><LiveSearch popular={popular} /></div>
           <nav className="mr-auto flex items-center gap-1 md:mr-0">
@@ -71,7 +73,7 @@ export async function SiteHeader() {
             <Link href="/shop?sort=discount" className="flex items-center gap-1 rounded-lg px-3 py-3 font-medium text-rose-600 hover:bg-rose-50"><Flame className="h-4 w-4" />تخفیف‌ها و جشنواره</Link>
             <Link href="/shop?sort=best" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">پرفروش‌ترین‌ها</Link>
             <Link href="/shop?sort=new" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">جدیدترین‌ها</Link>
-            <Link href="/blog" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">مجله سبزینه</Link>
+            <Link href="/blog" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">مجله {st.siteName}</Link>
             <Link href="/customer/supply" className="flex items-center gap-1 rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700"><PackageSearch className="h-4 w-4" />سفارش ویژه</Link>
             {mv && !!st.allowSellerSignup && <Link href="/login?seller=1" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">تولیدکننده شوید</Link>}
             <Link href="/contact" className="mr-auto flex items-center gap-1 py-3 text-xs text-slate-500"><Headphones className="h-4 w-4" />پشتیبانی <span dir="ltr">021-91000000</span></Link>
