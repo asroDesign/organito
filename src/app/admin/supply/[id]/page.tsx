@@ -7,6 +7,7 @@ import { requirePage } from "@/lib/auth";
 import { Card, KV, PageHeader, StatusBadge, Table, Td } from "@/components/ui";
 import { ActionButton } from "@/components/client";
 import { SupplyAdvance } from "@/components/SupplyAdvance";
+import { SupplyCalculate } from "@/components/SupplyCalculate";
 import { SUPPLY_STATUS, faNum, jdate, toman } from "@/lib/util";
 import { SUPPLY_FLOW } from "@/lib/services/supply";
 
@@ -24,6 +25,8 @@ export default async function AdminSupplyDetail({ params }: { params: Promise<{ 
   const next = SUPPLY_FLOW[r.status] ?? [];
   const A = (action: string, label: string, cls = "btn-sm", data: Record<string, unknown> = {}) => <ActionButton url={`/api/admin/supply/${id}`} data={{ action, ...data }} className={cls}>{label}</ActionButton>;
   const sub = r.unitSalePrice * r.qty;
+  const selectedQuote = quotes.find(({q}) => q.id === r.selectedQuoteId)?.q;
+  const localInputDate = (value: Date | null) => { const d=value??new Date(Date.now()+7*86400000); return new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tehran",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(d).replace(" ","T"); };
   return (
     <>
       <PageHeader title={`درخواست ${r.number}`} subtitle={`${cust?.name} · ${jdate(r.createdAt, true)}`} actions={<StatusBadge status={r.status} map={SUPPLY_STATUS} />} />
@@ -33,7 +36,7 @@ export default async function AdminSupplyDetail({ params }: { params: Promise<{ 
             {r.status === "pending" && A("review", "۱. شروع بررسی", "btn-primary")}
             {r.status === "reviewing" && A("search", "۲-۳. جست‌وجوی کاتالوگ و نام‌های دیگر", "btn-primary")}
             {["supplier_search", "internal_match_found", "supplier_found"].includes(r.status) && A("rfq", "۴. ارسال RFQ به تأمین‌کنندگان", "btn-primary")}
-            {next.includes("price_calculated") && <ActionButton url={`/api/admin/supply/${id}`} data={{ action: "calculate" }} prompt="درصد حاشیه سود:" promptKey="margin" className="btn-primary">۸. محاسبه قیمت فروش</ActionButton>}
+            {next.includes("price_calculated") && <SupplyCalculate id={id} margin={r.marginPercent} validUntil={localInputDate(selectedQuote?.validUntil??null)} />}
             {r.status === "price_calculated" && A("send_quotation", "۹. صدور پیش‌فاکتور", "btn-success")}
             {next.includes("rejected") && <ActionButton url={`/api/admin/supply/${id}`} data={{ action: "reject" }} prompt="دلیل:" className="btn-danger">رد درخواست</ActionButton>}
             {r.assigneeId !== u.id && A("assign", "ارجاع به من", "btn-ghost", { assigneeId: u.id })}
@@ -50,6 +53,7 @@ export default async function AdminSupplyDetail({ params }: { params: Promise<{ 
           {match && <div className="mt-3 rounded-xl bg-violet-50 p-3 text-sm">تطابق داخلی: <Link href={`/admin/products/${match.id}`} className="font-bold text-violet-700">{match.nameFa}</Link> — موجودی {faNum(match.onHand - match.reserved)}</div>}
         </Card>
         <Card title="پیش‌فاکتور">
+          <KV k="اعتبار تا" v={r.quotationExpiresAt ? jdate(r.quotationExpiresAt,true) : "تعیین نشده"} />
           <KV k="حاشیه سود" v={`${faNum(r.marginPercent)}٪`} /><KV k="قیمت واحد فروش" v={toman(r.unitSalePrice)} /><KV k="جمع" v={toman(sub)} />
           <KV k="ارسال" v={toman(r.shippingCost)} /><KV k="مالیات" v={toman(r.quotationTotal ? r.quotationTotal - sub - r.shippingCost : 0)} />
           <div className="mt-2 flex justify-between border-t pt-2 font-extrabold"><span>جمع کل</span><span>{toman(r.quotationTotal)}</span></div>
@@ -60,8 +64,8 @@ export default async function AdminSupplyDetail({ params }: { params: Promise<{ 
         </Card>
       </div>
       <h2 className="mb-3 mt-8 text-lg font-extrabold">۵-۷. مقایسه پیشنهادهای تأمین‌کنندگان (RFQ)</h2>
-      <Table head={["تأمین‌کننده", "قیمت", "موجودی", "Lead Time", "برند", "توضیح", "وضعیت", ""]} empty={!quotes.length}>
-        {quotes.sort((a, b) => (a.q.price || 1e15) - (b.q.price || 1e15)).map(({ q, s }) => <tr key={q.id} className={q.id === r.selectedQuoteId ? "bg-emerald-50" : ""}><Td>{s.shopName}</Td><Td>{q.price ? toman(q.price) : "—"}</Td><Td>{faNum(q.stock)}</Td><Td>{faNum(q.leadDays)} روز</Td><Td>{q.brand ?? "—"}</Td><Td>{q.note ?? "—"}</Td>
+      <Table head={["تأمین‌کننده", "قیمت", "موجودی", "Lead Time", "اعتبار پیشنهاد", "برند", "توضیح", "وضعیت", ""]} empty={!quotes.length}>
+        {quotes.sort((a, b) => (a.q.price || 1e15) - (b.q.price || 1e15)).map(({ q, s }) => <tr key={q.id} className={q.id === r.selectedQuoteId ? "bg-emerald-50" : ""}><Td>{s.shopName}</Td><Td>{q.price ? toman(q.price) : "—"}</Td><Td>{faNum(q.stock)}</Td><Td>{faNum(q.leadDays)} روز</Td><Td>{q.validUntil ? jdate(q.validUntil,true) : "—"}</Td><Td>{q.brand ?? "—"}</Td><Td>{q.note ?? "—"}</Td>
           <Td><StatusBadge status={q.status} map={{ requested: "درخواست‌شده", quoted: "پاسخ داده", selected: "انتخاب‌شده", rejected: "رد" }} /></Td>
           <Td>{can && q.status === "quoted" && ["supplier_found", "price_calculated", "quotation_sent"].includes(r.status) && A("select_quote", "انتخاب", "btn-success", { quoteId: q.id })}</Td></tr>)}
       </Table>

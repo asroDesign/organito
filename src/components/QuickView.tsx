@@ -11,7 +11,7 @@ export type { OfferView };
 type Data = {
   product: {
     id: number; slug: string; nameFa: string; nameEn: string | null; sku: string; partNumber: string; brand: string; country: string | null; authenticity: string; category: string | null;
-    shortDesc: string | null; specs: { k: string; v: string }[]; basePrice: number; source: string; available: number; status: string; options: { name: string; values: string[] }[];
+    shortDesc: string | null; specs: { k: string; v: string }[]; basePrice: number; source: string; available: number; status: string; allowBackorder: boolean; options: { name: string; values: string[] }[];
     purchaseOptions: { name: string; type: "text" | "select" | "checkbox" | "radio"; required: boolean; values: { label: string; price: number; priceType: "fixed" | "percent" }[] }[]; organicInfo: { origin?: string; harvest?: string; method?: string; certificate?: string; suitableFor?: string[] }; videoMediaId: number | null; compareAtPrice: number;
   };
   festival: { title: string; pct: number; color: string; endsAt: string } | null;
@@ -71,7 +71,7 @@ function QuickViewModal({ id, onClose }: { id: number; onClose: () => void }) {
               <Link href={`/products/${p.slug}`} onClick={onClose} className="inline-flex items-center gap-1 text-sm font-bold text-emerald-700 hover:gap-2 transition-all">مشاهده جزئیات کامل، دیدگاه‌ها و پرسش‌ها<ArrowLeft className="h-4 w-4" /></Link>
             </div>
             <div className="md:col-span-2 lg:col-span-1">
-              <BuyBox compact onAdded={onClose} product={{ id: p.id, nameFa: p.nameFa, basePrice: p.basePrice, source: p.source, available: p.available, active: p.status === "active", partNumber: p.partNumber }}
+              <BuyBox compact onAdded={onClose} product={{ id: p.id, nameFa: p.nameFa, basePrice: p.basePrice, source: p.source, available: p.available, active: p.status === "active" || (p.status === "out_of_stock" && p.allowBackorder), allowBackorder: p.allowBackorder, partNumber: p.partNumber }}
                 options={p.options} purchaseOptions={p.purchaseOptions ?? []} variants={data.variants} offers={data.offers} festival={data.festival} compareAt={p.compareAtPrice}
                 multiVendor={data.store.multiVendor} siteName={data.store.siteName} freeShippingOver={data.store.freeShippingOver} returnDays={data.store.returnDays} />
             </div>

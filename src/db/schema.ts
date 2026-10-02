@@ -16,6 +16,10 @@ export const users = pgTable("users", {
   role: text("role").notNull().default("customer"),
   roleId: integer("role_id"),
   birthdate: timestamp("birthdate", { withTimezone: true }),
+  nationalId: text("national_id"),
+  companyName: text("company_name"),
+  companyNationalId: text("company_national_id"),
+  companyManager: text("company_manager"),
   bankInfo: jsonb("bank_info").$type<{ cardNumber?: string; iban?: string; accountHolder?: string; bankName?: string }>(),
   referralCode: text("referral_code"),
   referredById: integer("referred_by_id"),
@@ -106,6 +110,9 @@ export const referralAwards = pgTable("referral_awards", {
   id: serial("id").primaryKey(), orderId: integer("order_id").notNull().unique(), referrerId: integer("referrer_id").notNull(),
   buyerId: integer("buyer_id").notNull(), points: integer("points").notNull(), createdAt: created(),
 });
+export const loyaltyPointEntries = pgTable("loyalty_point_entries", {
+  id: serial("id").primaryKey(), userId: integer("user_id").notNull(), kind: text("kind").notNull(), points: integer("points").notNull(), amount: money("amount"), orderId: integer("order_id"), reference: text("reference").notNull().unique(), description: text("description").notNull(), createdAt: created(),
+}, (t) => [index("loyalty_point_user_created").on(t.userId, t.createdAt), index("loyalty_point_kind_created").on(t.kind, t.createdAt)]);
 export const customerWalletWithdrawals = pgTable("customer_wallet_withdrawals", {
   id: serial("id").primaryKey(), userId: integer("user_id").notNull(), amount: money("amount"), bankInfo: jsonb("bank_info").$type<Record<string, string>>().notNull(),
   status: text("status").notNull().default("pending"), note: text("note"), adminNote: text("admin_note"), createdAt: created(), processedAt: timestamp("processed_at", { withTimezone: true }),
@@ -258,6 +265,8 @@ export const products = pgTable("products", {
   onHand: integer("on_hand").notNull().default(0),
   reserved: integer("reserved").notNull().default(0),
   lowStockThreshold: integer("low_stock_threshold").notNull().default(3),
+  allowBackorder: boolean("allow_backorder").notNull().default(false),
+  inventoryBaseUnit: text("inventory_base_unit").notNull().default("عدد"),
   options: jsonb("options").$type<ProductOption[]>().notNull().default([]),
   organicInfo: jsonb("organic_info").$type<OrganicInfo>().notNull().default({}),
   videoMediaId: integer("video_media_id"),
@@ -281,10 +290,14 @@ export const productVariants = pgTable("product_variants", {
   sku: text("sku").notNull(),
   price: money("price"),
   costPrice: money("cost_price"),
+  inventoryUnit: text("inventory_unit").notNull().default("عدد"),
+  baseUnitAmount: integer("base_unit_amount").notNull().default(1),
   compareAtPrice: money("compare_at_price"),
+  rewardPoints: integer("reward_points").notNull().default(0),
   onHand: integer("on_hand").notNull().default(0),
   reserved: integer("reserved").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  isSellable: boolean("is_sellable").notNull().default(true),
 });
 
 export const sellerOffers = pgTable("seller_offers", {
@@ -368,6 +381,18 @@ export const stockMovements = pgTable("stock_movements", {
   createdAt: created(),
 });
 
+export const inventoryRepackJobs = pgTable("inventory_repack_jobs", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull(),
+  sourceVariantId: integer("source_variant_id").notNull(),
+  targetVariantId: integer("target_variant_id").notNull(),
+  inputQty: integer("input_qty").notNull(),
+  outputQty: integer("output_qty").notNull(),
+  note: text("note"),
+  userId: integer("user_id"),
+  createdAt: created(),
+}, (t) => [index("inventory_repack_product_created").on(t.productId, t.createdAt)]);
+
 export type Address = { fullName: string; phone: string; city: string; address: string; postalCode: string; latitude?: string; longitude?: string };
 
 export const orders = pgTable("orders", {
@@ -391,6 +416,8 @@ export const orders = pgTable("orders", {
   discountCodeId: integer("discount_code_id"),
   discountCode: text("discount_code"),
   carrierId: integer("carrier_id"),
+  officialInvoiceType: text("official_invoice_type"),
+  officialInvoiceDetails: jsonb("official_invoice_details").$type<Record<string, string> | null>(),
   idempotencyKey: text("idempotency_key").unique(),
   paymentEntryId: integer("payment_entry_id"),
   customerConfirmedAt: timestamp("customer_confirmed_at", { withTimezone: true }),
@@ -510,6 +537,7 @@ export const supplyRequests = pgTable("supply_requests", {
   unitSalePrice: money("unit_sale_price"),
   shippingCost: money("shipping_cost"),
   quotationTotal: money("quotation_total"),
+  quotationExpiresAt: timestamp("quotation_expires_at", { withTimezone: true }),
   carrier: text("carrier"),
   trackingNumber: text("tracking_number"),
   createdAt: created(),
@@ -525,6 +553,7 @@ export const supplyQuotes = pgTable("supply_quotes", {
   leadDays: integer("lead_days").notNull().default(0),
   brand: text("brand"),
   note: text("note"),
+  validUntil: timestamp("valid_until", { withTimezone: true }),
   status: text("status").notNull().default("requested"),
   createdAt: created(),
 });

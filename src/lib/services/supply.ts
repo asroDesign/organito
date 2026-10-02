@@ -26,6 +26,13 @@ export const SUPPLY_FLOW: Record<string, string[]> = {
   shipped: ["completed"],
 };
 
+function parseTehranDate(value?: string | null) {
+  if (!value) return null;
+  const raw = value.trim();
+  const date = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(raw) ? new Date(`${raw}:00+03:30`) : new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 async function move(tx: DB, ctx: Ctx, id: number, from: string, to: string, note: string, extra: Partial<typeof supplyRequests.$inferInsert> = {}) {
   if (from !== to && !(SUPPLY_FLOW[from] ?? []).includes(to)) throw new HttpError(400, `انتقال از «${from}» به «${to}» مجاز نیست`);
   await tx.update(supplyRequests).set({ ...extra, status: to, updatedAt: new Date() }).where(eq(supplyRequests.id, id));
@@ -35,7 +42,7 @@ async function move(tx: DB, ctx: Ctx, id: number, from: string, to: string, note
 
 export type SupplyAction =
   | { action: "review" } | { action: "search" } | { action: "rfq"; sellerIds?: number[] } | { action: "select_quote"; quoteId: number }
-  | { action: "calculate"; margin: number } | { action: "send_quotation" } | { action: "assign"; assigneeId: number }
+  | { action: "calculate"; margin: number; validUntil?: string } | { action: "send_quotation" } | { action: "assign"; assigneeId: number }
   | { action: "advance"; to: string; note?: string; carrier?: string; trackingNumber?: string } | { action: "reject"; note?: string };
 
 export async function staffSupplyAction(ctx: Ctx & { userId: number }, id: number, a: SupplyAction) {
@@ -98,12 +105,19 @@ export async function staffSupplyAction(ctx: Ctx & { userId: number }, id: numbe
         const sub = unit * r.qty;
         const tax = Math.round((sub * s.taxRate) / 100);
         const total = sub + tax + s.supplyShippingCost;
-        await move(tx, ctx, id, r.status, "price_calculated", `بهای تمام‌شده ${cost} + حاشیه ${margin}%`, { marginPercent: margin, unitSalePrice: unit, shippingCost: s.supplyShippingCost, quotationTotal: total });
+        const selected = r.selectedQuoteId ? (await tx.select({validUntil:supplyQuotes.validUntil}).from(supplyQuotes).where(eq(supplyQuotes.id,r.selectedQuoteId)))[0] : null;
+        const submittedExpiry = parseTehranDate(a.validUntil);
+        if (a.validUntil && !submittedExpiry) throw new HttpError(400, "تاریخ اعتبار پیش‌فاکتور نامعتبر است");
+        const validUntil = submittedExpiry ?? selected?.validUntil ?? new Date(Date.now() + 7 * 86400000);
+        if (Number.isNaN(validUntil.getTime()) || validUntil <= new Date()) throw new HttpError(400, "تاریخ اعتبار پیش‌فاکتور باید در آینده باشد");
+        await move(tx, ctx, id, r.status, "price_calculated", `بهای تمام‌شده ${cost} + حاشیه ${margin}% · اعتبار تا ${validUntil.toLocaleString("fa-IR")}`, { marginPercent: margin, unitSalePrice: unit, shippingCost: s.supplyShippingCost, quotationTotal: total, quotationExpiresAt: validUntil });
         break;
       }
       case "send_quotation":
         if (!r.quotationTotal) throw new HttpError(400, "قیمت محاسبه نشده است");
-        await move(tx, ctx, id, r.status, "quotation_sent", "پیش‌فاکتور برای مشتری صادر شد");
+        if (r.quotationExpiresAt && r.quotationExpiresAt <= new Date()) throw new HttpError(400, "اعتبار پیش‌فاکتور تمام شده است؛ تاریخ جدید ثبت و قیمت را دوباره محاسبه کنید");
+        const expiresAt = r.quotationExpiresAt ?? new Date(Date.now() + 7 * 86400000);
+        await move(tx, ctx, id, r.status, "quotation_sent", `پیش‌فاکتور تا ${expiresAt.toLocaleString("fa-IR")} معتبر است`, {quotationExpiresAt:expiresAt});
         await notify(tx, r.customerId, `پیش‌فاکتور ${r.number} صادر شد`, undefined, `/customer/supply/${id}`);
         if (cust) sms = { event: "quotation_sent", phone: cust.phone, vars: { request: r.number, amount: r.quotationTotal } };
         break;
@@ -161,9 +175,14 @@ export async function customerSupplyAction(ctx: Ctx & { userId: number }, id: nu
     const [r] = await tx.select().from(supplyRequests).where(eq(supplyRequests.id, id)).for("update");
     if (!r || r.customerId !== ctx.userId) throw new HttpError(404, "درخواست یافت نشد");
     if (action === "approve") {
+      if (r.quotationExpiresAt && r.quotationExpiresAt <= new Date()) throw new HttpError(400, "مهلت پیش‌فاکتور تمام شده است؛ برای صدور پیش‌فاکتور جدید با پشتیبانی تماس بگیرید");
       await move(tx, ctx, id, r.status, "customer_approved", "پیش‌فاکتور توسط مشتری تأیید شد");
       await move(tx, ctx, id, "customer_approved", "payment_pending", "در انتظار پرداخت");
     } else if (action === "pay") {
+      if (r.quotationExpiresAt && r.quotationExpiresAt <= new Date()) {
+        const [existing] = existingPaymentId ? await tx.select({createdAt:payments.createdAt}).from(payments).where(and(eq(payments.id,existingPaymentId),eq(payments.supplyRequestId,id))) : [];
+        if (!existing || existing.createdAt > r.quotationExpiresAt) throw new HttpError(400, "مهلت پیش‌فاکتور تمام شده و پرداخت آن امکان‌پذیر نیست");
+      }
       if (!idemKey) throw new HttpError(400, "کلید یکتا الزامی است");
       const [dup] = await tx.select().from(payments).where(eq(payments.idempotencyKey, idemKey));
       if (dup) return;
@@ -185,14 +204,18 @@ export async function customerSupplyAction(ctx: Ctx & { userId: number }, id: nu
   });
 }
 
-export async function sellerQuote(ctx: Ctx & { userId: number }, sellerId: number, quoteId: number, data: { price: number; stock: number; leadDays: number; brand?: string; note?: string }) {
+export async function sellerQuote(ctx: Ctx & { userId: number }, sellerId: number, quoteId: number, data: { price: number; stock: number; leadDays: number; validUntil?: string; brand?: string; note?: string }) {
   await db.transaction(async (tx) => {
     const [q] = await tx.select().from(supplyQuotes).where(eq(supplyQuotes.id, quoteId)).for("update");
     if (!q || q.sellerId !== sellerId) throw new HttpError(404, "RFQ یافت نشد");
     if (!["requested", "quoted"].includes(q.status)) throw new HttpError(400, "RFQ بسته شده است");
     const [r] = await tx.select().from(supplyRequests).where(eq(supplyRequests.id, q.requestId)).for("update");
     if (!["rfq_sent", "supplier_found"].includes(r.status)) throw new HttpError(400, "مهلت پاسخ به RFQ تمام شده است");
-    await tx.update(supplyQuotes).set({ ...data, status: "quoted" }).where(eq(supplyQuotes.id, q.id));
+    const submittedExpiry = parseTehranDate(data.validUntil);
+    if (data.validUntil && !submittedExpiry) throw new HttpError(400, "تاریخ اعتبار پیشنهاد نامعتبر است");
+    const validUntil = submittedExpiry ?? new Date(Date.now() + 7 * 86400000);
+    if (validUntil <= new Date()) throw new HttpError(400, "تاریخ اعتبار پیشنهاد باید در آینده باشد");
+    await tx.update(supplyQuotes).set({ ...data, validUntil, status: "quoted" }).where(eq(supplyQuotes.id, q.id));
     if (r.status === "rfq_sent") await move(tx, ctx, r.id, r.status, "supplier_found", "اولین پیشنهاد تأمین‌کننده دریافت شد");
     if (r.assigneeId) await notify(tx, r.assigneeId, `پیشنهاد جدید برای ${r.number}`, undefined, `/admin/supply/${r.id}`);
     await audit(tx, ctx, "supply.quote", "supply_quote", q.id, null, data);

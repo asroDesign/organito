@@ -1,0 +1,10 @@
+"use client";
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { api, toast } from "./client";
+import { JalaliDateTimePicker } from "./JalaliDateTimePicker";
+export function SupplyCalculate({id,margin,validUntil}:{id:number;margin:number;validUntil:string}){
+ const router=useRouter();const [open,setOpen]=useState(false),[busy,setBusy]=useState(false);const [date,setDate]=useState(validUntil.split("T")[0]??""),[time,setTime]=useState(validUntil.split("T")[1]??"23:59");
+ async function submit(e:FormEvent<HTMLFormElement>){e.preventDefault();if(!date||!time)return toast("تاریخ و ساعت اعتبار را انتخاب کنید",false);setBusy(true);const f=new FormData(e.currentTarget);try{await api(`/api/admin/supply/${id}`,"POST",{action:"calculate",margin:Number(f.get("margin")),validUntil:f.get("validUntil")});toast("قیمت و مهلت پیش‌فاکتور ثبت شد");setOpen(false);router.refresh()}catch(err){toast((err as Error).message,false)}finally{setBusy(false)}}
+ return <><button className="btn-primary" onClick={()=>setOpen(true)}>محاسبه قیمت و تعیین اعتبار</button>{open&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-3"><form onSubmit={submit} className="w-full max-w-md space-y-4 rounded-2xl bg-white p-5 shadow-2xl"><h2 className="font-black">محاسبه پیش‌فاکتور</h2><label className="block text-xs font-bold">درصد حاشیه سود<input name="margin" type="number" min="0" max="200" defaultValue={margin} required className="input mt-1"/></label><label className="block text-xs font-bold">معتبر تا<div className="mt-1"><JalaliDateTimePicker name="validUntil" date={date} time={time} onDateChange={setDate} onTimeChange={setTime}/></div></label><p className="text-xs leading-6 text-slate-500">پس از این زمان، مشتری امکان پرداخت پیش‌فاکتور را نخواهد داشت.</p><div className="flex justify-end gap-2"><button type="button" className="btn-ghost" onClick={()=>setOpen(false)}>انصراف</button><button disabled={busy} className="btn-primary">{busy?"در حال ثبت…":"ثبت پیش‌فاکتور"}</button></div></form></div>}</>;
+}

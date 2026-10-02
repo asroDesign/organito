@@ -7,13 +7,14 @@ import { Loader2, Trash2, Truck, Package, AlertTriangle, Minus, Plus, MapPin, X,
 import { api, toast, uid, useCart, writeCart, type CartItem } from "./client";
 import type { Quote } from "@/lib/services/orders";
 import { toman } from "@/lib/util";
+import { CustomerIdentityForm, type CustomerIdentity } from "./CustomerIdentityForm";
 
 const t = (n: number) => toman(n);
 const keyOf = (i: { productId: number; offerId: number | null; variantId: number | null; selectedOptions?: Record<string, string | string[]> }) => `${i.productId}:${i.offerId ?? 0}:${i.variantId ?? 0}:${JSON.stringify(i.selectedOptions ?? {})}`;
 const MapPicker = dynamic(() => import("./MapPicker"), { ssr: false, loading: () => <div className="skeleton h-56 rounded-xl" /> });
 
 type SavedAddress = { id:number; title:string; receiverName:string; receiverPhone:string; city:string; address:string; postalCode:string|null; latitude:string|null; longitude:string|null; isDefault:boolean };
-export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[], paymentGateway="zarinpal" }: { loggedIn: boolean; defaultName: string; defaultPhone: string; savedAddresses?:SavedAddress[]; paymentGateway?: string }) {
+export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[], paymentGateway="zarinpal", initialProfile }: { loggedIn: boolean; defaultName: string; defaultPhone: string; savedAddresses?:SavedAddress[]; paymentGateway?: string; initialProfile?:CustomerIdentity }) {
   const cart = useCart();
   const router = useRouter();
   const recoveryKey = useRef(uid());
@@ -33,6 +34,10 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
   const [addressModal,setAddressModal]=useState(false);
   const [savingAddress,setSavingAddress]=useState(false);
   const [addressError,setAddressError]=useState("");
+  const [customerProfile,setCustomerProfile]=useState<CustomerIdentity>(initialProfile??{name:defaultName,email:null,birthdate:null,nationalId:null,companyName:null,companyNationalId:null,companyManager:null,smsConsent:false});
+  const [requestOfficialInvoice,setRequestOfficialInvoice]=useState(false);
+  const [officialInvoiceType,setOfficialInvoiceType]=useState<"individual"|"company">("individual");
+  const [profileModal,setProfileModal]=useState(false);
   const [mapLocation,setMapLocation]=useState<[number,number]>([35.6892,51.389]);
   useEffect(() => { const t = setTimeout(() => setCityQ(city), 500); return () => clearTimeout(t); }, [city]);
   useEffect(() => {
@@ -52,6 +57,9 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
     return () => clearTimeout(timer);
   }, [cart, loggedIn]);
 
+  const requiredInvoiceProfileComplete = () => officialInvoiceType === "individual"
+    ? /^\d{10}$/.test(normalizeDigits(customerProfile.nationalId??""))
+    : !!customerProfile.companyName?.trim() && /^\d{11}$/.test(normalizeDigits(customerProfile.companyNationalId??"")) && !!customerProfile.companyManager?.trim();
   const setQty = (it: CartItem, q: number) => writeCart(cart.map((c) => (keyOf(c) === keyOf(it) ? { ...c, qty: Math.max(1, Math.min(100, q)) } : c)));
   const remove = (k: string) => writeCart(cart.filter((c) => keyOf(c) !== k));
   const swap = (k: string, offerId: number, shop: string) => writeCart(cart.map((c) => (keyOf(c) === k ? { ...c, offerId, variantId: null, seller: shop } : c)));
@@ -92,7 +100,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
                         {(l.variantTitle || Object.keys(l.attrs).length > 0) && (
                           <div className="flex flex-wrap gap-1.5 text-[11px]">{Object.keys(l.attrs).length ? Object.entries(l.attrs).map(([k, v]) => <span key={k} className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800 ring-1 ring-amber-200">{k}: <b>{v}</b></span>) : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800 ring-1 ring-amber-200">{l.variantTitle}</span>}</div>
                         )}
-                        <div className="text-[11px] text-slate-500">فروشنده: <b className="text-slate-700">{l.sellerName}</b>{l.warranty && <> · {l.warranty}</>}{l.ok && <> · <span className={l.available <= 3 ? "font-bold text-rose-600" : "text-emerald-600"}>{l.available <= 3 ? `فقط ${l.available.toLocaleString("fa-IR")} عدد باقی مانده` : "موجود در انبار"}</span></>}</div>
+                        <div className="text-[11px] text-slate-500">فروشنده: <b className="text-slate-700">{l.sellerName}</b>{l.warranty && <> · {l.warranty}</>}{l.ok && <> · <span className={l.allowBackorder && l.available < l.qty ? "font-bold text-amber-700" : l.available <= 3 ? "font-bold text-rose-600" : "text-emerald-600"}>{l.allowBackorder && l.available < l.qty ? "تأمین پس از سفارش" : l.available <= 3 ? `فقط ${l.available.toLocaleString("fa-IR")} عدد باقی مانده` : "موجود در انبار"}</span></>}</div>
                         {l.festivalPct > 0 && <div className="text-[11px] font-bold text-rose-600">🔥 {l.festivalTitle} — {l.festivalPct.toLocaleString("fa-IR")}٪ تخفیف (در خلاصه سفارش اعمال شده)</div>}
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
                           {item ? (
@@ -134,6 +142,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
         </section>}
         {quote&&quote.carriers.length>0&&<section className="space-y-2 border-b border-slate-100 pb-4"><b className="flex items-center gap-2 text-sm"><Truck className="size-4 text-emerald-700"/>شرکت پستی</b><p className="text-[11px] text-slate-500">هزینه بر اساس آدرس «{quote.city||city}» و وزن مرسوله محاسبه شده؛ یکی را انتخاب کنید.</p><div className="grid gap-2">{quote.carriers.map(c=><label key={c.id} className={`flex cursor-pointer items-center justify-between rounded-xl border p-2.5 text-sm ${carrierId===c.id?"border-emerald-500 bg-emerald-50/60 ring-1 ring-emerald-100":"border-slate-200"}`}><span className="flex items-center gap-2"><input type="radio" name="carrier" checked={carrierId===c.id} onChange={()=>setCarrierId(c.id)}/><span><b>{c.name}</b><span className="block text-[11px] text-slate-500">تحویل {c.minDays.toLocaleString("fa-IR")} تا {c.maxDays.toLocaleString("fa-IR")} روز کاری</span></span></span><b className={c.cost===0?"text-emerald-600":""}>{c.cost===0?"رایگان":t(c.cost)}</b></label>)}</div></section>}
         {quote&&quote.lines.some(l=>l.ok)&&quote.carriers.length===0&&<section className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800"><b className="flex items-center gap-2"><Truck className="size-4"/>شرکت پستی</b><p className="mt-1 text-xs leading-5">برای آدرس انتخاب‌شده شرکت پستی فعالی ثبت نشده است؛ تا فعال شدن گزینه ارسال، پرداخت امکان‌پذیر نیست.</p></section>}
+        {loggedIn&&<section className="space-y-3 border-b border-slate-100 pb-4"><label className="flex cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm"><input type="checkbox" checked={requestOfficialInvoice} onChange={e=>{const enabled=e.target.checked;setRequestOfficialInvoice(enabled);if(enabled&&!requiredInvoiceProfileComplete())setProfileModal(true)}} className="mt-1 accent-emerald-700"/><span><b>درخواست فاکتور رسمی</b><small className="mt-1 block text-xs text-slate-500">مشخصات فاکتور از پروفایل شما ثبت می‌شود.</small></span></label>{requestOfficialInvoice&&<div className="space-y-2 pr-1"><div className="text-xs font-bold">نوع صورتحساب</div><label className="flex items-center gap-2 text-sm"><input type="radio" name="invoiceType" checked={officialInvoiceType==="individual"} onChange={()=>{setOfficialInvoiceType("individual");if(!/^\d{10}$/.test(normalizeDigits(customerProfile.nationalId??"")))setProfileModal(true)}}/>شخص حقیقی</label><label className="flex items-center gap-2 text-sm"><input type="radio" name="invoiceType" checked={officialInvoiceType==="company"} onChange={()=>{setOfficialInvoiceType("company");if(!customerProfile.companyName||!/^\d{11}$/.test(normalizeDigits(customerProfile.companyNationalId??""))||!customerProfile.companyManager)setProfileModal(true)}}/>شخص حقوقی / شرکت</label><button type="button" className="text-xs font-bold text-emerald-700 underline" onClick={()=>setProfileModal(true)}>ویرایش اطلاعات صورتحساب در پروفایل</button>{!requiredInvoiceProfileComplete()&&<p className="text-xs text-rose-600">برای این نوع فاکتور، اطلاعات پروفایل کامل نیست.</p>}</div>}</section>}
         <b>جزئیات خرید</b>
         {quote && (
           <div className="space-y-2 text-sm">
@@ -165,9 +174,10 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
             e.preventDefault();
             if(!selectedAddress){setAddressError("ابتدا آدرس ارسال را انتخاب کنید");setAddressModal(true);return;}
             if(quote?.lines.some(l=>l.ok)&&(!quote.carriers.length||!quote.carriers.some(c=>c.id===carrierId))){toast("ابتدا یک شرکت پستی فعال را انتخاب کنید",false);return;}
+            if(requestOfficialInvoice&&!requiredInvoiceProfileComplete()){setProfileModal(true);toast("برای صدور فاکتور رسمی، اطلاعات صورتحساب را در پروفایل کامل کنید",false);return;}
             setPlacing(true);
             try {
-              const r = await api<{ id: number;paid:boolean }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty, selectedOptions }) => ({ productId, offerId, variantId, qty, selectedOptions })), address: {fullName:selectedAddress.receiverName,phone:selectedAddress.receiverPhone,city:selectedAddress.city,address:selectedAddress.address,postalCode:selectedAddress.postalCode??"",latitude:selectedAddress.latitude??"",longitude:selectedAddress.longitude??""}, idempotencyKey: idem.current, recoveryKey: recoveryKey.current, code: quote?.code?.ok ? code : "", carrierId });
+              const r = await api<{ id: number;paid:boolean }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty, selectedOptions }) => ({ productId, offerId, variantId, qty, selectedOptions })), address: {fullName:selectedAddress.receiverName,phone:selectedAddress.receiverPhone,city:selectedAddress.city,address:selectedAddress.address,postalCode:selectedAddress.postalCode??"",latitude:selectedAddress.latitude??"",longitude:selectedAddress.longitude??""}, idempotencyKey: idem.current, recoveryKey: recoveryKey.current, code: quote?.code?.ok ? code : "", carrierId, requestOfficialInvoice, officialInvoiceType });
               writeCart([]);
               if (payMethod === "gateway"&&!r.paid) {
                 toast(`سفارش ثبت شد؛ در حال انتقال به درگاه ${paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}…`);
@@ -190,8 +200,10 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
           </form>
         )}
       </aside>
+      {profileModal&&loggedIn&&<div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/55 p-3 sm:p-5" role="dialog" aria-modal="true"><section className="max-h-[94vh] w-full max-w-2xl overflow-auto rounded-2xl bg-white p-5 shadow-2xl"><div className="mb-4 flex items-start justify-between gap-3"><div><h2 className="text-lg font-black">تکمیل پروفایل برای صورتحساب</h2><p className="mt-1 text-xs leading-6 text-slate-500">اطلاعات لازم را ذخیره کنید تا بتوانید درخواست فاکتور رسمی را ثبت کنید.</p></div><button type="button" className="btn-ghost" onClick={()=>setProfileModal(false)}><X className="size-4"/></button></div><CustomerIdentityForm initial={customerProfile} submitLabel="ذخیره پروفایل و ادامه" onSaved={value=>{setCustomerProfile(value);setProfileModal(false)}}/></section></div>}
       {addressModal&&loggedIn&&<div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-3 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="cart-address-title"><div className="max-h-[94vh] w-full max-w-2xl overflow-auto rounded-2xl bg-white p-4 shadow-2xl sm:p-6"><div className="mb-4 flex items-center justify-between"><div><h2 id="cart-address-title" className="text-lg font-extrabold">{addresses.length?"افزودن آدرس جدید":"ثبت آدرس ارسال"}</h2><p className="mt-1 text-xs text-slate-500">پس از ذخیره، همین آدرس برای این سفارش انتخاب می‌شود.</p></div><button type="button" onClick={()=>setAddressModal(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100" aria-label="بستن"><X className="size-5"/></button></div>{addressError&&<div className="mb-3 rounded-lg bg-rose-50 p-2 text-sm text-rose-700">{addressError}</div>}<form className="grid gap-3 sm:grid-cols-2" onSubmit={async e=>{e.preventDefault();setSavingAddress(true);setAddressError("");const fd=new FormData(e.currentTarget);const values=Object.fromEntries(fd);try{const created=await api<SavedAddress>("/api/customer/addresses","POST",{...values,latitude:String(mapLocation[0]),longitude:String(mapLocation[1]),isDefault:addresses.length===0});setAddresses(old=>[...old,created]);setSelectedAddress(created);setCarrierId(null);setCity(created.city);setCityQ(created.city);setAddressModal(false);toast("آدرس ذخیره و برای سفارش انتخاب شد")}catch(error){setAddressError((error as Error).message)}finally{setSavingAddress(false)}}}><input name="title" className="input" placeholder="عنوان آدرس؛ مثل خانه یا محل کار" defaultValue={addresses.length?"":"خانه"} required/><input name="receiverName" className="input" placeholder="نام تحویل‌گیرنده" defaultValue={defaultName} required/><input name="receiverPhone" className="input" placeholder="موبایل تحویل‌گیرنده" defaultValue={defaultPhone} required/><input name="city" className="input" placeholder="شهر" defaultValue={city} onChange={e=>{setCity(e.target.value);setCityQ(e.target.value)}} required/><input name="postalCode" className="input sm:col-span-2" placeholder="کد پستی"/><textarea name="address" className="input min-h-20 sm:col-span-2" placeholder="نشانی کامل" minLength={8} required/><div className="sm:col-span-2"><div className="mb-2 text-sm font-bold">موقعیت روی نقشه (اختیاری)</div><MapPicker value={mapLocation} onChange={setMapLocation}/><div className="mt-1 text-xs text-slate-400">مختصات: {mapLocation[0].toFixed(5)}، {mapLocation[1].toFixed(5)}</div></div><div className="flex justify-end gap-2 sm:col-span-2"><button type="button" className="btn-ghost" onClick={()=>setAddressModal(false)}>انصراف</button><button disabled={savingAddress} className="btn-primary">{savingAddress&&<Loader2 className="size-4 animate-spin"/>}ذخیره و انتخاب آدرس</button></div></form></div></div>}
     </div>
   );
 }
+const normalizeDigits=(value:string)=>value.replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
 const Row = ({ k, v }: { k: string; v: string }) => <div className="flex justify-between"><span className="text-slate-500">{k}</span><span>{v}</span></div>;

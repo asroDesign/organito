@@ -108,8 +108,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           </div>
           <div className="lg:sticky lg:top-40 lg:self-start">
             {p.deliveryEstimateEnabled && <div className="mb-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><b>زمان تحویل مورد انتظار</b><span className="mr-2">حدود {faNum(p.deliveryMinDays)} تا {faNum(p.deliveryMaxDays)} روز کاری پس از ثبت سفارش</span></div>}
-            <BuyBox product={{ id: p.id, nameFa: p.nameFa, basePrice: p.basePrice, source: p.source, available: p.onHand - p.reserved, active: p.status === "active", partNumber: p.partNumber }}
-              options={p.options} purchaseOptions={p.purchaseOptions ?? []} variants={variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved }))} offers={offerViews}
+            <BuyBox product={{ id: p.id, nameFa: p.nameFa, basePrice: p.basePrice, source: p.source, available: p.onHand - p.reserved, active: p.status === "active" || (p.status === "out_of_stock" && p.allowBackorder), allowBackorder: p.allowBackorder, partNumber: p.partNumber }}
+              options={p.options} purchaseOptions={p.purchaseOptions ?? []} variants={variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved, isSellable: v.isSellable }))} offers={offerViews}
               festival={fest ? { title: fest.title, pct: fest.discountPercent, color: fest.color, endsAt: fest.endsAt.toISOString() } : null}
               multiVendor={mv} siteName={s.siteName} freeShippingOver={s.freeShippingOver} returnDays={s.returnDays} compareAt={p.compareAtPrice} />
           </div>

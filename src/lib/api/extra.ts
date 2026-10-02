@@ -1,12 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, detailAccounts, discountCodes, incompleteCarts, journalLines, media, products, productVariants, sellers, smsTemplates, ticketDepartments, tickets, users } from "@/db/schema";
+import { accounts, categories, detailAccounts, discountCodes, incompleteCarts, journalLines, media, products, productVariants, sellers, smsTemplates, ticketDepartments, tickets, users, centralLoyaltyMembers } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword, verifyPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal } from "../accounting";
 import { HttpError, int, slugify, str } from "../util";
 import { SMS_EVENTS, extractVars, retryLog, sendSms, sendTemplateTo } from "../sms";
+import { dateOnly } from "../commerce-common";
 import { body, idParam, type Route } from "./router";
 
 function parseDate(v: unknown) {
@@ -327,8 +328,21 @@ export const extraRoutes: Route[] = [
     const email = str(b.email, 120);
     if (!name) throw new HttpError(400, "نام الزامی است");
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError(400, "ایمیل نامعتبر");
-    await db.update(users).set({ name, email: email || null }).where(eq(users.id, u.id));
-    await audit(db, { userId: u.id, ...m }, "user.profile_update", "user", u.id, null, { name, email });
+    const digits=(v:unknown,max:number)=>str(v,max).replace(/[۰-۹]/g,d=>String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/[٠-٩]/g,d=>String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+    const nationalId=digits(b.nationalId,20),companyNationalId=digits(b.companyNationalId,20);
+    if(nationalId&&!/^\d{10}$/.test(nationalId))throw new HttpError(400,"کد ملی باید ۱۰ رقم باشد");
+    if(companyNationalId&&!/^\d{11}$/.test(companyNationalId))throw new HttpError(400,"شناسه ملی شرکت باید ۱۱ رقم باشد");
+    const smsConsent=b.smsConsent===undefined ? undefined : b.smsConsent===true;
+    const patch:Record<string,unknown>={name,email:email||null};
+    if("birthdate" in b)patch.birthdate=dateOnly(b.birthdate);
+    if("nationalId" in b)patch.nationalId=nationalId||null;
+    if("companyName" in b)patch.companyName=str(b.companyName,200)||null;
+    if("companyNationalId" in b)patch.companyNationalId=companyNationalId||null;
+    if("companyManager" in b)patch.companyManager=str(b.companyManager,120)||null;
+    if(smsConsent!==undefined)patch.smsConsent=smsConsent;
+    const [saved]=await db.update(users).set(patch).where(eq(users.id,u.id)).returning({id:users.id,name:users.name,phone:users.phone,birthdate:users.birthdate,smsConsent:users.smsConsent});
+    if("birthdate" in b||"smsConsent" in b)await db.insert(centralLoyaltyMembers).values({name:saved.name,phone:saved.phone,birthdate:saved.birthdate,smsConsent:saved.smsConsent}).onConflictDoUpdate({target:centralLoyaltyMembers.phone,set:{name:saved.name,birthdate:saved.birthdate,smsConsent:saved.smsConsent,updatedAt:new Date()}});
+    await audit(db, { userId: u.id, ...m }, "user.profile_update", "user", u.id, null, { name, email, hasBirthdate:!!saved.birthdate, hasNationalId:!!nationalId, hasCompanyIdentity:!!companyNationalId, smsConsent });
     return { ok: true };
   } },
   { method: "POST", pattern: "me/password", handler: async (req, _p, m) => {

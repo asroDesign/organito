@@ -18,7 +18,7 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
   const [{ total = 0 } = {}] = await db.select({ total: sql<number>`count(*)::int` }).from(products).where(and(...conds));
   const { pageSize, offset } = paginationParams(sp);
   const page = Math.min(paginationParams(sp).page, Math.max(1, Math.ceil(total / pageSize)));
-  const list = await db.select({ p: products, cat: categories.name, shop: sellers.shopName, offers: sql<number>`(select count(*) from seller_offers o where o.product_id = ${products.id})::int` })
+  const list = await db.select({ p: products, cat: categories.name, shop: sellers.shopName, offers: sql<number>`(select count(*) from seller_offers o where o.product_id = ${products.id})::int`, inventoryQty: sql<number>`case when exists(select 1 from product_variants v where v.product_id = ${products.id}) then (select coalesce(sum(v.on_hand * v.base_unit_amount),0)::int from product_variants v where v.product_id = ${products.id}) else ${products.onHand} end`, reservedQty: sql<number>`case when exists(select 1 from product_variants v where v.product_id = ${products.id}) then (select coalesce(sum(v.reserved * v.base_unit_amount),0)::int from product_variants v where v.product_id = ${products.id}) else ${products.reserved} end` })
     .from(products).leftJoin(categories, eq(categories.id, products.categoryId)).leftJoin(sellers, eq(sellers.id, products.ownerSellerId))
     .where(and(...conds)).orderBy(desc(products.updatedAt)).limit(pageSize).offset((page - 1) * pageSize);
   const statuses = Object.entries(PRODUCT_STATUS);
@@ -32,13 +32,13 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
         <Link href="/admin/products?status=pending" className="btn-ghost">صف بررسی</Link>
       </form>
       <Table head={["محصول", "SKU / PN", "منبع", "قیمت پایه", "موجودی مرکزی", "پیشنهادها", "وضعیت", ""]} empty={!list.length}>
-        {list.map(({ p, cat, shop, offers }) => (
+        {list.map(({ p, cat, shop, offers, inventoryQty, reservedQty }) => (
           <tr key={p.id} className="hover:bg-slate-50">
             <Td><div className="flex items-center gap-3"><Img id={p.mainImageId} alt="" className="h-11 w-11 rounded-lg" /><div><b>{p.nameFa}</b><div className="text-xs text-slate-500">{p.brand} · {cat}</div></div></div></Td>
             <Td><div dir="ltr" className="text-xs">{p.sku}<br />{p.partNumber}</div></Td>
             <Td>{p.source === "central" ? <Badge tone="blue">انبار مرکزی</Badge> : <Badge tone="violet">{shop ?? "Marketplace"}</Badge>}</Td>
             <Td>{toman(p.basePrice)}</Td>
-            <Td>{p.source === "central" ? <span className={p.onHand - p.reserved <= p.lowStockThreshold ? "font-bold text-rose-600" : ""}>{faNum(p.onHand)} <span className="text-xs text-slate-400">(رزرو {faNum(p.reserved)})</span></span> : "—"}</Td>
+            <Td>{p.source === "central" ? <span className={inventoryQty - reservedQty <= p.lowStockThreshold ? "font-bold text-rose-600" : ""}>{faNum(inventoryQty)} {p.inventoryBaseUnit} <span className="text-xs text-slate-400">(رزرو {faNum(reservedQty)})</span></span> : "—"}</Td>
             <Td>{faNum(offers)}</Td>
             <Td><StatusBadge status={p.status} map={PRODUCT_STATUS} /></Td>
             <Td><div className="flex gap-1"><Link href={`/admin/products/${p.id}`} className="btn-sm">جزئیات</Link>{u.permissions.includes("PRODUCTS_EDIT") && <Link href={`/admin/products/${p.id}/edit`} className="btn-sm">ویرایش</Link>}</div></Td>

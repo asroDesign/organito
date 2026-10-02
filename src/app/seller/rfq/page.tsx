@@ -6,6 +6,7 @@ import { Card, Empty, PageHeader, StatusBadge } from "@/components/ui";
 import { JsonForm } from "@/components/client";
 import { SUPPLY_STATUS, faNum, jdate, toman } from "@/lib/util";
 
+function localInputDate(value: Date | null) { const d=value??new Date(Date.now()+7*86400000); const parts=new Intl.DateTimeFormat("sv-SE",{timeZone:"Asia/Tehran",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(d); return parts.replace(" ","T"); }
 export default async function SellerRfq() {
   const u = await requirePage({ role: "seller" });
   const list = await db.select({ q: supplyQuotes, r: supplyRequests }).from(supplyQuotes).innerJoin(supplyRequests, eq(supplyRequests.id, supplyQuotes.requestId)).where(eq(supplyQuotes.sellerId, u.sellerId!)).orderBy(desc(supplyQuotes.createdAt));
@@ -17,12 +18,13 @@ export default async function SellerRfq() {
           {list.map(({ q, r }) => (
             <Card key={q.id} title={<span className="flex items-center gap-2">{r.number} <StatusBadge status={q.status} map={{ requested: "منتظر پاسخ", quoted: "پاسخ داده‌شده", selected: "برنده", rejected: "انتخاب نشد" }} /></span>} action={<span className="text-xs text-slate-400">{jdate(q.createdAt)}</span>}>
               <div className="mb-3 text-sm"><b>{r.partName || "محصول"}</b> <span dir="ltr" className="text-slate-500">{r.partNumber}</span><div className="text-xs text-slate-500">{r.carMake} {r.carModel} {r.carYear} · تعداد {faNum(r.qty)} · {SUPPLY_STATUS[r.status]}</div>{r.vin && <div className="text-xs" dir="ltr">VIN: {r.vin}</div>}</div>
-              {q.status === "quoted" && <div className="mb-2 rounded-lg bg-emerald-50 p-2 text-xs">پاسخ شما: {toman(q.price)} · موجودی {faNum(q.stock)} · {faNum(q.leadDays)} روز</div>}
+              {q.status === "quoted" && <div className="mb-2 rounded-lg bg-emerald-50 p-2 text-xs">پاسخ شما: {toman(q.price)} · موجودی {faNum(q.stock)} · {faNum(q.leadDays)} روز · اعتبار تا {q.validUntil ? jdate(q.validUntil,true) : "—"}</div>}
               {["requested", "quoted"].includes(q.status) && ["rfq_sent", "supplier_found"].includes(r.status) && (
                 <JsonForm url={`/api/seller/rfq/${q.id}`} submit={q.status === "quoted" ? "به‌روزرسانی پاسخ" : "ارسال پیشنهاد"} fields={[
                   { name: "price", label: "قیمت واحد", type: "number", required: true, half: true, defaultValue: q.price || "" },
                   { name: "stock", label: "موجودی", type: "number", half: true, defaultValue: q.stock },
                   { name: "leadDays", label: "Lead Time (روز)", type: "number", half: true, defaultValue: q.leadDays },
+                  { name: "validUntil", label: "اعتبار موجودی و پیشنهاد تا", type: "datetime-local", required: true, defaultValue: localInputDate(q.validUntil) },
                   { name: "brand", label: "برند", half: true, defaultValue: q.brand ?? "" },
                   { name: "note", label: "توضیح", defaultValue: q.note ?? "" },
                 ]} />

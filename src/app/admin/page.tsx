@@ -8,6 +8,7 @@ import { Card, PageHeader, Stat, StatusBadge } from "@/components/ui";
 import { ORDER_STATUS, faNum, jdate, toman } from "@/lib/util";
 import { IntegrityCheck } from "@/components/IntegrityCheck";
 import { DashboardCharts, type DashboardPoint, type PieSlice } from "@/components/AdminDashboardCharts";
+import { JalaliDatePicker } from "@/components/JalaliDatePicker";
 
 type SearchParams = Promise<{ denied?: string; from?: string; to?: string; interval?: string; metric?: string }>;
 const dayInTehran = (date = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tehran", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
@@ -34,7 +35,7 @@ export default async function AdminHome({ searchParams }: { searchParams: Search
     db.select({ n: count() }).from(sellers).where(eq(sellers.status, "pending")),
     db.select({ n: count() }).from(supplyRequests).where(sql`${supplyRequests.status} not in ('completed','cancelled','rejected')`),
     db.select({ n: count(), s: sql<number>`coalesce(sum(${withdrawals.amount}),0)::bigint` }).from(withdrawals).where(eq(withdrawals.status, "pending")),
-    db.select({ n: count() }).from(products).where(sql`${products.source} = 'central' and ${products.status} = 'active' and ${products.onHand} - ${products.reserved} <= ${products.lowStockThreshold}`),
+    db.select({ n: count() }).from(products).where(sql`${products.source} = 'central' and ${products.status} = 'active' and (exists (select 1 from product_variants v where v.product_id = ${products.id} and v.is_active and (v.on_hand - v.reserved) * v.base_unit_amount <= ${products.lowStockThreshold}) or (not exists (select 1 from product_variants v where v.product_id = ${products.id} and v.is_active) and ${products.onHand} - ${products.reserved} <= ${products.lowStockThreshold}))`),
     db.select({ n: count() }).from(tickets).where(sql`${tickets.status} not in ('resolved','closed')`),
     db.select({ n: count() }).from(sellers).where(eq(sellers.status, "approved")),
     db.select({ n: count() }).from(orders).where(dateFilter),
@@ -95,8 +96,8 @@ export default async function AdminHome({ searchParams }: { searchParams: Search
 
       <Card title="گزارش پیشرفته فروش" className="border-emerald-100" action={<span className="hidden text-xs text-slate-400 sm:block">گزارش بر اساس زمان تهران</span>}>
         <form className="mb-5 grid gap-3 rounded-2xl bg-slate-50 p-3 md:grid-cols-6" method="get">
-          <label className="text-xs text-slate-500">از تاریخ<input className="input mt-1" name="from" type="date" defaultValue={from}/></label>
-          <label className="text-xs text-slate-500">تا تاریخ<input className="input mt-1" name="to" type="date" defaultValue={to}/></label>
+          <label className="text-xs text-slate-500">از تاریخ<div className="mt-1"><JalaliDatePicker name="from" defaultValue={from}/></div></label>
+          <label className="text-xs text-slate-500">تا تاریخ<div className="mt-1"><JalaliDatePicker name="to" defaultValue={to}/></div></label>
           <label className="text-xs text-slate-500">تجمیع نمودار<select name="interval" className="input mt-1" defaultValue={interval}><option value="day">روزانه</option><option value="week">هفتگی</option><option value="month">ماهانه</option></select></label>
           <label className="text-xs text-slate-500">شاخص<select name="metric" className="input mt-1" defaultValue={metric}><option value="revenue">درآمد پرداخت‌شده</option><option value="profit">سود انبار مرکزی</option><option value="orders">تعداد سفارش پرداخت‌شده</option></select></label>
           <div className="flex items-end gap-2"><button className="btn-primary flex-1"><ChartNoAxesCombined className="size-4"/>اعمال فیلتر</button><Link href="/admin" className="btn-ghost">پاک‌کردن</Link></div>

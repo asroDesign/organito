@@ -119,7 +119,7 @@ export async function retryLog(logId: number) {
 export { maskPhone };
 
 /** متن پیام باشگاه مشتریان را با پنل مستقل همان تأمین‌کننده ارسال و ثبت می‌کند. */
-export async function sendDirectSms(event: string, phone: string, body: string): Promise<"sent" | "simulated" | "failed"> {
+export async function sendDirectSms(event: string, phone: string, body: string, vars: Record<string, string | number> = {}): Promise<"sent" | "simulated" | "failed"> {
   const settings = await getSettings();
   const provider = settings.smsProvider;
   let status: "sent" | "simulated" | "failed" = "failed", response = "";
@@ -135,8 +135,16 @@ export async function sendDirectSms(event: string, phone: string, body: string):
       const key = settings.smsApiKey || process.env.SMSIR_API_KEY;
       if (!key) { status = "simulated"; response = "کلید SMS.ir تنظیم نشده؛ شبیه‌سازی شد"; }
       else {
-        const r = await fetch("https://api.sms.ir/v1/send", { method: "POST", headers: { "Content-Type": "application/json", "X-API-KEY": key }, body: JSON.stringify({ lineNumber: Number((settings.smsSender ?? "").replace(/\D/g, "")) || 30007732000000, messageText: body, mobiles: [phone] }), signal: AbortSignal.timeout(10000), cache: "no-store" });
-        response = (await r.text()).slice(0, 500); const parsed = (() => { try { return JSON.parse(response); } catch { return null; } })(); status = r.ok && (parsed?.status === 1 || parsed?.status === 2) ? "sent" : "failed";
+        const [eventTemplate] = event === "birthday" ? await db.select().from(smsTemplates).where(eq(smsTemplates.event, event)) : [];
+        if (eventTemplate?.isActive && eventTemplate.patternId && /^\d+$/.test(eventTemplate.patternId)) {
+          const parameterNames = extractVars(eventTemplate.body);
+          const templateVars = Object.fromEntries(parameterNames.filter((name) => vars[name] !== undefined).map((name) => [name, vars[name]]));
+          const result = await callProvider("smsir", phone, eventTemplate.patternId, body, templateVars, key, settings.smsirParameterMap);
+          response = result.response; status = result.ok ? (result.simulated ? "simulated" : "sent") : "failed";
+        } else {
+          const r = await fetch("https://api.sms.ir/v1/send", { method: "POST", headers: { "Content-Type": "application/json", "X-API-KEY": key }, body: JSON.stringify({ lineNumber: Number((settings.smsSender ?? "").replace(/\D/g, "")) || 30007732000000, messageText: body, mobiles: [phone] }), signal: AbortSignal.timeout(10000), cache: "no-store" });
+          response = (await r.text()).slice(0, 500); const parsed = (() => { try { return JSON.parse(response); } catch { return null; } })(); status = r.ok && (parsed?.status === 1 || parsed?.status === 2) ? "sent" : "failed";
+        }
       }
     } else response = "سرویس پیامک ناشناخته است";
   } catch (error) { response = (error as Error).message.slice(0, 500); }

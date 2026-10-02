@@ -1,15 +1,15 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems } from "@/db/schema";
+import { orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal, reverseJournal } from "../accounting";
-import { HttpError, int, str } from "../util";
+import { HttpError, int, str, genNumber } from "../util";
 import { PERMISSIONS, ROLES } from "../rbac";
 import { DEFAULT_SETTINGS } from "../settings";
 import { sendSms, SMS_EVENTS } from "../sms";
 import { cancelOrder, payOrder, updateShipment } from "../services/orders";
-import { receiveStock, saveProduct, setBuyBox, setOfferStatus, setProductStatus, upsertOffer } from "../services/catalog";
+import { receiveStock, repackStock, saveProduct, setBuyBox, setOfferStatus, setProductStatus, upsertOffer } from "../services/catalog";
 import { requestWithdrawal, reviewWithdrawal } from "../services/wallet";
 import { sellerQuote, staffSupplyAction, type SupplyAction } from "../services/supply";
 import { body, idParam, type Route } from "./router";
@@ -80,7 +80,7 @@ export const staffRoutes: Route[] = [
     const u = await requireSeller();
     const b = await body(req);
     await assertSellerAllowed(u.sellerId, "پاسخ به RFQ");
-    await sellerQuote({ userId: u.id, ...m }, u.sellerId, idParam(p.id), { price: int(b.price, 1000), stock: int(b.stock ?? 0, 0, 10000), leadDays: int(b.leadDays ?? 0, 0, 120), brand: str(b.brand, 60), note: str(b.note, 500) });
+    await sellerQuote({ userId: u.id, ...m }, u.sellerId, idParam(p.id), { price: int(b.price, 1000), stock: int(b.stock ?? 0, 0, 10000), leadDays: int(b.leadDays ?? 0, 0, 120), validUntil: str(b.validUntil, 40), brand: str(b.brand, 60), note: str(b.note, 500) });
     return { ok: true };
   } },
   { method: "GET", pattern: "seller/report.csv", handler: async () => {
@@ -161,12 +161,18 @@ export const staffRoutes: Route[] = [
     await staffSupplyAction({ userId: u.id, ...m }, idParam(p.id), a);
     return { ok: true };
   } },
+  { method: "POST", pattern: "admin/inventory/repack", handler: async (req, _p, m) => {
+    const u = await requireApi("INVENTORY_MANAGE");
+    const b = await body(req);
+    await repackStock({ userId: u.id, ...m }, { productId: int(b.productId, 1), sourceVariantId: int(b.sourceVariantId, 1), targetVariantId: int(b.targetVariantId, 1), inputQty: int(b.inputQty, 1, 100000), outputQty: int(b.outputQty, 1, 100000), note: str(b.note, 300) });
+    return { ok: true };
+  } },
   { method: "POST", pattern: "admin/inventory/:id", handler: async (req, p, m) => {
     const u = await requireApi("INVENTORY_MANAGE");
     const b = await body(req);
     const qty = Math.trunc(Number(b.qty));
     if (!Number.isFinite(qty) || qty === 0 || Math.abs(qty) > 100000) throw new HttpError(400, "تعداد نامعتبر");
-    await receiveStock({ userId: u.id, ...m }, idParam(p.id), qty, int(b.unitCost ?? 0), int(b.freight ?? 0), int(b.customs ?? 0), str(b.note, 300));
+    await receiveStock({ userId: u.id, ...m }, idParam(p.id), qty, int(b.unitCost ?? 0), int(b.freight ?? 0), int(b.customs ?? 0), str(b.note, 300), b.variantId ? int(b.variantId, 1) : undefined);
     return { ok: true };
   } },
   { method: "POST", pattern: "admin/journal", handler: async (req, _p, m) => {
@@ -190,6 +196,28 @@ export const staffRoutes: Route[] = [
       await audit(tx, { userId: u.id, ...m }, "journal.reverse", "journal", p.id);
     });
     return { ok: true };
+  } },
+  { method: "GET", pattern: "admin/tickets/customers", handler: async (req) => {
+    await requireApi("TICKETS_MANAGE"); const q=(req.nextUrl.searchParams.get("q")??"").trim();
+    if(q.length<2)return [];
+    return db.select({id:users.id,name:users.name,phone:users.phone}).from(users).where(and(eq(users.role,"customer"),eq(users.isActive,true),sql`(${users.name} ilike ${`%${q}%`} or ${users.phone} ilike ${`%${q}%`})`)).orderBy(users.name).limit(20);
+  } },
+  { method: "POST", pattern: "admin/tickets", handler: async (req,_p,m) => {
+    const staff=await requireApi("TICKETS_MANAGE"),b=await body(req),customerId=int(b.customerId,1),subject=str(b.subject,160),text=str(b.message,5000),department=str(b.department,60)||"support",priority=str(b.priority,20)||"normal";
+    if(subject.length<3||text.length<5)throw new HttpError(400,"موضوع و متن تیکت را کامل وارد کنید");
+    if(!["low","normal","high","urgent"].includes(priority))throw new HttpError(400,"اولویت تیکت معتبر نیست");
+    const [customer]=await db.select({id:users.id}).from(users).where(and(eq(users.id,customerId),eq(users.role,"customer"),eq(users.isActive,true)));
+    if(!customer)throw new HttpError(404,"مشتری فعال پیدا نشد");
+    const [dep]=await db.select().from(ticketDepartments).where(and(eq(ticketDepartments.key,department),eq(ticketDepartments.isActive,true)));
+    if(!dep)throw new HttpError(400,"دپارتمان انتخاب‌شده فعال نیست");
+    const result=await db.transaction(async tx=>{
+      const [ticket]=await tx.insert(tickets).values({number:genNumber("TK"),customerId,subject,department:dep.key,priority,status:"pending_customer",assigneeId:staff.id}).returning();
+      await tx.insert(ticketMessages).values({ticketId:ticket.id,userId:staff.id,body:text});
+      await tx.insert(notifications).values({userId:customerId,title:"تیکت پشتیبانی جدید",body:subject,link:`/account/tickets/${ticket.id}`});
+      await audit(tx,{userId:staff.id,...m},"admin.ticket.create","ticket",ticket.id,null,{customerId,subject,department:dep.key,priority});
+      return ticket;
+    });
+    return {ok:true,id:result.id,number:result.number};
   } },
   { method: "POST", pattern: "admin/tickets/:id", handler: async (req, p, m) => {
     const u = await requireApi("TICKETS_MANAGE");

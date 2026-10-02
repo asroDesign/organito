@@ -3,7 +3,7 @@ import { and, eq, inArray, sql, ne } from "drizzle-orm";
 import { db } from "@/db";
 import {
   orders, orderItems, sellerShipments, orderHistory, payments, products, productVariants, sellerOffers, sellers,
-  stockMovements, wallets, walletTransactions, users, discountCodes, discountUsages, carriers, referralAwards, incompleteCarts, type Address,
+  stockMovements, wallets, walletTransactions, users, discountCodes, discountUsages, carriers, referralAwards, incompleteCarts, loyaltyPointEntries, type Address,
 } from "@/db/schema";
 import { activeCarriers, activeFestivals, carrierCost, evaluateCode, festivalFor } from "../marketing";
 import { audit, notify } from "../audit";
@@ -18,7 +18,7 @@ export type CartInput = { productId: number; offerId?: number | null; variantId?
 export type QuoteLine = {
   key: string; productId: number; offerId: number | null; variantId: number | null; sellerId: number | null;
   title: string; slug: string; imageId: number | null; unitPrice: number; qty: number; lineTotal: number; available: number; categoryId: number | null; weight: number; festivalPct: number; festivalTitle: string | null; listPrice: number;
-  ok: boolean; error?: string; unitCost: number;
+  ok: boolean; error?: string; unitCost: number; allowBackorder: boolean;
   brand: string; partNumber: string; sku: string; authenticity: string; sellerName: string; attrs: Record<string, string>; variantTitle: string | null; warranty: string | null; maxQty: number;
   alternatives: { offerId: number; sellerId: number; shopName: string; price: number; available: number; prepDays: number; shippingCost: number; isBuyBox: boolean }[];
 };
@@ -96,13 +96,13 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
     const base: QuoteLine = {
       key: `${it.productId}:${it.offerId ?? 0}:${it.variantId ?? 0}:${JSON.stringify(it.selectedOptions ?? {})}`, productId: it.productId, offerId: it.offerId ?? null, variantId: it.variantId ?? null,
       sellerId: null, title: p?.nameFa ?? "محصول نامشخص", slug: p?.slug ?? "", imageId: p?.mainImageId ?? null, unitPrice: 0, qty: it.qty, lineTotal: 0,
-      available: 0, ok: false, unitCost: p?.avgCost ?? 0, alternatives: [],
+      available: 0, ok: false, unitCost: p?.avgCost ?? 0, allowBackorder: p?.allowBackorder ?? false, alternatives: [],
       categoryId: p?.categoryId ?? null, weight: (p?.weight ?? 0) > 0 ? p!.weight! : 500, festivalPct: 0, festivalTitle: null, listPrice: 0,
       brand: p?.brand ?? "", partNumber: p?.partNumber ?? "", sku: p?.sku ?? "", authenticity: p?.authenticity ?? "", sellerName: s.senderName, attrs: {}, variantTitle: null, warranty: null, maxQty: 0,
     };
     const fest = p ? festivalFor(fests, p.id, p.categoryId) : null;
     if (fest) { base.festivalPct = fest.discountPercent; base.festivalTitle = fest.title; }
-    if (!p || p.status !== "active") { lines.push({ ...base, error: "محصول قابل فروش نیست" }); continue; }
+    if (!p || (p.status !== "active" && !(p.status === "out_of_stock" && p.allowBackorder))) { lines.push({ ...base, error: "محصول قابل فروش نیست" }); continue; }
     const basePrice = it.offerId ? undefined : it.variantId ? undefined : p.basePrice;
     if (it.offerId) {
       const oq = tx.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId))
@@ -116,25 +116,25 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
       offerShip.set(row.s.id, { ship: Math.max(prev?.ship ?? 0, row.o.shippingCost), prep: Math.max(prev?.prep ?? 0, row.o.prepDays) });
       const ok = available >= it.qty;
       const option = addPurchaseOptions(p, it, price);
-      lines.push({ ...base, title: `${p.nameFa}`, variantTitle: option.title, sellerId: row.s.id, sellerName: row.s.shopName, warranty: row.o.warranty, maxQty: Math.max(0, available), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error, unitCost: price,
+      lines.push({ ...base, allowBackorder: false, title: `${p.nameFa}`, variantTitle: option.title, sellerId: row.s.id, sellerName: row.s.shopName, warranty: row.o.warranty, maxQty: Math.min(100, Math.max(0, available)), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error, unitCost: price,
         error: option.error ?? (ok ? undefined : "موجودی فروشنده کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     } else if (it.variantId) {
       const vq = tx.select().from(productVariants).where(and(eq(productVariants.id, it.variantId), eq(productVariants.productId, p.id)));
       const [v] = lock ? await vq.for("update") : await vq;
-      if (!v || !v.isActive) { lines.push({ ...base, error: "تنوع نامعتبر است" }); continue; }
+      if (!v || !v.isActive || !v.isSellable) { lines.push({ ...base, error: "این تنوع برای فروش مستقیم فعال نیست" }); continue; }
       const available = v.onHand - v.reserved;
-      const ok = available >= it.qty;
+      const ok = available >= it.qty || p.allowBackorder;
       const option = addPurchaseOptions(p, it, v.price);
-      lines.push({ ...base, title: p.nameFa, variantTitle: [v.title, option.title].filter(Boolean).join(" · ") || null, attrs: v.attrs, maxQty: Math.max(0, available), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error,
+      lines.push({ ...base, title: p.nameFa, variantTitle: [v.title, option.title].filter(Boolean).join(" · ") || null, attrs: v.attrs, maxQty: p.allowBackorder ? 100 : Math.min(100, Math.max(0, available)), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error,
         error: option.error ?? (ok ? undefined : "موجودی انبار مرکزی کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     } else {
       if (p.source !== "central") { lines.push({ ...base, error: "برای این محصول فروشنده را انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
       const hasVariants = await tx.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true))).limit(1);
       if (hasVariants.length) { lines.push({ ...base, error: "برای این محصول باید تنوع (مشخصات) را از صفحه محصول انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
       const available = p.onHand - p.reserved;
-      const ok = available >= it.qty;
+      const ok = available >= it.qty || p.allowBackorder;
       const option = addPurchaseOptions(p, it, p.basePrice);
-      lines.push({ ...base, variantTitle: option.title, maxQty: Math.max(0, available), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error,
+      lines.push({ ...base, allowBackorder: p.allowBackorder, variantTitle: option.title, maxQty: p.allowBackorder ? 100 : Math.min(100, Math.max(0, available)), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error,
         error: option.error ?? (ok ? undefined : "موجودی انبار مرکزی کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     }
   }
@@ -209,7 +209,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   };
 }
 
-export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; recoveryKey?: string } = {}) {
+export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; recoveryKey?: string; officialInvoiceType?: string | null; officialInvoiceDetails?: Record<string,string> | null } = {}) {
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idemKey}))`);
     const [existing] = await tx.select().from(orders).where(eq(orders.idempotencyKey, idemKey));
@@ -232,6 +232,7 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
       itemsSubtotal: q.itemsSubtotal, sellerShippingTotal: q.sellerShippingTotal, centralShipping: q.centralShipping,
       discount: q.discount, tax: q.tax, total: q.finalTotal, creditAmount:q.creditAmount,giftCardId:q.giftCardId,address, idempotencyKey: idemKey,
       festivalDiscount: q.festivalDiscount, codeDiscount: q.codeDiscount, discountCodeId: q.code?.ok ? q.code.codeId ?? null : null, discountCode: q.code?.ok ? q.code.code ?? null : null, carrierId: q.carrierId,
+      officialInvoiceType: extra.officialInvoiceType ?? null, officialInvoiceDetails: extra.officialInvoiceDetails ?? null,
     }).returning();
     if(q.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,ctx.userId));await reserveCredit(tx,customer.phone,q.creditAmount,q.giftCardId,order.id,ctx.userId);}
     if (q.code?.ok && q.code.codeId) {
@@ -254,20 +255,21 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
             .where(and(eq(sellerOffers.id, l.offerId), sql`${sellerOffers.stock} - ${sellerOffers.reserved} >= ${l.qty}`)).returning({ id: sellerOffers.id });
         } else if (l.variantId) {
           res = await tx.update(productVariants).set({ reserved: sql`${productVariants.reserved} + ${l.qty}` })
-            .where(and(eq(productVariants.id, l.variantId), sql`${productVariants.onHand} - ${productVariants.reserved} >= ${l.qty}`)).returning({ id: productVariants.id });
+            .where(l.allowBackorder ? eq(productVariants.id, l.variantId) : and(eq(productVariants.id, l.variantId), sql`${productVariants.onHand} - ${productVariants.reserved} >= ${l.qty}`)).returning({ id: productVariants.id });
         } else {
           res = await tx.update(products).set({ reserved: sql`${products.reserved} + ${l.qty}` })
-            .where(and(eq(products.id, l.productId), sql`${products.onHand} - ${products.reserved} >= ${l.qty}`)).returning({ id: products.id });
+            .where(l.allowBackorder ? eq(products.id, l.productId) : and(eq(products.id, l.productId), sql`${products.onHand} - ${products.reserved} >= ${l.qty}`)).returning({ id: products.id });
         }
         if (res.length === 0) throw new HttpError(409, `موجودی «${l.title}» کافی نیست`);
-        await tx.insert(stockMovements).values({ productId: l.productId, variantId: l.variantId, offerId: l.offerId, type: "reserve", qty: l.qty, refType: "order", refId: order.id, userId: ctx.userId });
+        await tx.insert(stockMovements).values({ productId: l.productId, variantId: l.variantId, offerId: l.offerId, type: "reserve", qty: l.qty, refType: "order", refId: order.id, note: l.allowBackorder ? "فروش با تأمین پس از سفارش؛ رزرو موجودی آزاد" : null, userId: ctx.userId });
       }
       if (g.sellerId) {
         const [sel] = await tx.select().from(sellers).where(eq(sellers.id, g.sellerId));
         if (sel) await notify(tx, sel.userId, `سفارش جدید ${order.number}`, `${g.lines.length} قلم برای آماده‌سازی`, `/seller/orders/${order.id}`);
       }
     }
-    await tx.insert(orderHistory).values({ orderId: order.id, status: "pending_payment", note: "سفارش ثبت شد و موجودی رزرو گردید", userId: ctx.userId });
+    const hasBackorder = q.lines.some((line) => line.allowBackorder && line.available < line.qty);
+    await tx.insert(orderHistory).values({ orderId: order.id, status: "pending_payment", note: hasBackorder ? "سفارش ثبت شد؛ بخشی از کالا با تأمین پس از سفارش رزرو شد" : "سفارش ثبت شد و موجودی رزرو گردید", userId: ctx.userId });
     await audit(tx, ctx, "order.create", "order", order.id, null, { number: order.number, total: order.total, items: items.length });
     return { order, fresh: true };
   });
@@ -338,11 +340,23 @@ export async function payOrder(ctx: Ctx & { userId: number }, orderId: number, i
     await tx.insert(orderHistory).values({ orderId: o.id, status: "paid", note: `پرداخت موفق (${METHOD_FA[pay.method] ?? pay.method}) - کد ${pay.refCode}${pay.trackingCode ? ` - پیگیری ${pay.trackingCode}` : ""}`, userId: ctx.userId });
     await audit(tx, ctx, "payment.success", "order", o.id, { status: o.status }, { status: "paid", amount: o.total, payment: pay.id });
     const [buyer] = await tx.select({ id: users.id, referredById: users.referredById }).from(users).where(eq(users.id, o.customerId));
+    const purchasedItems = await tx.select({ variantId: orderItems.variantId, qty: orderItems.qty, title: orderItems.title }).from(orderItems).where(eq(orderItems.orderId, o.id));
+    const variantIds = purchasedItems.map((item) => item.variantId).filter((id): id is number => id !== null);
+    const rewardVariants = variantIds.length ? await tx.select({ id: productVariants.id, rewardPoints: productVariants.rewardPoints }).from(productVariants).where(inArray(productVariants.id, variantIds)) : [];
+    const rewardByVariant = new Map(rewardVariants.map((v) => [v.id, v.rewardPoints]));
+    const earned = purchasedItems.reduce((sum, item) => sum + (item.variantId ? (rewardByVariant.get(item.variantId) ?? 0) * item.qty : 0), 0);
+    if (earned > 0) {
+      await tx.insert(loyaltyPointEntries).values({ userId: o.customerId, kind: "purchase", points: earned, orderId: o.id, reference: `purchase:${o.id}`, description: `امتیاز خرید سفارش ${o.number}` }).onConflictDoNothing();
+      await tx.update(users).set({ marketingPoints: sql`${users.marketingPoints}+${earned}` }).where(eq(users.id, o.customerId));
+    }
     if (buyer?.referredById) {
       const points = Math.floor((o.total * 0.05) / 1000);
       if (points > 0) {
         const [award] = await tx.insert(referralAwards).values({ orderId: o.id, buyerId: buyer.id, referrerId: buyer.referredById, points }).onConflictDoNothing().returning({ id: referralAwards.id });
-        if (award) await tx.update(users).set({ marketingPoints: sql`${users.marketingPoints}+${points}` }).where(eq(users.id, buyer.referredById));
+        if (award) {
+          await tx.update(users).set({ marketingPoints: sql`${users.marketingPoints}+${points}` }).where(eq(users.id, buyer.referredById));
+          await tx.insert(loyaltyPointEntries).values({ userId: buyer.referredById, kind: "referral", points, orderId: o.id, reference: `referral:${o.id}`, description: `امتیاز معرفی از سفارش ${o.number}` }).onConflictDoNothing();
+        }
       }
     }
     return { order: upd, duplicate: false };
@@ -444,6 +458,7 @@ async function deductStock(tx: DB, ctx: Ctx, shipmentId: number, orderId: number
   const items = await tx.select().from(orderItems).where(eq(orderItems.shipmentId, shipmentId));
   let cogs = 0;
   for (const it of items) {
+    let saleUnitCost = it.unitCost;
     if (it.offerId) {
       const r = await tx.update(sellerOffers).set({ stock: sql`${sellerOffers.stock} - ${it.qty}`, reserved: sql`${sellerOffers.reserved} - ${it.qty}`, updatedAt: new Date() })
         .where(and(eq(sellerOffers.id, it.offerId), sql`${sellerOffers.reserved} >= ${it.qty}`, sql`${sellerOffers.stock} >= ${it.qty}`)).returning({ id: sellerOffers.id });
@@ -451,18 +466,40 @@ async function deductStock(tx: DB, ctx: Ctx, shipmentId: number, orderId: number
     } else {
       const [p] = await tx.select().from(products).where(eq(products.id, it.productId)).for("update");
       if (it.variantId) {
+        const [v] = await tx.select().from(productVariants).where(eq(productVariants.id, it.variantId)).for("update");
+        if (!v) throw new HttpError(409, "تنوع سفارش یافت نشد");
+        saleUnitCost = v.costPrice ?? p.avgCost;
+        if (p.allowBackorder) {
+          const otherReserved = Math.max(0, v.reserved - it.qty);
+          const availableForThisOrder = Math.max(0, v.onHand - otherReserved);
+          const receiptQty = Math.max(0, it.qty - availableForThisOrder);
+          if (receiptQty > 0) {
+            await tx.update(productVariants).set({ onHand: sql`${productVariants.onHand} + ${receiptQty}` }).where(eq(productVariants.id, v.id));
+            await tx.insert(stockMovements).values({ productId: it.productId, variantId: it.variantId, type: "backorder_receive", qty: receiptQty, unitCost: saleUnitCost, refType: "shipment", refId: shipmentId, note: `ورود کسری برای ارسال سفارش ${orderNumber}`, userId: ctx.userId });
+          }
+        }
         const r = await tx.update(productVariants).set({ onHand: sql`${productVariants.onHand} - ${it.qty}`, reserved: sql`${productVariants.reserved} - ${it.qty}` })
           .where(and(eq(productVariants.id, it.variantId), sql`${productVariants.reserved} >= ${it.qty}`)).returning({ id: productVariants.id });
         if (!r.length) throw new HttpError(409, "ناسازگاری موجودی تنوع");
       } else {
+        saleUnitCost = p.avgCost;
+        if (p.allowBackorder) {
+          const otherReserved = Math.max(0, p.reserved - it.qty);
+          const availableForThisOrder = Math.max(0, p.onHand - otherReserved);
+          const receiptQty = Math.max(0, it.qty - availableForThisOrder);
+          if (receiptQty > 0) {
+            await tx.update(products).set({ onHand: sql`${products.onHand} + ${receiptQty}` }).where(eq(products.id, p.id));
+            await tx.insert(stockMovements).values({ productId: it.productId, type: "backorder_receive", qty: receiptQty, unitCost: saleUnitCost, refType: "shipment", refId: shipmentId, note: `ورود کسری برای ارسال سفارش ${orderNumber}`, userId: ctx.userId });
+          }
+        }
         const r = await tx.update(products).set({ onHand: sql`${products.onHand} - ${it.qty}`, reserved: sql`${products.reserved} - ${it.qty}` })
           .where(and(eq(products.id, it.productId), sql`${products.reserved} >= ${it.qty}`)).returning({ id: products.id });
         if (!r.length) throw new HttpError(409, "ناسازگاری موجودی مرکزی");
       }
-      cogs += p.avgCost * it.qty;
-      await tx.update(orderItems).set({ unitCost: p.avgCost }).where(eq(orderItems.id, it.id));
+      cogs += saleUnitCost * it.qty;
+      await tx.update(orderItems).set({ unitCost: saleUnitCost }).where(eq(orderItems.id, it.id));
     }
-    await tx.insert(stockMovements).values({ productId: it.productId, variantId: it.variantId, offerId: it.offerId, type: "sale_out", qty: -it.qty, refType: "order", refId: orderId, userId: ctx.userId });
+    await tx.insert(stockMovements).values({ productId: it.productId, variantId: it.variantId, offerId: it.offerId, type: "sale_out", qty: -it.qty, unitCost: saleUnitCost, refType: "order", refId: orderId, userId: ctx.userId });
   }
   if (cogs > 0) await postJournal(tx, `بهای تمام‌شده سفارش ${orderNumber}`, [{ code: "5101", debit: cogs }, { code: "1201", credit: cogs }], { type: "order", id: orderId }, ctx.userId);
 }

@@ -1,17 +1,18 @@
-import { desc } from "drizzle-orm";
+import { desc, sql } from "drizzle-orm";
 import { Flame } from "lucide-react";
 import { db } from "@/db";
-import { festivals } from "@/db/schema";
+import { festivals, products } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
 import { Badge, Card, PageHeader } from "@/components/ui";
-import { ActionButton, JsonForm } from "@/components/client";
+import { ActionButton } from "@/components/client";
+import { FestivalCreateForm } from "@/components/FestivalCreateForm";
 import { Countdown } from "@/components/Countdown";
 import { categoryOptions } from "@/lib/queries";
 import { faNum, jdate } from "@/lib/util";
 
 export default async function Festivals() {
   await requirePage({ perm: "MARKETING_MANAGE" });
-  const [list, cats] = await Promise.all([db.select().from(festivals).orderBy(desc(festivals.startsAt)), categoryOptions()]);
+  const [list, cats, productList] = await Promise.all([db.select().from(festivals).orderBy(desc(festivals.startsAt)), categoryOptions(), db.select({id:products.id,name:products.nameFa,sku:products.sku}).from(products).where(sql`${products.status} <> 'deleted'`).orderBy(products.nameFa)]);
   const now = new Date();
   return (
     <>
@@ -42,13 +43,7 @@ export default async function Festivals() {
           })}
         </div>
         <Card title="ایجاد جشنواره">
-          <JsonForm url="/api/admin/festivals" submit="ایجاد جشنواره" fields={[
-            { name: "title", label: "عنوان", required: true, placeholder: "جشنواره یلدا" }, { name: "description", label: "توضیح کوتاه" },
-            { name: "discountPercent", label: "درصد تخفیف", type: "number", required: true, half: true }, { name: "color", label: "رنگ (#hex)", half: true, defaultValue: "#e11d48" },
-            { name: "startsAt", label: "شروع", type: "date", required: true, half: true }, { name: "endsAt", label: "پایان", type: "date", required: true, half: true },
-            { name: "categoryIds", label: "دسته (خالی = همه)", type: "select", options: [["", "— همه محصولات —"], ...cats.map((c) => [String(c.id), c.name] as [string, string])] },
-            { name: "productIds", label: "محصولات منتخب (شناسه‌ها با کاما)" },
-          ]} />
+          <FestivalCreateForm products={productList} categories={cats.map(c=>({id:c.id,name:c.name}))}/>
           <p className="mt-3 text-xs text-slate-400">تخفیف جشنواره توسط پلتفرم تأمین و در حساب «هزینه تخفیفات و جشنواره‌ها» ثبت می‌شود؛ سهم فروشنده کامل پرداخت می‌گردد. در صورت هم‌پوشانی، بیشترین درصد اعمال می‌شود.</p>
         </Card>
       </div>

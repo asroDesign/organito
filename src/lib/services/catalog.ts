@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq } from "@/db/schema";
+import { inventoryRepackJobs, media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq } from "@/db/schema";
 import { audit, notify } from "../audit";
 import { postJournal } from "../accounting";
 import { sendSms } from "../sms";
@@ -59,7 +59,7 @@ export function parseProductInput(b: Record<string, unknown>) {
       attrs[o.name] = val;
     }
     const title = options.length ? options.map((o) => attrs[o.name]).join(" / ") : str(v.title, 80);
-    return { id: v.id ? int(v.id, 1) : undefined, title, attrs, sku: str(v.sku, 60), price: int(v.price ?? 0), onHand: int(v.onHand ?? 0, 0, 100000), isActive: v.isActive !== false };
+    return { id: v.id ? int(v.id, 1) : undefined, title, attrs, sku: str(v.sku, 60), price: int(v.price ?? 0), rewardPoints: int(v.rewardPoints ?? 0, 0, 1000000), onHand: int(v.onHand ?? 0, 0, 100000), inventoryUnit: str(v.inventoryUnit, 30) || "عدد", baseUnitAmount: int(v.baseUnitAmount ?? 1, 1, 1_000_000_000), isActive: v.isActive !== false, isSellable: v.isSellable !== false };
   }).filter((v) => v.title).slice(0, 60) : [];
   const combos = new Set(variants.map((v) => JSON.stringify(v.attrs)));
   if (options.length && combos.size !== variants.length) throw new HttpError(400, "ترکیب تکراری در تنوع‌ها وجود دارد");
@@ -74,6 +74,8 @@ export function parseProductInput(b: Record<string, unknown>) {
       seoTitle: str(b.seoTitle, 120) || null, metaDesc: str(b.metaDesc, 300) || null, seoKeywords, seoImageId: b.seoImageId ? int(b.seoImageId, 1) : null,
       slug: slugify(str(b.slug, 120) || `${str(b.nameEn, 120) || nameFa}-${sku}`),
       lowStockThreshold: b.lowStockThreshold !== undefined ? int(b.lowStockThreshold, 0, 10000) : 3,
+      allowBackorder: b.allowBackorder === true,
+      inventoryBaseUnit: ["عدد", "گرم", "میلی‌لیتر"].includes(String(b.inventoryBaseUnit)) ? String(b.inventoryBaseUnit) : "عدد",
       options, purchaseOptions, relatedProductIds, crossSellProductIds, productFaqs,
       deliveryEstimateEnabled: b.deliveryEstimateEnabled === true, deliveryMinDays, deliveryMaxDays,
       organicInfo: parseOrganic(b.organicInfo),
@@ -125,6 +127,12 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
       [old] = await tx.select().from(products).where(eq(products.id, id)).for("update");
       if (!old || old.status === "deleted") throw new HttpError(404, "محصول یافت نشد");
       if (isSeller && old.ownerSellerId !== u.sellerId) throw new HttpError(404, "محصول یافت نشد");
+      if (isSeller) { input.data.allowBackorder = old.allowBackorder; input.data.inventoryBaseUnit = old.inventoryBaseUnit; }
+      else if (old.source !== "central") { input.data.allowBackorder = false; input.data.inventoryBaseUnit = old.inventoryBaseUnit; }
+      if (old.inventoryBaseUnit !== input.data.inventoryBaseUnit) {
+        const stockedVariants = await tx.select({ onHand: productVariants.onHand, reserved: productVariants.reserved }).from(productVariants).where(eq(productVariants.productId, id));
+        if (old.onHand || old.reserved || stockedVariants.some((v) => v.onHand || v.reserved)) throw new HttpError(400, "واحد پایه را تا زمانی که موجودی محصول یا تنوع‌هایش صفر نشده تغییر ندهید");
+      }
       const importantChanged = IMPORTANT.some((k) => JSON.stringify(old![k]) !== JSON.stringify(input.data[k]));
       const status = isSeller && importantChanged && old.status !== "draft" ? "pending" : old.status;
       await tx.update(products).set({ ...input.data, status, mainImageId: input.imageIds[0] ?? null, updatedAt: new Date() }).where(eq(products.id, id));
@@ -133,7 +141,7 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
         { basePrice: old.basePrice, status: old.status, nameFa: old.nameFa }, { basePrice: input.data.basePrice, status, nameFa: input.data.nameFa });
     } else {
       const [p] = await tx.insert(products).values({
-        ...input.data, status: isSeller ? "pending" : (body.status === "active" ? "active" : "draft"),
+        ...input.data, allowBackorder: !isSeller && input.data.allowBackorder, status: isSeller ? "pending" : (body.status === "active" ? "active" : "draft"),
         source: isSeller ? "marketplace" : "central", ownerSellerId: isSeller ? u.sellerId : null, createdBy: u.id, mainImageId: input.imageIds[0] ?? null,
       }).returning();
       productId = p.id;
@@ -142,14 +150,16 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
     await tx.delete(productImages).where(eq(productImages.productId, productId));
     if (input.imageIds.length) await tx.insert(productImages).values(input.imageIds.map((m, i) => ({ productId, mediaId: m, sortOrder: i })));
     if (!isSeller) {
-      const existing = await tx.select().from(productVariants).where(eq(productVariants.productId, productId));
+      const existing = await tx.select().from(productVariants).where(eq(productVariants.productId, productId)).for("update");
       const keep = new Set<number>();
       for (const v of input.variants) {
-        if (v.id && existing.some((e) => e.id === v.id)) {
-          keep.add(v.id);
-          await tx.update(productVariants).set({ title: v.title, attrs: v.attrs, sku: v.sku, price: v.price, isActive: v.isActive }).where(eq(productVariants.id, v.id));
+        const current = v.id ? existing.find((e) => e.id === v.id) : undefined;
+        if (current) {
+          if ((current.onHand || current.reserved) && (v.inventoryUnit !== current.inventoryUnit || v.baseUnitAmount !== current.baseUnitAmount)) throw new HttpError(400, `واحد یا ضریب تبدیل تنوع «${current.title}» تا زمان صفرشدن موجودی آن قابل تغییر نیست`);
+          keep.add(current.id);
+          await tx.update(productVariants).set({ title: v.title, attrs: v.attrs, sku: v.sku, price: v.price, rewardPoints: v.rewardPoints, inventoryUnit: v.inventoryUnit, baseUnitAmount: v.baseUnitAmount, isActive: v.isActive, isSellable: v.isSellable }).where(eq(productVariants.id, current.id));
         } else {
-          const [nv] = await tx.insert(productVariants).values({ productId, title: v.title, attrs: v.attrs, sku: v.sku || `${input.data.sku}-${existing.length + keep.size + 1}`, price: v.price, onHand: v.onHand, isActive: v.isActive }).returning();
+          const [nv] = await tx.insert(productVariants).values({ productId, title: v.title, attrs: v.attrs, sku: v.sku || `${input.data.sku}-${existing.length + keep.size + 1}`, price: v.price, rewardPoints: v.rewardPoints, inventoryUnit: v.inventoryUnit, baseUnitAmount: v.baseUnitAmount, onHand: v.onHand, isActive: v.isActive, isSellable: v.isSellable }).returning();
           if (v.onHand > 0) await tx.insert(stockMovements).values({ productId, variantId: nv.id, type: "initial", qty: v.onHand, userId: ctx.userId, note: "موجودی اولیه تنوع" });
         }
       }
@@ -251,34 +261,80 @@ export async function setBuyBox(ctx: Ctx & { userId: number }, offerId: number) 
   });
 }
 
-/** Central warehouse purchase receipt with weighted average cost. */
-export async function receiveStock(ctx: Ctx & { userId: number }, productId: number, qty: number, unitCost: number, freight: number, customs: number, note: string) {
+/** Stock receipt/adjustment targets either a simple product or one exact variant. */
+export async function receiveStock(ctx: Ctx & { userId: number }, productId: number, qty: number, unitCost: number, freight: number, customs: number, note: string, variantId?: number) {
   return db.transaction(async (tx) => {
     const [p] = await tx.select().from(products).where(eq(products.id, productId)).for("update");
     if (!p) throw new HttpError(404, "محصول یافت نشد");
     if (qty === 0) throw new HttpError(400, "تعداد نامعتبر");
     const variants = await tx.select().from(productVariants).where(eq(productVariants.productId, productId)).for("update");
-    const stockVariant = variants.find((variant) => variant.title === "پیش‌فرض") ?? (variants.length === 1 ? variants[0] : null);
+    if (variants.length && !variantId) throw new HttpError(400, "برای این محصول باید تنوع دقیق انبار را انتخاب کنید");
+    const stockVariant = variantId ? variants.find((variant) => variant.id === variantId) : undefined;
+    if (variantId && !stockVariant) throw new HttpError(404, "تنوع این محصول یافت نشد");
     if (qty > 0) {
       const landed = unitCost * qty + freight + customs;
-      const newAvg = Math.round((p.onHand * p.avgCost + landed) / (p.onHand + qty));
-      await tx.update(products).set({ onHand: p.onHand + qty, avgCost: newAvg, status: p.status === "out_of_stock" ? "active" : p.status }).where(eq(products.id, productId));
-      if (stockVariant) await tx.update(productVariants).set({ onHand: stockVariant.onHand + qty, isActive: true }).where(eq(productVariants.id, stockVariant.id));
-      else await tx.insert(productVariants).values({ productId, title: "پیش‌فرض", attrs: {}, sku: `${p.sku}-DEFAULT-${p.id}`, price: p.basePrice, onHand: variants.length ? qty : p.onHand + qty, reserved: variants.length ? 0 : p.reserved, isActive: true });
-      await tx.insert(stockMovements).values({ productId, type: "purchase_in", qty, unitCost: Math.round(landed / qty), refType: "purchase", note, userId: ctx.userId });
+      if (stockVariant) {
+        const oldCost = stockVariant.costPrice ?? p.avgCost;
+        const newAvg = Math.round((stockVariant.onHand * oldCost + landed) / (stockVariant.onHand + qty));
+        await tx.update(productVariants).set({ onHand: stockVariant.onHand + qty, costPrice: newAvg, isActive: true }).where(eq(productVariants.id, stockVariant.id));
+        await tx.update(products).set({ status: p.status === "out_of_stock" ? "active" : p.status, updatedAt: new Date() }).where(eq(products.id, productId));
+        await tx.insert(stockMovements).values({ productId, variantId: stockVariant.id, type: "purchase_in", qty, unitCost: Math.round(landed / qty), refType: "purchase", note, userId: ctx.userId });
+        await audit(tx, ctx, "inventory.receive_variant", "product_variant", stockVariant.id, { onHand: stockVariant.onHand, costPrice: stockVariant.costPrice }, { onHand: stockVariant.onHand + qty, costPrice: newAvg, note });
+      } else {
+        const newAvg = Math.round((p.onHand * p.avgCost + landed) / (p.onHand + qty));
+        await tx.update(products).set({ onHand: p.onHand + qty, avgCost: newAvg, status: p.status === "out_of_stock" ? "active" : p.status }).where(eq(products.id, productId));
+        await tx.insert(stockMovements).values({ productId, type: "purchase_in", qty, unitCost: Math.round(landed / qty), refType: "purchase", note, userId: ctx.userId });
+        await audit(tx, ctx, "inventory.receive", "product", productId, { onHand: p.onHand, avgCost: p.avgCost }, { onHand: p.onHand + qty, avgCost: newAvg });
+      }
       await postJournal(tx, `خرید و ورود کالا ${p.sku}`, [
         { code: "1201", debit: landed }, { code: "2104", credit: unitCost * qty }, { code: "1101", credit: freight + customs, description: "حمل و گمرک" },
       ], { type: "product", id: productId }, ctx.userId);
-      await audit(tx, ctx, "inventory.receive", "product", productId, { onHand: p.onHand, avgCost: p.avgCost }, { onHand: p.onHand + qty, avgCost: newAvg });
     } else {
       const out = -qty;
-      if (p.onHand - p.reserved < out) throw new HttpError(400, "موجودی آزاد کافی نیست");
-      if (stockVariant && stockVariant.onHand - stockVariant.reserved < out) throw new HttpError(400, "موجودی آزاد تنوع پیش‌فرض برای ثبت کسری کافی نیست");
-      await tx.update(products).set({ onHand: p.onHand - out }).where(eq(products.id, productId));
-      if (stockVariant) await tx.update(productVariants).set({ onHand: stockVariant.onHand - out }).where(eq(productVariants.id, stockVariant.id));
-      await tx.insert(stockMovements).values({ productId, type: "adjust_out", qty, unitCost: p.avgCost, note, userId: ctx.userId });
-      await postJournal(tx, `کسری/ضایعات انبار ${p.sku}`, [{ code: "5101", debit: p.avgCost * out }, { code: "1201", credit: p.avgCost * out }], { type: "product", id: productId }, ctx.userId);
-      await audit(tx, ctx, "inventory.adjust", "product", productId, { onHand: p.onHand }, { onHand: p.onHand - out, note });
+      if (stockVariant) {
+        if (stockVariant.onHand - stockVariant.reserved < out) throw new HttpError(400, `موجودی آزاد این تنوع ${stockVariant.onHand - stockVariant.reserved} ${stockVariant.inventoryUnit} است`);
+        const cost = stockVariant.costPrice ?? p.avgCost;
+        await tx.update(productVariants).set({ onHand: stockVariant.onHand - out }).where(eq(productVariants.id, stockVariant.id));
+        await tx.insert(stockMovements).values({ productId, variantId: stockVariant.id, type: "adjust_out", qty, unitCost: cost, note, userId: ctx.userId });
+        await postJournal(tx, `کسری/ضایعات انبار ${p.sku} · ${stockVariant.title}`, [{ code: "5101", debit: cost * out }, { code: "1201", credit: cost * out }], { type: "product", id: productId }, ctx.userId);
+        await audit(tx, ctx, "inventory.adjust_variant", "product_variant", stockVariant.id, { onHand: stockVariant.onHand }, { onHand: stockVariant.onHand - out, note });
+      } else {
+        if (p.onHand - p.reserved < out) throw new HttpError(400, `موجودی آزاد ${p.onHand - p.reserved} ${p.inventoryBaseUnit} است`);
+        await tx.update(products).set({ onHand: p.onHand - out }).where(eq(products.id, productId));
+        await tx.insert(stockMovements).values({ productId, type: "adjust_out", qty, unitCost: p.avgCost, note, userId: ctx.userId });
+        await postJournal(tx, `کسری/ضایعات انبار ${p.sku}`, [{ code: "5101", debit: p.avgCost * out }, { code: "1201", credit: p.avgCost * out }], { type: "product", id: productId }, ctx.userId);
+        await audit(tx, ctx, "inventory.adjust", "product", productId, { onHand: p.onHand }, { onHand: p.onHand - out, note });
+      }
     }
+  });
+}
+
+/** Convert bulk stock from one variant into packed stock of another variant. */
+export async function repackStock(ctx: Ctx & { userId: number }, input: { productId: number; sourceVariantId: number; targetVariantId: number; inputQty: number; outputQty: number; note: string }) {
+  return db.transaction(async (tx) => {
+    const [p] = await tx.select().from(products).where(eq(products.id, input.productId)).for("update");
+    if (!p || p.source !== "central") throw new HttpError(404, "محصول انبار مرکزی یافت نشد");
+    if (input.sourceVariantId === input.targetVariantId) throw new HttpError(400, "تنوع مبدأ و مقصد باید متفاوت باشند");
+    const pair = await tx.select().from(productVariants).where(inArray(productVariants.id, [input.sourceVariantId, input.targetVariantId])).orderBy(productVariants.id).for("update");
+    const source = pair.find((v) => v.id === input.sourceVariantId);
+    const target = pair.find((v) => v.id === input.targetVariantId);
+    if (!source || !target || source.productId !== p.id || target.productId !== p.id || !source.isActive || !target.isActive) throw new HttpError(400, "تنوع مبدأ یا مقصد معتبر نیست");
+    const { inputQty, outputQty } = input;
+    if (!Number.isInteger(inputQty) || !Number.isInteger(outputQty) || inputQty < 1 || outputQty < 1 || inputQty > 100000 || outputQty > 100000) throw new HttpError(400, "مقدار مصرف و تولید باید عدد صحیح مثبت باشد");
+    if (source.onHand - source.reserved < inputQty) throw new HttpError(400, `موجودی آزاد تنوع مبدأ ${source.onHand - source.reserved} ${source.inventoryUnit} است`);
+    const consumedBase = inputQty * source.baseUnitAmount;
+    const producedBase = outputQty * target.baseUnitAmount;
+    if (producedBase > consumedBase) throw new HttpError(400, `مقدار تولیدشده از مصرف بیشتر است؛ مصرف معادل ${consumedBase.toLocaleString("fa-IR")} ${p.inventoryBaseUnit} و تولید ${producedBase.toLocaleString("fa-IR")} ${p.inventoryBaseUnit} می‌شود`);
+    const sourceCost = source.costPrice ?? p.avgCost;
+    const targetCost = Math.round((target.onHand * (target.costPrice ?? p.avgCost) + inputQty * sourceCost) / (target.onHand + outputQty));
+    const [job] = await tx.insert(inventoryRepackJobs).values({ productId: p.id, sourceVariantId: source.id, targetVariantId: target.id, inputQty, outputQty, note: input.note || null, userId: ctx.userId }).returning();
+    await tx.update(productVariants).set({ onHand: source.onHand - inputQty }).where(eq(productVariants.id, source.id));
+    await tx.update(productVariants).set({ onHand: target.onHand + outputQty, costPrice: targetCost }).where(eq(productVariants.id, target.id));
+    await tx.insert(stockMovements).values([
+      { productId: p.id, variantId: source.id, type: "repack_out", qty: -inputQty, unitCost: sourceCost, refType: "repack", refId: job.id, note: input.note || "مصرف در بسته‌بندی", userId: ctx.userId },
+      { productId: p.id, variantId: target.id, type: "repack_in", qty: outputQty, unitCost: targetCost, refType: "repack", refId: job.id, note: input.note || "تولید از بسته‌بندی", userId: ctx.userId },
+    ]);
+    await audit(tx, ctx, "inventory.repack", "inventory_repack", job.id, null, { productId: p.id, sourceVariantId: source.id, inputQty, targetVariantId: target.id, outputQty, consumedBase, producedBase });
+    return { id: job.id };
   });
 }

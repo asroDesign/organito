@@ -16,13 +16,13 @@ type Spec = { k: string; v: string; group?: string; hidden?: boolean; order?: nu
 type PurchaseOption = { name: string; type: "text" | "select" | "checkbox" | "radio"; required: boolean; values: { label: string; price: number; priceType: "fixed" | "percent" }[] };
 type ProductFaq = { question: string; answer: string };
 type Compat = { make: string; model: string; years: string };
-type Variant = { id?: number; title: string; attrs: Record<string, string>; sku: string; price: number; onHand: number; isActive: boolean };
+type Variant = { id?: number; title: string; attrs: Record<string, string>; sku: string; price: number; rewardPoints: number; onHand: number; inventoryUnit: string; baseUnitAmount: number; isActive: boolean; isSellable: boolean };
 type Opt = { name: string; values: string[] };
 export type ProductInitial = Partial<{
-  id: number; nameFa: string; nameEn: string | null; sku: string; partNumber: string; oemNumber: string | null; crossRefs: string[]; brand: string; manufacturer: string | null;
+  id: number; nameFa: string; nameEn: string | null; sku: string; partNumber: string; oemNumber: string | null; crossRefs: string[]; brand: string; manufacturer: string | null; source: string;
   country: string | null; categoryId: number | null; authenticity: string; basePrice: number; compareAtPrice: number; shortDesc: string | null; description: string | null;
   technicalReview: string | null; specs: Spec[]; compatibility: Compat[]; organicInfo: { [k: string]: string | string[] | undefined; suitableFor?: string[] }; videoMediaId: number | null; weight: number | null; barcode: string | null; seoTitle: string | null; metaDesc: string | null; slug: string;
-  lowStockThreshold: number; imageIds: number[]; variants: Variant[]; options: Opt[]; purchaseOptions: PurchaseOption[]; relatedProductIds: number[]; crossSellProductIds: number[]; productFaqs: ProductFaq[]; deliveryEstimateEnabled: boolean; deliveryMinDays: number; deliveryMaxDays: number; seoKeywords: string[]; seoImageId: number | null;
+  lowStockThreshold: number; allowBackorder: boolean; inventoryBaseUnit: string; imageIds: number[]; variants: Variant[]; options: Opt[]; purchaseOptions: PurchaseOption[]; relatedProductIds: number[]; crossSellProductIds: number[]; productFaqs: ProductFaq[]; deliveryEstimateEnabled: boolean; deliveryMinDays: number; deliveryMaxDays: number; seoKeywords: string[]; seoImageId: number | null;
 }>;
 
 function F({ name, label, dv, type = "text", ltr, req, half = true }: { name: string; label: string; dv?: string | number | null; type?: string; ltr?: boolean; req?: boolean; half?: boolean }) {
@@ -53,7 +53,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
     <form className="space-y-4" onSubmit={async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.currentTarget));
-      const payload = { ...fd, crossRefs: String(fd.crossRefs ?? ""), specs: specs.filter((s) => s.k), organicInfo: org, description: desc, technicalReview: review, videoMediaId: video, imageIds: images, variants, options: opts, purchaseOptions, productFaqs: faqs, relatedProductIds: relatedIds, crossSellProductIds: crossSellIds, seoImageId: seoImage[0] ?? null, deliveryEstimateEnabled: fd.deliveryEstimateEnabled === "on", seoKeywords: String(fd.seoKeywords ?? "").split(/[,،\n]/).map((x) => x.trim()).filter(Boolean) };
+      const payload = { ...fd, crossRefs: String(fd.crossRefs ?? ""), specs: specs.filter((s) => s.k), organicInfo: org, description: desc, technicalReview: review, videoMediaId: video, imageIds: images, variants, options: opts, purchaseOptions, productFaqs: faqs, relatedProductIds: relatedIds, crossSellProductIds: crossSellIds, seoImageId: seoImage[0] ?? null, deliveryEstimateEnabled: fd.deliveryEstimateEnabled === "on", allowBackorder: fd.allowBackorder === "on", seoKeywords: String(fd.seoKeywords ?? "").split(/[,،\n]/).map((x) => x.trim()).filter(Boolean) };
       setBusy(true);
       try {
         const r = await api<{ id: number }>(isEdit ? `/api/products/${initial.id}` : "/api/products", isEdit ? "PUT" : "POST", payload);
@@ -99,10 +99,12 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
           <VideoUploader value={video} onChange={setVideo} />
         </div>
         <div className={tab === "price" ? "space-y-4" : "hidden"}>
+          {mode === "admin" && <label className="flex flex-wrap items-center gap-3 text-sm"><b className="text-slate-700">واحد پایه انبار</b><select name="inventoryBaseUnit" defaultValue={initial.inventoryBaseUnit ?? "عدد"} className="input w-auto min-w-40"><option value="عدد">عدد</option><option value="گرم">گرم</option><option value="میلی‌لیتر">میلی‌لیتر</option></select><span className="text-xs text-slate-400">مبنای تبدیل تنوع‌ها و بسته‌بندی</span></label>}
           <div className="grid gap-4 sm:grid-cols-3">
             <F name="basePrice" label="قیمت پایه (تومان)" dv={initial.basePrice ?? 0} type="number" /><F name="compareAtPrice" label="قیمت قبل از تخفیف" dv={initial.compareAtPrice ?? 0} type="number" />
             <F name="lowStockThreshold" label="حد هشدار موجودی" dv={initial.lowStockThreshold ?? 3} type="number" />
           </div>
+          {mode === "admin" && (!initial.source || initial.source === "central") && <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-sm"><input type="checkbox" name="allowBackorder" defaultChecked={initial.allowBackorder ?? false} className="mt-0.5 size-4 accent-emerald-600" /><span><b className="block text-amber-950">فروش بدون کنترل موجودی</b><span className="mt-1 block text-xs leading-5 text-amber-900/80">در صورت فعال‌سازی، خرید با موجودی ناکافی پذیرفته می‌شود. موجودی آزاد می‌تواند منفی شود و هنگام ارسال، کسری موجودی به‌عنوان ورود و سپس خروج ثبت می‌شود.</span></span></label>}
           {mode === "seller" && !isEdit && (
             <div className="grid gap-4 rounded-xl bg-emerald-50 p-4 sm:grid-cols-3">
               <b className="sm:col-span-3 text-sm text-emerald-800">پیشنهاد فروش شما (پس از تأیید محصول فعال می‌شود)</b>
@@ -111,7 +113,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
             </div>
           )}
           {mode === "admin" && (
-            <VariantBuilder opts={opts} setOpts={setOpts} optText={optText} setOptText={setOptText} variants={variants} setVariants={setVariants} baseSku={initial.sku ?? ""} basePrice={initial.basePrice ?? 0} />
+            <VariantBuilder opts={opts} setOpts={setOpts} optText={optText} setOptText={setOptText} variants={variants} setVariants={setVariants} baseSku={initial.sku ?? ""} basePrice={initial.basePrice ?? 0} baseUnit={initial.inventoryBaseUnit ?? "عدد"} />
           )}
         </div>
         <div className={tab === "commerce" ? "space-y-6" : "hidden"}>
@@ -149,8 +151,8 @@ function combos(opts: Opt[]): Record<string, string>[] {
   return opts.reduce<Record<string, string>[]>((acc, o) => acc.flatMap((a) => o.values.map((v) => ({ ...a, [o.name]: v }))), [{}]);
 }
 
-function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVariants, baseSku, basePrice }: {
-  opts: Opt[]; setOpts: (o: Opt[]) => void; optText: string[]; setOptText: (t: string[]) => void; variants: Variant[]; setVariants: (v: Variant[]) => void; baseSku: string; basePrice: number;
+function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVariants, baseSku, basePrice, baseUnit }: {
+  opts: Opt[]; setOpts: (o: Opt[]) => void; optText: string[]; setOptText: (t: string[]) => void; variants: Variant[]; setVariants: (v: Variant[]) => void; baseSku: string; basePrice: number; baseUnit: string;
 }) {
   const sync = (names: Opt[], texts: string[]) => {
     setOptText(texts);
@@ -161,7 +163,7 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
     if (!valid.length) { toast("ابتدا حداقل یک پارامتر با مقادیر تعریف کنید", false); return; }
     const key = (a: Record<string, string>) => valid.map((o) => a[o.name]).join("|");
     const old = new Map(variants.map((v) => [key(v.attrs), v]));
-    const next = combos(valid).map((a, i) => old.get(key(a)) ?? { title: valid.map((o) => a[o.name]).join(" / "), attrs: a, sku: `${baseSku || "SKU"}-${i + 1}`, price: basePrice, onHand: 0, isActive: true });
+    const next = combos(valid).map((a, i) => old.get(key(a)) ?? { title: valid.map((o) => a[o.name]).join(" / "), attrs: a, sku: `${baseSku || "SKU"}-${i + 1}`, price: basePrice, rewardPoints: 0, onHand: 0, inventoryUnit: baseUnit, baseUnitAmount: 1, isActive: true, isSellable: true });
     // keep removed-but-existing variants as inactive (they may have reservations)
     const removed = variants.filter((v) => v.id && !next.includes(v)).map((v) => ({ ...v, isActive: false }));
     setOpts(valid);
@@ -188,15 +190,19 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
       </div>
       {variants.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="text-xs text-slate-500"><tr><th className="p-2 text-right">ترکیب</th><th className="p-2 text-right">SKU</th><th className="p-2 text-right">قیمت (تومان)</th><th className="p-2 text-right">موجودی اولیه</th><th className="p-2">فعال</th></tr></thead>
+          <table className="w-full min-w-[1000px] text-sm">
+            <thead className="text-xs text-slate-500"><tr><th className="p-2 text-right">ترکیب</th><th className="p-2 text-right">SKU</th><th className="p-2 text-right">واحد شمارش</th><th className="p-2 text-right">هر واحد چند {baseUnit} است؟</th><th className="p-2 text-right">قیمت (تومان)</th><th className="p-2 text-right">امتیاز خرید</th><th className="p-2 text-right">موجودی اولیه</th><th className="p-2">قابل فروش</th><th className="p-2">فعال</th></tr></thead>
             <tbody className="divide-y">
               {variants.map((v, i) => (
                 <tr key={i} className={v.isActive ? "" : "opacity-50"}>
                   <td className="p-2"><div className="flex flex-wrap gap-1">{Object.entries(v.attrs).length ? Object.entries(v.attrs).map(([k, val]) => <span key={k} className="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">{k}: {val}</span>) : <input value={v.title} onChange={(e) => upd(i, { title: e.target.value })} className="input" />}</div></td>
                   <td className="p-2"><input value={v.sku} dir="ltr" onChange={(e) => upd(i, { sku: e.target.value })} className="input" /></td>
+                  <td className="p-2"><input value={v.inventoryUnit ?? baseUnit} placeholder="عدد، کیلوگرم…" onChange={(e) => upd(i, { inventoryUnit: e.target.value })} className="input" /></td>
+                  <td className="p-2"><input type="number" min="1" step="1" value={v.baseUnitAmount ?? 1} onChange={(e) => upd(i, { baseUnitAmount: Number(e.target.value) })} className="input" /></td>
                   <td className="p-2"><input type="number" value={v.price} onChange={(e) => upd(i, { price: Number(e.target.value) })} className="input" /></td>
+                  <td className="p-2"><input type="number" min="0" value={v.rewardPoints ?? 0} onChange={(e) => upd(i, { rewardPoints: Number(e.target.value) })} className="input" /></td>
                   <td className="p-2"><input type="number" value={v.onHand} disabled={!!v.id} title={v.id ? "موجودی از بخش انبار تغییر می‌کند" : ""} onChange={(e) => upd(i, { onHand: Number(e.target.value) })} className="input" /></td>
+                  <td className="p-2 text-center"><input type="checkbox" checked={v.isSellable !== false} title={v.isSellable ? "در فروشگاه و فروش حضوری قابل عرضه است" : "فقط برای مدیریت انبار و بسته‌بندی"} onChange={(e) => upd(i, { isSellable: e.target.checked })} /></td>
                   <td className="p-2 text-center"><input type="checkbox" checked={v.isActive} onChange={(e) => upd(i, { isActive: e.target.checked })} /></td>
                 </tr>
               ))}
@@ -204,7 +210,9 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
           </table>
         </div>
       )}
-      <p className="text-xs text-slate-400">مشتری در صفحه محصول هر پارامتر را جداگانه انتخاب می‌کند و قیمت و موجودی ترکیب انتخاب‌شده نمایش داده می‌شود.</p>
+      <p className="text-xs text-slate-400">مثال: اگر واحد پایه «گرم» است، برای تنوع فله با واحد «کیلوگرم» مقدار ۱۰۰۰ و برای ظرف ۵۰۰ گرمی با واحد «عدد» مقدار ۵۰۰ بنویسید. موجودی هر تنوع جدا ثبت می‌شود.</p>
+      <p className="text-xs text-slate-400">تنوع «فله» را می‌توانید از فروش خارج و فقط برای بسته‌بندی نگه دارید؛ واحد «گرم» ثبت مقادیر اعشاری کیلوگرم را هم ساده می‌کند.</p>
+      <p className="text-xs text-slate-400">امتیاز خرید برای هر واحد از هر تنوع پس از پرداخت موفق به مشتری افزوده می‌شود.</p>
     </div>
   );
 }

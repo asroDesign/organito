@@ -77,7 +77,7 @@ export const publicRoutes: Route[] = [
     return {
       product: { ...prod, avgCost: undefined, createdBy: undefined, available: prod.onHand - prod.reserved },
       images: images.map((i) => i.mediaId),
-      variants: variants.map((v) => ({ id: v.id, title: v.title, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved })),
+      variants: variants.map((v) => ({ id: v.id, title: v.title, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved, isSellable: v.isSellable })),
       offers: offers.map(({ o, s }) => ({ id: o.id, sellerId: s.id, shopName: s.shopName, rating: s.rating, city: o.shipCity ?? s.city, price: o.salePrice ?? o.price, listPrice: o.price, available: o.stock - o.reserved, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, isBuyBox: o.isBuyBox, condition: o.condition }))
         .sort((a, b) => Number(b.isBuyBox) - Number(a.isBuyBox) || a.price - b.price),
     };
@@ -169,7 +169,19 @@ export const publicRoutes: Route[] = [
     if (key.length < 8) throw new HttpError(400, "کلید یکتا الزامی است");
     const recoveryKey = str(b.recoveryKey, 80);
     if (recoveryKey && !/^[\w-]{8,80}$/.test(recoveryKey)) throw new HttpError(400, "شناسه سبد نامعتبر است");
-    const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null, recoveryKey });
+    let invoiceType: string | null = null, invoiceDetails: Record<string,string> | null = null;
+    if (b.requestOfficialInvoice === true) {
+      invoiceType = str(b.officialInvoiceType, 20);
+      const [identity] = await db.select({name:users.name,nationalId:users.nationalId,companyName:users.companyName,companyNationalId:users.companyNationalId,companyManager:users.companyManager}).from(users).where(eq(users.id,u.id));
+      if (invoiceType === "individual") {
+        if (!identity?.nationalId || !/^\d{10}$/.test(identity.nationalId)) throw new HttpError(400,"برای فاکتور رسمی حقیقی، کد ملی معتبر را در پروفایل تکمیل کنید");
+        invoiceDetails={name:identity.name,nationalId:identity.nationalId};
+      } else if (invoiceType === "company") {
+        if (!identity?.companyName || !identity.companyNationalId || !/^\d{11}$/.test(identity.companyNationalId) || !identity.companyManager) throw new HttpError(400,"برای فاکتور حقوقی، نام شرکت، شناسه ملی ۱۱ رقمی و نام مدیرعامل را در پروفایل تکمیل کنید");
+        invoiceDetails={companyName:identity.companyName,companyNationalId:identity.companyNationalId,managerName:identity.companyManager};
+      } else throw new HttpError(400,"نوع فاکتور رسمی را انتخاب کنید");
+    }
+    const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null, recoveryKey, officialInvoiceType:invoiceType, officialInvoiceDetails:invoiceDetails });
     return { id: order.id, number: order.number, paid:order.paymentStatus==="paid" };
   } },
   { method: "POST", pattern: "orders/:id/confirm", handler: async (_r, p, m) => {
@@ -271,7 +283,7 @@ export const publicRoutes: Route[] = [
         (select coalesce(sum(credit),0) from journal_lines) as credit,
         (select count(*) from (select entry_id from journal_lines group by entry_id having sum(debit) <> sum(credit)) x) as unbalanced_entries,
         (select count(*) from seller_offers where reserved > stock or reserved < 0) as bad_offers,
-        (select count(*) from products where reserved > on_hand or reserved < 0) as bad_products,
+        (select count(*) from products where (reserved > on_hand and allow_backorder = false) or reserved < 0) as bad_products,
         (select count(*) from wallets where pending_balance < 0 or available_balance < 0 or locked_balance < 0) as bad_wallets,
         (select count(*) from audit_logs) as audit_count`);
     const row = r.rows[0] as Record<string, string>;

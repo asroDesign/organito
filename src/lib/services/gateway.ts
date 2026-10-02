@@ -27,6 +27,7 @@ export async function startGatewayPayment(ctx: Ctx & { userId: number }, target:
     const [r] = await db.select().from(supplyRequests).where(eq(supplyRequests.id, target.supplyId));
     if (!r || r.customerId !== ctx.userId) throw new HttpError(404, "درخواست یافت نشد");
     if (r.status !== "payment_pending") throw new HttpError(400, "درخواست در وضعیت پرداخت نیست");
+    if (r.quotationExpiresAt && r.quotationExpiresAt <= new Date()) throw new HttpError(400, "مهلت پیش‌فاکتور تمام شده و پرداخت آن امکان‌پذیر نیست");
     amount = r.quotationTotal; description = `پیش‌فاکتور تأمین ${r.number} - ${settings.siteName}`; ref = { supplyRequestId: r.id }; number = r.number;
   } else {
     amount = target.walletAmount; description = `شارژ کیف پول مشتری - ${settings.siteName}`; number = `WALLET-${ctx.userId}`;

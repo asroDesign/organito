@@ -4,6 +4,7 @@ import { users } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
 import { Card, PageHeader } from "@/components/ui";
 import { JsonForm } from "@/components/client";
+import { CustomerIdentityForm, type CustomerIdentity } from "@/components/CustomerIdentityForm";
 import { ProfileAvatarUploader } from "@/components/ProfileAvatarUploader";
 
 export default async function Profile() {
@@ -15,10 +16,7 @@ export default async function Profile() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card title="اطلاعات حساب">
           <div className="mb-6"><ProfileAvatarUploader initial={row.avatarMediaId} /></div>
-          <JsonForm url="/api/me/profile" submit="ذخیره" resetOnDone={false} fields={[
-            { name: "name", label: "نام و نام خانوادگی", required: true, defaultValue: row.name },
-            { name: "email", label: "ایمیل", defaultValue: row.email ?? "" },
-          ]} />
+          <CustomerIdentityForm initial={{name:row.name,email:row.email,birthdate:row.birthdate?.toISOString()??null,nationalId:row.nationalId,companyName:row.companyName,companyNationalId:row.companyNationalId,companyManager:row.companyManager,smsConsent:row.smsConsent} as CustomerIdentity} />
           <p className="mt-3 text-xs text-slate-500">شماره موبایل: <span dir="ltr">{row.phone}</span> (قابل تغییر از طریق پشتیبانی)</p>
         </Card>
         <Card title="تغییر رمز عبور">

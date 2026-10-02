@@ -18,12 +18,13 @@ export default async function CustomerSupplyDetail({ params }: { params: Promise
   if (!r) notFound();
   const hist = await db.select().from(supplyHistory).where(eq(supplyHistory.requestId, id)).orderBy(supplyHistory.createdAt);
   const sub = r.unitSalePrice * r.qty;
+  const quotationExpired = !!r.quotationExpiresAt && r.quotationExpiresAt <= new Date();
   return (
     <>
       <PageHeader title={`درخواست تأمین ${r.number}`} subtitle={jdate(r.createdAt, true)} actions={<>
         <StatusBadge status={r.status} map={SUPPLY_STATUS} />
-        {r.status === "quotation_sent" && <ActionButton url={`/api/supply/${r.id}/customer`} data={{ action: "approve" }} className="btn-success">تأیید پیش‌فاکتور</ActionButton>}
-        {r.status === "payment_pending" && <GatewayPayButton url={`/api/supply/${r.id}/gateway`} amount={r.quotationTotal} label={`پرداخت آنلاین با ${settings.paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}`} />}
+        {r.status === "quotation_sent" && !quotationExpired && <ActionButton url={`/api/supply/${r.id}/customer`} data={{ action: "approve" }} className="btn-success">تأیید پیش‌فاکتور</ActionButton>}
+        {r.status === "payment_pending" && !quotationExpired && <GatewayPayButton url={`/api/supply/${r.id}/gateway`} amount={r.quotationTotal} label={`پرداخت آنلاین با ${settings.paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}`} />}
         {["pending", "reviewing", "quotation_sent", "payment_pending", "supplier_search", "rfq_sent", "supplier_found", "price_calculated", "internal_match_found"].includes(r.status) && <ActionButton url={`/api/supply/${r.id}/customer`} data={{ action: "cancel" }} className="btn-ghost" confirm="لغو درخواست؟">لغو</ActionButton>}
       </>} />
       <div className="grid gap-6 lg:grid-cols-3">
@@ -33,6 +34,7 @@ export default async function CustomerSupplyDetail({ params }: { params: Promise
           {r.mediaIds.length > 0 && <div className="mt-2 flex gap-2">{r.mediaIds.map((m) => /* eslint-disable-next-line @next/next/no-img-element */ <img key={m} src={`/api/media/${m}`} alt="" className="h-16 w-16 rounded-lg object-cover" />)}</div>}
         </Card>
         <Card title="پیش‌فاکتور">
+          {r.quotationExpiresAt && <div className={`mb-3 rounded-lg p-3 text-sm ${quotationExpired ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-800"}`}>{quotationExpired ? "مهلت این پیش‌فاکتور به پایان رسیده و پرداخت آن غیرفعال است." : `اعتبار پیش‌فاکتور تا ${jdate(r.quotationExpiresAt,true)}`}</div>}
           {r.quotationTotal && ["quotation_sent", "customer_approved", "payment_pending", "paid", "purchasing", "received", "ready_to_ship", "shipped", "completed"].includes(r.status) ? <>
             <KV k="قیمت واحد" v={toman(r.unitSalePrice)} /><KV k="جمع" v={toman(sub)} /><KV k="ارسال" v={toman(r.shippingCost)} /><KV k="مالیات" v={toman(r.quotationTotal - sub - r.shippingCost)} />
             <div className="mt-2 flex justify-between border-t pt-2 font-extrabold"><span>مبلغ کل</span><span className="text-emerald-700">{toman(r.quotationTotal)}</span></div>

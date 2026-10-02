@@ -25,12 +25,13 @@ export default async function OrderPrint({ params }: { params: Promise<{ id: str
       <div className="invoice-sheet bg-white p-8 text-[12.5px] leading-7 text-black shadow print:shadow-none">
         <header className="flex items-start justify-between gap-4 border-b-2 border-black pb-3">
           <div><div className="text-2xl font-black">{s.siteName}</div><div className="text-xs">{s.siteTagline}</div><div className="text-[11px]">{s.senderCity} - {s.senderAddress} · تلفن {s.senderPhone}</div></div>
-          <div className="text-center"><div className="text-xl font-black">برگه سفارش</div><div className="text-xs">وضعیت: {ORDER_STATUS[o.status]}</div></div>
+          <div className="text-center"><div className="text-xl font-black">{o.officialInvoiceType ? "صورتحساب رسمی" : "برگه سفارش"}</div><div className="text-xs">وضعیت: {ORDER_STATUS[o.status]}</div></div>
           <div className="w-44 text-left text-xs"><div>شماره سفارش: <b dir="ltr">{o.number}</b></div><div>تاریخ ثبت: <b>{jdate(o.createdAt, true)}</b></div><div className="mt-1"><Barcode value={o.number} height={30} /></div></div>
         </header>
         <section className="mt-4 grid grid-cols-2 gap-3">
           <div className="rounded-lg border border-slate-400 p-3"><b className="block border-b border-slate-300 pb-1">فرستنده</b><div>{s.senderName}</div><div>{s.senderCity} - {s.senderAddress}</div><div>تلفن: {s.senderPhone} · کد پستی: {s.senderPostalCode}</div><div className="text-xs">کد اقتصادی: {s.economicCode}</div></div>
           <div className="rounded-lg border border-slate-400 p-3"><b className="block border-b border-slate-300 pb-1">گیرنده</b><div>{o.address.fullName} {customer && !sellerView ? `(${customer.name})` : ""}</div><div>تلفن: <span dir="ltr">{o.address.phone}</span></div><div>{o.address.city} — {o.address.address}</div><div>کد پستی: {o.address.postalCode || "—"}</div></div>
+          {!sellerView && o.officialInvoiceType && o.officialInvoiceDetails && <div className="col-span-2 rounded-lg border-2 border-emerald-700 p-3"><b className="block border-b border-slate-300 pb-1">مشخصات صورتحساب رسمی · {o.officialInvoiceType === "company" ? "شخص حقوقی" : "شخص حقیقی"}</b>{o.officialInvoiceType === "company" ? <><div>نام شرکت: {o.officialInvoiceDetails.companyName}</div><div>شناسه ملی: <span dir="ltr">{o.officialInvoiceDetails.companyNationalId}</span></div><div>مدیرعامل: {o.officialInvoiceDetails.managerName}</div></> : <><div>نام: {o.officialInvoiceDetails.name}</div><div>کد ملی: <span dir="ltr">{o.officialInvoiceDetails.nationalId}</span></div></>}</div>}
         </section>
         <table className="mt-4 w-full border-collapse text-center text-[12px]">
           <thead><tr className="bg-slate-100">{["ردیف", "شرح کالا", "فروشنده / مرسوله", "تعداد", "فی (تومان)", "مبلغ"].map((h) => <th key={h} className={cell}>{h}</th>)}</tr></thead>

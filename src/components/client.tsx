@@ -60,7 +60,7 @@ export function ActionButton({ url, data, method = "POST", children, confirm, cl
 }
 
 /* ---------------- generic form ---------------- */
-export type Field = { name: string; label: string; type?: "text" | "number" | "textarea" | "select" | "password" | "checkbox" | "date"; options?: [string, string][]; required?: boolean; placeholder?: string; defaultValue?: string | number | boolean; half?: boolean };
+export type Field = { name: string; label: string; type?: "text" | "number" | "textarea" | "select" | "password" | "checkbox" | "date" | "datetime-local"; options?: [string, string][]; required?: boolean; placeholder?: string; defaultValue?: string | number | boolean; half?: boolean };
 export function JsonForm({ url, method = "POST", fields, submit = "ثبت", extra, onDone, redirectTo, resetOnDone = true, idempotent }: {
   url: string; method?: string; fields: Field[]; submit?: string; extra?: Record<string, unknown>; onDone?: (r: Record<string, unknown>) => void; redirectTo?: string | ((r: Record<string, unknown>) => string); resetOnDone?: boolean; idempotent?: boolean;
 }) {

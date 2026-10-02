@@ -73,13 +73,13 @@ export const paymentRoutes: Route[] = [
         id: pr.id, slug: pr.slug, nameFa: pr.nameFa, nameEn: pr.nameEn, sku: pr.sku, partNumber: pr.partNumber, oemNumber: pr.oemNumber, crossRefs: pr.crossRefs,
         brand: pr.brand, manufacturer: pr.manufacturer, country: pr.country, authenticity: pr.authenticity, category: row.cat, shortDesc: pr.shortDesc,
         technicalReview: pr.technicalReview, specs: pr.specs, compatibility: pr.compatibility, weight: pr.weight, basePrice: pr.basePrice, source: pr.source,
-        available: pr.onHand - pr.reserved, status: pr.status, options: pr.options, mainImageId: pr.mainImageId,
+        available: pr.onHand - pr.reserved, allowBackorder: pr.allowBackorder, status: pr.status, options: pr.options, mainImageId: pr.mainImageId,
         organicInfo: pr.organicInfo, videoMediaId: pr.videoMediaId, compareAtPrice: pr.compareAtPrice, purchaseOptions: pr.purchaseOptions,
       },
       rating: rv, store: { multiVendor: !!st.multiVendor, siteName: st.siteName, freeShippingOver: st.freeShippingOver, returnDays: st.returnDays },
       festival: fest ? { title: fest.title, pct: fest.discountPercent, color: fest.color, endsAt: fest.endsAt.toISOString() } : null,
       images: images.map((i) => i.mediaId),
-      variants: variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved })),
+      variants: variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved, isSellable: v.isSellable })),
       offers: offers.map(({ o, s }) => ({ id: o.id, sellerId: s.id, shopName: s.shopName, rating: s.rating, city: o.shipCity ?? s.city, price: o.salePrice ?? o.price, listPrice: o.price, available: o.stock - o.reserved, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, isBuyBox: o.isBuyBox, condition: o.condition }))
         .sort((a, b) => Number(b.isBuyBox) - Number(a.isBuyBox) || a.price - b.price)
         .map((o, i) => (st.multiVendor ? o : { ...o, sellerId: 0, shopName: st.siteName, city: "", rating: 0, isBuyBox: i === 0 })),

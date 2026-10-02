@@ -23,6 +23,9 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
     db.select().from(auditLogs).where(and(eq(auditLogs.entity, "product"), eq(auditLogs.entityId, String(id)))).orderBy(desc(auditLogs.createdAt)).limit(15),
   ]);
   const canApprove = u.permissions.includes("PRODUCTS_APPROVE");
+  const stockQty = vars.length ? vars.reduce((sum, v) => sum + v.onHand * v.baseUnitAmount, 0) : p.onHand;
+  const reservedQty = vars.length ? vars.reduce((sum, v) => sum + v.reserved * v.baseUnitAmount, 0) : p.reserved;
+  const stockValue = vars.length ? vars.reduce((sum, v) => sum + v.onHand * (v.costPrice ?? p.avgCost), 0) : p.avgCost * p.onHand;
   const canDisable = u.permissions.includes("PRODUCTS_DISABLE");
   const canOffers = u.permissions.includes("SUPPLIER_OFFERS_MANAGE");
   const st = (s: string, label: string, cls = "btn-sm", extra: Record<string, unknown> = {}) => <ActionButton url={`/api/products/${id}/status`} data={{ status: s, ...extra }} className={cls}>{label}</ActionButton>;
@@ -48,7 +51,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
             <KV k="نام انگلیسی" v={p.nameEn ?? "—"} /><KV k="کد محصول" v={<span dir="ltr">{p.partNumber}</span>} /><KV k="OEM" v={<span dir="ltr">{p.oemNumber ?? "—"}</span>} />
             <KV k="برند / سازنده" v={`${p.brand} / ${p.manufacturer ?? "—"}`} /><KV k="کشور" v={p.country ?? "—"} /><KV k="اصالت" v={AUTH_LABEL[p.authenticity]} />
             <KV k="قیمت پایه" v={toman(p.basePrice)} /><KV k="قبل از تخفیف" v={toman(p.compareAtPrice)} /><KV k="منبع" v={p.source === "central" ? "انبار مرکزی" : `Marketplace — ${row.shop ?? ""}`} />
-            <KV k="موجودی / رزرو" v={`${faNum(p.onHand)} / ${faNum(p.reserved)}`} /><KV k="میانگین موزون خرید" v={toman(p.avgCost)} /><KV k="ارزش موجودی" v={toman(p.avgCost * p.onHand)} />
+            <KV k={`موجودی پایه / رزرو (${p.inventoryBaseUnit})`} v={`${faNum(stockQty)} / ${faNum(reservedQty)}`} /><KV k={vars.length ? "بهای تمام‌شده تنوع‌ها (برای هر تنوع جداگانه)" : "میانگین موزون خرید"} v={vars.length ? "محاسبه‌شده در انبار" : toman(p.avgCost)} /><KV k="ارزش موجودی تنوع‌ها" v={toman(stockValue)} />
             <KV k="حد هشدار" v={faNum(p.lowStockThreshold)} /><KV k="Slug" v={<span dir="ltr">{p.slug}</span>} /><KV k="به‌روزرسانی" v={jdate(p.updatedAt, true)} />
           </div>
           <p className="mt-3 text-sm leading-7 text-slate-600">{p.shortDesc}</p>
@@ -68,7 +71,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
         ))}
       </Table>
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        <Card title="تنوع‌ها">{vars.length ? vars.map((v) => <KV key={v.id} k={`${v.title} (${v.sku})`} v={`${toman(v.price)} · موجودی ${faNum(v.onHand - v.reserved)}${v.isActive ? "" : " · غیرفعال"}`} />) : <p className="text-sm text-slate-500">بدون تنوع</p>}</Card>
+        <Card title="تنوع‌ها">{vars.length ? vars.map((v) => <KV key={v.id} k={`${v.title} (${v.sku})`} v={`${toman(v.price)} · موجودی ${faNum(v.onHand - v.reserved)} ${v.inventoryUnit} · هر واحد ${faNum(v.baseUnitAmount)} ${p.inventoryBaseUnit} · ${v.isSellable ? "قابل فروش" : "فقط انبار / بسته‌بندی"}${v.isActive ? "" : " · غیرفعال"}`} />) : <p className="text-sm text-slate-500">بدون تنوع</p>}</Card>
         <Card title="گردش موجودی">{moves.map((m) => <KV key={m.id} k={`${m.type} ${m.note ?? ""}`} v={`${faNum(m.qty)} · ${jdate(m.createdAt)}`} />)}{!moves.length && <p className="text-sm text-slate-500">—</p>}</Card>
         <Card title="تاریخچه تغییرات (Audit)">{logs.map((l) => <KV key={l.id} k={l.action} v={jdate(l.createdAt, true)} />)}{!logs.length && <p className="text-sm text-slate-500">—</p>}</Card>
       </div>

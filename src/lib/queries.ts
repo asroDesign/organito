@@ -27,16 +27,17 @@ export async function listShopProducts(f: ShopFilters, limit = 200) {
   if (f.make) conds.push(sql`(${products.organicInfo}->'suitableFor') ? ${f.make}`);
   const offerAgg = sql`(select json_build_object('min', min(coalesce(o.sale_price, o.price)), 'max', max(coalesce(o.sale_price, o.price)), 'sellers', count(*), 'avail', coalesce(sum(greatest(o.stock - o.reserved, 0)),0), 'rating', max(s.rating))
     from seller_offers o join sellers s on s.id = o.seller_id where o.product_id = ${products.id} and o.status = 'approved' and s.status = 'approved' and not s.restricted)`;
-  const varAgg = sql`(select json_build_object('min', min(v.price), 'avail', coalesce(sum(greatest(v.on_hand - v.reserved,0)),0)) from product_variants v where v.product_id = ${products.id} and v.is_active)`;
+  const varAgg = sql`(select json_build_object('min', min(v.price) filter (where v.is_sellable), 'avail', coalesce(sum(greatest(v.on_hand - v.reserved,0)) filter (where v.is_sellable),0), 'has', count(*) > 0, 'sellable', count(*) filter (where v.is_sellable) > 0) from product_variants v where v.product_id = ${products.id} and v.is_active)`;
   const rev = sql<{ avg: number | null; n: number }>`(select json_build_object('avg', round(avg(r.rating)::numeric, 1), 'n', count(*)) from reviews r where r.product_id = ${products.id} and r.status = 'approved')`;
   const sold = sql<number>`(select coalesce(sum(oi.qty),0)::int from order_items oi join orders o on o.id = oi.order_id where oi.product_id = ${products.id} and o.payment_status = 'paid')`;
-  const rows = await db.select({ p: products, agg: sql<{ min: number | null; max: number | null; sellers: number; avail: number; rating: number | null }>`${offerAgg}`, va: sql<{ min: number | null; avail: number }>`${varAgg}`, sold, rev, cat: categories.name })
+  const rows = await db.select({ p: products, agg: sql<{ min: number | null; max: number | null; sellers: number; avail: number; rating: number | null }>`${offerAgg}`, va: sql<{ min: number | null; avail: number; has: boolean; sellable: boolean }>`${varAgg}`, sold, rev, cat: categories.name })
     .from(products).leftJoin(categories, eq(categories.id, products.categoryId)).where(and(...conds))
     .orderBy(f.sort === "new" ? desc(products.createdAt) : desc(products.updatedAt)).limit(limit);
   const [fests, st] = await Promise.all([activeFestivals(), getSettings()]);
   const mv = !!st.multiVendor;
   let list = rows.map(({ p, agg, va, sold, rev, cat }) => {
-    const hasVar = va.min !== null;
+    const hasVar = !!va.has;
+    const hasSellableVariant = !!va.sellable;
     const centralAvail = p.source === "central" ? (hasVar ? Number(va.avail) : Math.max(0, p.onHand - p.reserved)) : 0;
     const prices = [...(p.source === "central" && (hasVar ? va.min : p.basePrice) ? [Number(hasVar ? va.min : p.basePrice)] : []), ...(agg.min ? [Number(agg.min), Number(agg.max)] : [])];
     const available = centralAvail + Number(agg.avail);
@@ -49,7 +50,7 @@ export async function listShopProducts(f: ShopFilters, limit = 200) {
       imageId: p.mainImageId, category: cat, minPrice, listPrice: minList, maxPrice: prices.length ? Math.max(...prices) : 0, compareAt,
       discountPct: compareAt > minPrice && compareAt ? Math.round(((compareAt - minPrice) / compareAt) * 100) : 0,
       festival: fest ? { title: fest.title, color: fest.color, endsAt: fest.endsAt.toISOString(), pct: fest.discountPercent } : null,
-      sellers: Number(agg.sellers) + (p.source === "central" ? 1 : 0), available, inStock: available > 0 && p.status === "active", sold: Number(sold), rating: rev?.avg ? Number(rev.avg) : 0, reviewCount: Number(rev?.n ?? 0), sellerRating: agg.rating ?? 0, suitableFor: p.organicInfo?.suitableFor ?? [],
+      sellers: Number(agg.sellers) + (p.source === "central" ? 1 : 0), available, allowBackorder: p.source === "central" && p.allowBackorder && (!hasVar || hasSellableVariant), inStock: (available > 0 || (p.source === "central" && p.allowBackorder && (!hasVar || hasSellableVariant))) && (p.status === "active" || (p.status === "out_of_stock" && p.allowBackorder && (!hasVar || hasSellableVariant))), sold: Number(sold), rating: rev?.avg ? Number(rev.avg) : 0, reviewCount: Number(rev?.n ?? 0), sellerRating: agg.rating ?? 0, suitableFor: p.organicInfo?.suitableFor ?? [],
       createdAt: p.createdAt.toISOString(), hasVariants: hasVar, mv,
     };
   });

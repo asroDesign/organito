@@ -11,39 +11,50 @@ import { LogoutButton } from "./client";
 import { getSettings } from "@/lib/settings";
 import { SiteBrand } from "./SiteBrand";
 
-const ADMIN_NAV: (NavItem & { perm?: Permission | Permission[] })[] = [
-  { href: "/admin", label: "داشبورد", icon: "LayoutDashboard" },
-  { href: "/admin/products", label: "محصولات و کاتالوگ", icon: "Package", perm: "PRODUCTS_VIEW" },
-  { href: "/admin/product-prices", label: "ویرایش سریع قیمت‌ها", icon: "Tag", perm: "PRODUCTS_EDIT" },
-  { href: "/admin/incomplete-carts", label: "سفارش‌ها و سبدهای ناقص", icon: "ShoppingBag", perm: "SMS_MANAGE" },
-  { href: "/admin/reviews", label: "دیدگاه‌ها و پرسش‌ها", icon: "MessageSquare", perm: "PRODUCTS_APPROVE" },
-  { href: "/admin/categories", label: "دسته‌بندی‌ها", icon: "FolderTree", perm: "PRODUCTS_EDIT" },
-  { href: "/admin/media", label: "مرکز فایل", icon: "FileImage", perm: "PRODUCTS_EDIT" },
-  { href: "/admin/blog", label: "وبلاگ و سئو", icon: "FileText", perm: "PRODUCTS_EDIT" },
-  { href: "/admin/marketplace", label: "مارکت‌پلیس و تأمین‌کنندگان", icon: "Store", perm: ["SUPPLIER_OFFERS_MANAGE", "SELLER_SETTLEMENT_MANAGE", "WITHDRAWALS_MANAGE"] },
-  { href: "/admin/customer-wallet", label: "برداشت کیف پول مشتریان", icon: "Wallet", perm: "WITHDRAWALS_MANAGE" },
-  { href: "/admin/returns", label: "درخواست‌های مرجوعی", icon: "ClipboardList", perm: "ORDERS_MANAGE" },
-  { href: "/admin/giftcards", label: "فروش کارت هدیه", icon: "Tag", perm: "PAYMENTS_MANAGE" },
-  { href: "/admin/campaigns", label: "کمپین‌های تبلیغاتی", icon: "MessageSquare", perm: "SMS_MANAGE" },
-  { href: "/admin/automations", label: "رویدادهای خودکار", icon: "Flame", perm: "SMS_MANAGE" },
-  { href: "/admin/access", label: "دسترسی و گروه‌ها", icon: "ShieldCheck", perm: ["USERS_MANAGE","SMS_MANAGE"] },
-  { href: "/admin/orders", label: "سفارش‌ها", icon: "ShoppingBag", perm: "ORDERS_VIEW" },
-  { href: "/admin/shipments", label: "مدیریت ارسال‌ها", icon: "Truck", perm: "SHIPMENTS_MANAGE" },
-  { href: "/admin/carriers", label: "شرکت‌های پستی و تعرفه", icon: "MapPin", perm: "SHIPMENTS_MANAGE" },
-  { href: "/admin/discounts", label: "کدهای تخفیف", icon: "BadgePercent", perm: "MARKETING_MANAGE" },
-  { href: "/admin/festivals", label: "جشنواره‌های فروش", icon: "Flame", perm: "MARKETING_MANAGE" },
-  { href: "/admin/supply", label: "استعلام و تأمین محصول", icon: "Search", perm: "SUPPLY_REQUESTS_VIEW" },
-  { href: "/admin/inventory", label: "انبار مرکزی", icon: "Warehouse", perm: "INVENTORY_MANAGE" },
-  { href: "/admin/pos", label: "فروش حضوری", icon: "ShoppingBag", perm: "INVENTORY_MANAGE" },
-  { href: "/admin/warehouse-issues", label: "حواله‌های خروج انبار", icon: "ClipboardList", perm: ["INVENTORY_MANAGE", "SHIPMENTS_MANAGE"] },
-  { href: "/admin/accounting", label: "حسابداری", icon: "Calculator", perm: "ACCOUNTING_MANAGE" },
-  { href: "/admin/tickets", label: "تیکت‌ها", icon: "LifeBuoy", perm: "TICKETS_MANAGE" },
-  { href: "/admin/loyalty", label: "باشگاه مشتریان", icon: "Users", perm: "SMS_MANAGE" },
-  { href: "/admin/sms", label: "پنل پیامک", icon: "MessageSquare", perm: "SMS_MANAGE" },
-  { href: "/admin/labels", label: "طراحی لیبل پستی", icon: "Tag", perm: "SETTINGS_MANAGE" },
-  { href: "/admin/users", label: "کاربران و مجوزها", icon: "Users", perm: "USERS_MANAGE" },
-  { href: "/admin/settings", label: "تنظیمات", icon: "Settings", perm: "SETTINGS_MANAGE" },
-  { href: "/admin/audit", label: "ممیزی", icon: "ShieldCheck", perm: "AUDIT_LOG_VIEW" },
+const ADMIN_GROUPS: { label: string; icon: NavItem["icon"]; items: (NavItem & { perm?: Permission | Permission[] })[] }[] = [
+  { label: "فروش و سفارش‌ها", icon: "ShoppingBag", items: [
+    { href: "/admin/orders", label: "سفارش‌های آنلاین و حضوری", icon: "ShoppingBag", perm: "ORDERS_VIEW" },
+    { href: "/admin/incomplete-carts", label: "سبدهای ناقص", icon: "AlertTriangle", perm: "SMS_MANAGE" },
+    { href: "/admin/pos", label: "ثبت فروش حضوری", icon: "ShoppingBag", perm: "INVENTORY_MANAGE" },
+    { href: "/admin/returns", label: "مرجوعی‌ها", icon: "ClipboardList", perm: "ORDERS_MANAGE" },
+    { href: "/admin/shipments", label: "ارسال‌ها و مرسوله‌ها", icon: "Truck", perm: "SHIPMENTS_MANAGE" },
+    { href: "/admin/carriers", label: "شرکت‌های پستی و تعرفه", icon: "MapPin", perm: "SHIPMENTS_MANAGE" },
+    { href: "/admin/warehouse-issues", label: "حواله‌های خروج انبار", icon: "ClipboardList", perm: ["INVENTORY_MANAGE", "SHIPMENTS_MANAGE"] },
+  ] },
+  { label: "محصولات و محتوا", icon: "Package", items: [
+    { href: "/admin/products", label: "محصولات و کاتالوگ", icon: "Package", perm: "PRODUCTS_VIEW" },
+    { href: "/admin/product-prices", label: "ویرایش سریع قیمت‌ها", icon: "Tag", perm: "PRODUCTS_EDIT" },
+    { href: "/admin/categories", label: "دسته‌بندی‌ها", icon: "FolderTree", perm: "PRODUCTS_EDIT" },
+    { href: "/admin/reviews", label: "دیدگاه‌ها و پرسش‌ها", icon: "MessageSquare", perm: "PRODUCTS_APPROVE" },
+    { href: "/admin/blog", label: "وبلاگ و سئو", icon: "FileText", perm: "PRODUCTS_EDIT" },
+    { href: "/admin/media", label: "مرکز فایل و رسانه", icon: "FileImage", perm: "PRODUCTS_EDIT" },
+  ] },
+  { label: "مشتریان و بازاریابی", icon: "Users", items: [
+    { href: "/admin/loyalty", label: "باشگاه مشتریان", icon: "Users", perm: "SMS_MANAGE" },
+    { href: "/admin/campaigns", label: "کمپین‌های تبلیغاتی", icon: "MessageSquare", perm: "SMS_MANAGE" },
+    { href: "/admin/automations", label: "رویدادهای خودکار", icon: "Flame", perm: "SMS_MANAGE" },
+    { href: "/admin/discounts", label: "کدهای تخفیف", icon: "BadgePercent", perm: "MARKETING_MANAGE" },
+    { href: "/admin/festivals", label: "جشنواره‌های فروش", icon: "Flame", perm: "MARKETING_MANAGE" },
+    { href: "/admin/giftcards", label: "کارت‌های هدیه", icon: "Tag", perm: "PAYMENTS_MANAGE" },
+    { href: "/admin/sms", label: "پیامک و گزارش ارسال", icon: "MessageSquare", perm: "SMS_MANAGE" },
+  ] },
+  { label: "فروشندگان و تأمین", icon: "Store", items: [
+    { href: "/admin/marketplace", label: "مدیریت فروشندگان", icon: "Store", perm: ["SUPPLIER_OFFERS_MANAGE", "SELLER_SETTLEMENT_MANAGE", "WITHDRAWALS_MANAGE"] },
+    { href: "/admin/supply", label: "درخواست‌های استعلام و تأمین", icon: "Search", perm: "SUPPLY_REQUESTS_VIEW" },
+  ] },
+  { label: "مالی، انبار و پشتیبانی", icon: "Calculator", items: [
+    { href: "/admin/accounting", label: "حسابداری و گزارش مالی", icon: "Calculator", perm: "ACCOUNTING_MANAGE" },
+    { href: "/admin/customer-wallet", label: "برداشت کیف پول مشتریان", icon: "Wallet", perm: "WITHDRAWALS_MANAGE" },
+    { href: "/admin/inventory", label: "موجودی انبار مرکزی", icon: "Warehouse", perm: "INVENTORY_MANAGE" },
+    { href: "/admin/tickets", label: "تیکت‌ها و پشتیبانی", icon: "LifeBuoy", perm: "TICKETS_MANAGE" },
+  ] },
+  { label: "کاربران و تنظیمات سامانه", icon: "Settings", items: [
+    { href: "/admin/users", label: "کاربران", icon: "Users", perm: "USERS_MANAGE" },
+    { href: "/admin/access", label: "نقش‌ها، دسترسی و گروه‌ها", icon: "ShieldCheck", perm: ["USERS_MANAGE", "SMS_MANAGE"] },
+    { href: "/admin/labels", label: "طراحی لیبل پستی", icon: "Tag", perm: "SETTINGS_MANAGE" },
+    { href: "/admin/settings", label: "تنظیمات عمومی", icon: "Settings", perm: "SETTINGS_MANAGE" },
+    { href: "/admin/audit", label: "گزارش ممیزی", icon: "ShieldCheck", perm: "AUDIT_LOG_VIEW" },
+  ] },
 ];
 const SELLER_NAV: NavItem[] = [
   { href: "/seller", label: "داشبورد", icon: "LayoutDashboard" },
@@ -77,8 +88,9 @@ const CUSTOMER_NAV: NavItem[] = [
 ];
 
 export async function Shell({ user, area, children }: { user: SessionUser; area: "admin" | "seller" | "customer"; children: ReactNode }) {
-  const items = area === "admin"
-    ? ADMIN_NAV.filter((n) => !n.perm || (Array.isArray(n.perm) ? n.perm.some((p) => user.permissions.includes(p)) : user.permissions.includes(n.perm))).map((n) => ({ href: n.href, label: n.label, icon: n.icon }))
+  const canSee = (n: NavItem & { perm?: Permission | Permission[] }) => !n.perm || (Array.isArray(n.perm) ? n.perm.some((p) => user.permissions.includes(p)) : user.permissions.includes(n.perm));
+  const adminGroups = ADMIN_GROUPS.map((g) => ({ ...g, items: g.items.filter(canSee).map(({ href, label, icon }) => ({ href, label, icon })) })).filter((g) => g.items.length > 0);
+  const items = area === "admin" ? [{ href: "/admin", label: "داشبورد", icon: "LayoutDashboard" as const }]
     : area === "seller" ? SELLER_NAV : CUSTOMER_NAV;
   const [{ n }] = await db.select({ n: count() }).from(notifications).where(and(eq(notifications.userId, user.id), eq(notifications.read, false)));
   const settings = await getSettings();
@@ -89,7 +101,7 @@ export async function Shell({ user, area, children }: { user: SessionUser; area:
         <SiteBrand name={settings.siteName} logoMediaId={Number(settings.siteLogoMediaId)} boxClassName="h-9 w-9" />
         <div><div className="font-black text-slate-800">{settings.siteName}</div><div className="text-[11px] text-slate-500">{title}</div></div>
       </Link>
-      <SideNav items={items} />
+      <SideNav items={items} groups={area === "admin" ? adminGroups : undefined} />
       <div className="border-t border-slate-100 p-3">
         <div className="mb-2 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
           {user.avatarMediaId ? <img src={`/api/media/${user.avatarMediaId}`} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" /> : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-100 text-sm font-black text-emerald-700">{user.name.slice(0,1)}</span>}
@@ -105,7 +117,7 @@ export async function Shell({ user, area, children }: { user: SessionUser; area:
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-l border-slate-200 bg-white lg:block">{side}</aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
-          <SideNav items={items} mobile title={title} />
+          <SideNav items={items} groups={area === "admin" ? adminGroups : undefined} mobile title={title} />
           <div className="hidden text-sm text-slate-500 lg:block">{title}</div>
           <div className="flex items-center gap-2">
             <NotificationBell initialUnread={n} />

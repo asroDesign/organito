@@ -47,6 +47,16 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             <div>نام: {o.address.fullName} ({customer?.name})</div><div>تلفن: <span dir="ltr">{o.address.phone}</span></div>
             <div>نشانی: {o.address.city} — {o.address.address}</div><div>کد پستی: {o.address.postalCode || "—"}</div>
           </div>
+          {!agency && o.officialInvoiceType && o.officialInvoiceDetails && (
+            <div className={`${box} col-span-2 border-2 border-emerald-700`}>
+              <b className="block border-b border-slate-300 pb-1">مشخصات صورتحساب رسمی · {o.officialInvoiceType === "company" ? "شخص حقوقی" : "شخص حقیقی"}</b>
+              {o.officialInvoiceType === "company" ? (
+                <><div>نام شرکت: {o.officialInvoiceDetails.companyName}</div><div>شناسه ملی: <span dir="ltr">{o.officialInvoiceDetails.companyNationalId}</span></div><div>نام مدیرعامل: {o.officialInvoiceDetails.managerName}</div></>
+              ) : (
+                <><div>نام: {o.officialInvoiceDetails.name}</div><div>کد ملی: <span dir="ltr">{o.officialInvoiceDetails.nationalId}</span></div></>
+              )}
+            </div>
+          )}
         </section>
         <table className="mt-4 w-full border-collapse text-center text-[12px]">
           <thead><tr className="bg-slate-100">{["ردیف", "شرح کالا", "تعداد", "مبلغ واحد (تومان)", "مبلغ کل", `مالیات ${faNum(s.taxRate)}٪`, "جمع با مالیات"].map((h) => <th key={h} className="border border-slate-400 p-1.5">{h}</th>)}</tr></thead>

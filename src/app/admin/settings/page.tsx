@@ -30,6 +30,7 @@ export default async function SettingsPage() {
           { name: "taxRate", label: "نرخ مالیات (%)", type: "number", half: true, defaultValue: s.taxRate },
           { name: "defaultCommission", label: "کمیسیون پیش‌فرض (%)", type: "number", half: true, defaultValue: s.defaultCommission },
           { name: "minWithdrawal", label: "حداقل برداشت (تومان)", type: "number", half: true, defaultValue: s.minWithdrawal },
+          { name: "loyaltyPointValue", label: "ارزش هر امتیاز باشگاه (تومان)", type: "number", half: true, defaultValue: s.loyaltyPointValue },
           { name: "releasePolicy", label: "سیاست آزادسازی وجه", type: "select", half: true, defaultValue: s.releasePolicy, options: [["on_customer_confirm", "پس از تأیید تحویل"], ["on_delivery", "پس از ثبت تحویل"]] },
           { name: "supportPhone", label: "تلفن پشتیبانی", half: true, defaultValue: s.supportPhone },
           { name: "supportHours", label: "ساعات پاسخگویی", half: true, defaultValue: s.supportHours },
