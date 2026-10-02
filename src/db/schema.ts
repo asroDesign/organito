@@ -393,6 +393,82 @@ export const inventoryRepackJobs = pgTable("inventory_repack_jobs", {
   createdAt: created(),
 }, (t) => [index("inventory_repack_product_created").on(t.productId, t.createdAt)]);
 
+/** Producers/owners of centrally held stock; independent from marketplace sellers. */
+export const inventoryParties = pgTable("inventory_parties", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  phone: text("phone"),
+  nationalId: text("national_id"),
+  address: text("address"),
+  detailAccountId: integer("detail_account_id"),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: created(),
+});
+
+/** One inventory receipt line, linked to its invoice and accounting entry. */
+export const inventoryReceipts = pgTable("inventory_receipts", {
+  id: serial("id").primaryKey(),
+  number: text("number").notNull().unique(),
+  type: text("type").notNull().default("purchase"),
+  partyId: integer("party_id").notNull(),
+  productId: integer("product_id").notNull(),
+  variantId: integer("variant_id"),
+  quantity: integer("quantity").notNull(),
+  unitCost: money("unit_cost").notNull().default(0),
+  freight: money("freight").notNull().default(0),
+  customs: money("customs").notNull().default(0),
+  total: money("total").notNull().default(0),
+  invoiceNumber: text("invoice_number"),
+  paymentLocation: text("payment_location"),
+  paymentTrackingNumber: text("payment_tracking_number"),
+  paidAmount: money("paid_amount").notNull().default(0),
+  note: text("note"),
+  journalEntryId: integer("journal_entry_id"),
+  userId: integer("user_id"),
+  createdAt: created(),
+}, (t) => [index("inventory_receipts_party_created").on(t.partyId, t.createdAt)]);
+
+/** Remaining consignment quantity by owner and exact product variant. */
+export const inventoryConsignmentLots = pgTable("inventory_consignment_lots", {
+  id: serial("id").primaryKey(),
+  receiptId: integer("receipt_id").notNull(),
+  partyId: integer("party_id").notNull(),
+  productId: integer("product_id").notNull(),
+  variantId: integer("variant_id"),
+  initialQty: integer("initial_qty").notNull(),
+  remainingQty: integer("remaining_qty").notNull(),
+  unitCost: money("unit_cost").notNull().default(0),
+  createdAt: created(),
+}, (t) => [index("inventory_consignments_variant_created").on(t.variantId, t.createdAt)]);
+
+export const inventoryConsignmentUsages = pgTable("inventory_consignment_usages", {
+  id: serial("id").primaryKey(),
+  lotId: integer("lot_id").notNull(),
+  receiptId: integer("receipt_id").notNull(),
+  partyId: integer("party_id").notNull(),
+  productId: integer("product_id").notNull(),
+  variantId: integer("variant_id"),
+  quantity: integer("quantity").notNull(),
+  unitCost: money("unit_cost").notNull().default(0),
+  action: text("action").notNull(),
+  refType: text("ref_type").notNull(),
+  refId: integer("ref_id").notNull(),
+  reversed: boolean("reversed").notNull().default(false),
+  createdAt: created(),
+}, (t) => [index("inventory_consignment_usage_ref").on(t.refType, t.refId), index("inventory_consignment_usage_lot").on(t.lotId)]);
+
+export const inventorySupplierPayments = pgTable("inventory_supplier_payments", {
+  id: serial("id").primaryKey(),
+  partyId: integer("party_id").notNull(),
+  amount: money("amount").notNull(),
+  paymentLocation: text("payment_location").notNull(),
+  trackingNumber: text("tracking_number"),
+  note: text("note"),
+  journalEntryId: integer("journal_entry_id"),
+  userId: integer("user_id"),
+  createdAt: created(),
+}, (t) => [index("inventory_supplier_payments_party_created").on(t.partyId, t.createdAt)]);
+
 export type Address = { fullName: string; phone: string; city: string; address: string; postalCode: string; latitude?: string; longitude?: string };
 
 export const orders = pgTable("orders", {

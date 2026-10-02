@@ -3,7 +3,8 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, PackageSearch, Search, X } from "lucide-react";
 import { InvClient } from "./InvClient";
 
-export type InventoryChoice = { productId: number; variantId: number | null; name: string; variant: string | null; sku: string; unit: string; baseUnit: string; baseUnitAmount: number; onHand: number; reserved: number; unitCost: number; lowStockThreshold: number };
+export type InventoryChoice = { productId: number; variantId: number | null; name: string; variant: string | null; sku: string; unit: string; baseUnit: string; baseUnitAmount: number; onHand: number; reserved: number; unitCost: number; lowStockThreshold: number; consignmentOwners: { name: string; quantity: number }[] };
+type InventoryParty = { id: number; name: string };
 
 const normalize = (value: string) => value
   .toLocaleLowerCase("fa")
@@ -11,7 +12,7 @@ const normalize = (value: string) => value
   .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
   .trim();
 
-export function InventoryProductPicker({ items }: { items: InventoryChoice[] }) {
+export function InventoryProductPicker({ items, parties }: { items: InventoryChoice[]; parties: InventoryParty[] }) {
   const [query, setQuery] = useState("");
   const [selectedKey, setSelectedKey] = useState("");
   const [open, setOpen] = useState(false);
@@ -67,6 +68,6 @@ export function InventoryProductPicker({ items }: { items: InventoryChoice[] }) 
       <p className="mt-1.5 text-xs text-slate-400">{items.length.toLocaleString("fa-IR")} کالا در انبار · جست‌وجو با نام یا کد کالا</p>
     </div>
 
-    {selected ? <InvClient key={selectedKey} product={selected} onChangeProduct={() => setSelectedKey("")} /> : <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-center text-sm text-slate-500"><PackageSearch className="mx-auto mb-2 size-6 text-slate-300" />برای ثبت رسید یا تعدیل، ابتدا کالا و تنوع آن را انتخاب کنید.<button type="button" onClick={() => setOpen(true)} className="mt-2 flex items-center justify-center gap-1 mx-auto text-xs font-semibold text-emerald-700">نمایش کالاها <ChevronDown className="size-3" /></button></div>}
+    {selected ? <InvClient key={selectedKey} product={selected} parties={parties} onChangeProduct={() => setSelectedKey("")} /> : <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-6 text-center text-sm text-slate-500"><PackageSearch className="mx-auto mb-2 size-6 text-slate-300" />برای ثبت رسید یا تعدیل، ابتدا کالا و تنوع آن را انتخاب کنید.<button type="button" onClick={() => setOpen(true)} className="mt-2 flex items-center justify-center gap-1 mx-auto text-xs font-semibold text-emerald-700">نمایش کالاها <ChevronDown className="size-3" /></button></div>}
   </div>;
 }

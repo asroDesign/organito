@@ -12,6 +12,7 @@ import { getSettings } from "../settings";
 import { sendSms } from "../sms";
 import { HttpError, genNumber } from "../util";
 import type { Ctx, DB } from "../types";
+import { consumeConsignmentLots, postConsignmentPayables } from "./inventory-accounting";
 
 export type CartInput = { productId: number; offerId?: number | null; variantId?: number | null; qty: number; selectedOptions?: Record<string, string | string[]> };
 
@@ -464,6 +465,7 @@ async function deductStock(tx: DB, ctx: Ctx, shipmentId: number, orderId: number
         .where(and(eq(sellerOffers.id, it.offerId), sql`${sellerOffers.reserved} >= ${it.qty}`, sql`${sellerOffers.stock} >= ${it.qty}`)).returning({ id: sellerOffers.id });
       if (!r.length) throw new HttpError(409, "ناسازگاری موجودی فروشنده");
     } else {
+      let backorderReceived = 0;
       const [p] = await tx.select().from(products).where(eq(products.id, it.productId)).for("update");
       if (it.variantId) {
         const [v] = await tx.select().from(productVariants).where(eq(productVariants.id, it.variantId)).for("update");
@@ -474,6 +476,7 @@ async function deductStock(tx: DB, ctx: Ctx, shipmentId: number, orderId: number
           const availableForThisOrder = Math.max(0, v.onHand - otherReserved);
           const receiptQty = Math.max(0, it.qty - availableForThisOrder);
           if (receiptQty > 0) {
+            backorderReceived = receiptQty;
             await tx.update(productVariants).set({ onHand: sql`${productVariants.onHand} + ${receiptQty}` }).where(eq(productVariants.id, v.id));
             await tx.insert(stockMovements).values({ productId: it.productId, variantId: it.variantId, type: "backorder_receive", qty: receiptQty, unitCost: saleUnitCost, refType: "shipment", refId: shipmentId, note: `ورود کسری برای ارسال سفارش ${orderNumber}`, userId: ctx.userId });
           }
@@ -488,6 +491,7 @@ async function deductStock(tx: DB, ctx: Ctx, shipmentId: number, orderId: number
           const availableForThisOrder = Math.max(0, p.onHand - otherReserved);
           const receiptQty = Math.max(0, it.qty - availableForThisOrder);
           if (receiptQty > 0) {
+            backorderReceived = receiptQty;
             await tx.update(products).set({ onHand: sql`${products.onHand} + ${receiptQty}` }).where(eq(products.id, p.id));
             await tx.insert(stockMovements).values({ productId: it.productId, type: "backorder_receive", qty: receiptQty, unitCost: saleUnitCost, refType: "shipment", refId: shipmentId, note: `ورود کسری برای ارسال سفارش ${orderNumber}`, userId: ctx.userId });
           }
@@ -496,7 +500,13 @@ async function deductStock(tx: DB, ctx: Ctx, shipmentId: number, orderId: number
           .where(and(eq(products.id, it.productId), sql`${products.reserved} >= ${it.qty}`)).returning({ id: products.id });
         if (!r.length) throw new HttpError(409, "ناسازگاری موجودی مرکزی");
       }
-      cogs += saleUnitCost * it.qty;
+      const consigned = await consumeConsignmentLots(tx, it.productId, it.variantId, Math.max(0, it.qty - backorderReceived), { action: "sale", refType: "order", refId: orderId });
+      const consignedQty = consigned.reduce((sum, item) => sum + item.quantity, 0);
+      const consignedCost = consigned.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+      await postConsignmentPayables(tx, consigned, `فروش کالای امانی سفارش ${orderNumber}`, { type: "order", id: orderId }, ctx.userId);
+      const ownedQty = it.qty - consignedQty;
+      cogs += saleUnitCost * ownedQty;
+      saleUnitCost = Math.round((saleUnitCost * ownedQty + consignedCost) / it.qty);
       await tx.update(orderItems).set({ unitCost: saleUnitCost }).where(eq(orderItems.id, it.id));
     }
     await tx.insert(stockMovements).values({ productId: it.productId, variantId: it.variantId, offerId: it.offerId, type: "sale_out", qty: -it.qty, unitCost: saleUnitCost, refType: "order", refId: orderId, userId: ctx.userId });

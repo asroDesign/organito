@@ -1,9 +1,10 @@
 "use client";
 import { ArrowDownToLine, ArrowUpFromLine, Package, X } from "lucide-react";
-import { JsonForm } from "./client";
 import type { InventoryChoice } from "./InventoryProductPicker";
+import { InventoryReceiptForm } from "./InventoryReceiptForm";
 
-export function InvClient({ product, onChangeProduct }: { product: InventoryChoice; onChangeProduct: () => void }) {
+type InventoryParty = { id: number; name: string };
+export function InvClient({ product, parties, onChangeProduct }: { product: InventoryChoice; parties: InventoryParty[]; onChangeProduct: () => void }) {
   const { productId, variantId, name, sku, unit, variant, onHand, reserved } = product;
   const label = `${name}${variant ? ` · ${variant}` : ""}`;
   return <div className="overflow-hidden rounded-xl border border-slate-200">
@@ -23,14 +24,8 @@ export function InvClient({ product, onChangeProduct }: { product: InventoryChoi
           <div className="flex gap-1.5"><ArrowUpFromLine className="mt-0.5 size-3.5 shrink-0 text-amber-600" /><span><b className="text-amber-800">عدد منفی:</b> خروج یا کسری موجودی</span></div>
         </div>
       </div>
-      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">موجودی: <b>{onHand.toLocaleString("fa-IR")} {unit}</b> · رزرو: <b>{reserved.toLocaleString("fa-IR")} {unit}</b></div>
-      <JsonForm key={`${productId}:${variantId ?? 0}`} url={`/api/admin/inventory/${productId}`} extra={variantId ? { variantId } : undefined} submit="ثبت در گردش انبار" fields={[
-        { name: "qty", label: `مقدار ورود / خروج (${unit})`, type: "number", required: true, placeholder: `مثلاً ۱۲ ${unit} یا ۳- ${unit}` },
-        { name: "unitCost", label: "قیمت خرید هر واحد", type: "number", half: true, placeholder: "برای رسید خرید", defaultValue: 0 },
-        { name: "freight", label: "هزینه حمل", type: "number", half: true, placeholder: "مبلغ کل", defaultValue: 0 },
-        { name: "customs", label: "هزینه گمرک", type: "number", half: true, placeholder: "مبلغ کل", defaultValue: 0 },
-        { name: "note", label: "توضیحات / شماره فاکتور", placeholder: "اختیاری؛ برای پیگیری گردش موجودی" },
-      ]} />
+      <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">موجودی کل: <b>{onHand.toLocaleString("fa-IR")} {unit}</b> · رزرو: <b>{reserved.toLocaleString("fa-IR")} {unit}</b>{product.consignmentOwners.length > 0 && <div className="mt-2 border-t pt-2 text-amber-900">امانی: {product.consignmentOwners.map((owner) => `${owner.name} (${owner.quantity.toLocaleString("fa-IR")} ${unit})`).join("، ")}</div>}</div>
+      <InventoryReceiptForm productId={productId} variantId={variantId} unit={unit} parties={parties} />
     </div>
   </div>;
 }

@@ -1,10 +1,11 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { inventoryRepackJobs, media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq } from "@/db/schema";
+import { inventoryConsignmentLots, inventoryParties, inventoryReceipts, inventoryRepackJobs, inventorySupplierPayments, media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq } from "@/db/schema";
 import { audit, notify } from "../audit";
 import { postJournal } from "../accounting";
 import { sendSms } from "../sms";
-import { HttpError, int, normalizePn, slugify, str } from "../util";
+import { HttpError, genNumber, int, normalizePn, slugify, str } from "../util";
+import { ensureInventoryPartyDetail, consumeConsignmentLots, postConsignmentPayables, transferConsignmentLots } from "./inventory-accounting";
 import { sanitizeRich } from "../html";
 import type { OrganicInfo } from "@/db/schema";
 
@@ -262,7 +263,7 @@ export async function setBuyBox(ctx: Ctx & { userId: number }, offerId: number) 
 }
 
 /** Stock receipt/adjustment targets either a simple product or one exact variant. */
-export async function receiveStock(ctx: Ctx & { userId: number }, productId: number, qty: number, unitCost: number, freight: number, customs: number, note: string, variantId?: number) {
+export async function receiveStock(ctx: Ctx & { userId: number }, productId: number, qty: number, unitCost: number, freight: number, customs: number, note: string, variantId?: number, receipt?: { type: "purchase" | "consignment"; partyId: number; invoiceNumber: string; paymentLocation: string; paymentTrackingNumber: string; paidAmount: number }) {
   return db.transaction(async (tx) => {
     const [p] = await tx.select().from(products).where(eq(products.id, productId)).for("update");
     if (!p) throw new HttpError(404, "محصول یافت نشد");
@@ -273,36 +274,78 @@ export async function receiveStock(ctx: Ctx & { userId: number }, productId: num
     if (variantId && !stockVariant) throw new HttpError(404, "تنوع این محصول یافت نشد");
     if (qty > 0) {
       const landed = unitCost * qty + freight + customs;
+      let receiptId: number | null = null;
+      let partyDetailId: number | null = null;
+      let receiptPartyName = "";
+      if (receipt) {
+        if (receipt.paidAmount < 0 || receipt.paidAmount > landed) throw new HttpError(400, "مبلغ پرداخت‌شده باید بین صفر و جمع فاکتور باشد");
+        if (receipt.paidAmount > 0 && !receipt.paymentLocation) throw new HttpError(400, "محل پرداخت را وارد کنید");
+        const detail = await ensureInventoryPartyDetail(tx, receipt.partyId);
+        partyDetailId = detail.id;
+        receiptPartyName = detail.name;
+        const [savedReceipt] = await tx.insert(inventoryReceipts).values({ number: genNumber("IR"), type: receipt.type, partyId: receipt.partyId, productId, variantId: stockVariant?.id ?? null, quantity: qty, unitCost, freight, customs, total: landed, invoiceNumber: receipt.invoiceNumber || null, paymentLocation: receipt.paymentLocation || null, paymentTrackingNumber: receipt.paymentTrackingNumber || null, paidAmount: receipt.paidAmount, note: note || null, userId: ctx.userId }).returning({ id: inventoryReceipts.id });
+        receiptId = savedReceipt.id;
+      }
       if (stockVariant) {
         const oldCost = stockVariant.costPrice ?? p.avgCost;
-        const newAvg = Math.round((stockVariant.onHand * oldCost + landed) / (stockVariant.onHand + qty));
+        const [{ qty: consignedInStock = 0 } = {}] = await tx.select({ qty: sql<number>`coalesce(sum(${inventoryConsignmentLots.remainingQty}),0)` }).from(inventoryConsignmentLots).where(eq(inventoryConsignmentLots.variantId, stockVariant.id));
+        const ownedInStock = Math.max(0, stockVariant.onHand - Number(consignedInStock));
+        const newAvg = receipt?.type === "consignment" ? oldCost : Math.round((ownedInStock * oldCost + landed) / (ownedInStock + qty));
         await tx.update(productVariants).set({ onHand: stockVariant.onHand + qty, costPrice: newAvg, isActive: true }).where(eq(productVariants.id, stockVariant.id));
         await tx.update(products).set({ status: p.status === "out_of_stock" ? "active" : p.status, updatedAt: new Date() }).where(eq(products.id, productId));
-        await tx.insert(stockMovements).values({ productId, variantId: stockVariant.id, type: "purchase_in", qty, unitCost: Math.round(landed / qty), refType: "purchase", note, userId: ctx.userId });
+        await tx.insert(stockMovements).values({ productId, variantId: stockVariant.id, type: receipt?.type === "consignment" ? "consignment_in" : "purchase_in", qty, unitCost: receipt?.type === "consignment" ? unitCost : Math.round(landed / qty), refType: receiptId ? "inventory_receipt" : "purchase", refId: receiptId, note: receipt?.type === "consignment" ? `امانی از ${receiptPartyName} · ${note}` : note, userId: ctx.userId });
+        if (receipt?.type === "consignment") await tx.insert(inventoryConsignmentLots).values({ receiptId: receiptId!, partyId: receipt.partyId, productId, variantId: stockVariant.id, initialQty: qty, remainingQty: qty, unitCost });
         await audit(tx, ctx, "inventory.receive_variant", "product_variant", stockVariant.id, { onHand: stockVariant.onHand, costPrice: stockVariant.costPrice }, { onHand: stockVariant.onHand + qty, costPrice: newAvg, note });
       } else {
-        const newAvg = Math.round((p.onHand * p.avgCost + landed) / (p.onHand + qty));
+        const [{ qty: consignedInStock = 0 } = {}] = await tx.select({ qty: sql<number>`coalesce(sum(${inventoryConsignmentLots.remainingQty}),0)` }).from(inventoryConsignmentLots).where(and(eq(inventoryConsignmentLots.productId, productId), sql`${inventoryConsignmentLots.variantId} is null`));
+        const ownedInStock = Math.max(0, p.onHand - Number(consignedInStock));
+        const newAvg = receipt?.type === "consignment" ? p.avgCost : Math.round((ownedInStock * p.avgCost + landed) / (ownedInStock + qty));
         await tx.update(products).set({ onHand: p.onHand + qty, avgCost: newAvg, status: p.status === "out_of_stock" ? "active" : p.status }).where(eq(products.id, productId));
-        await tx.insert(stockMovements).values({ productId, type: "purchase_in", qty, unitCost: Math.round(landed / qty), refType: "purchase", note, userId: ctx.userId });
+        await tx.insert(stockMovements).values({ productId, type: receipt?.type === "consignment" ? "consignment_in" : "purchase_in", qty, unitCost: receipt?.type === "consignment" ? unitCost : Math.round(landed / qty), refType: receiptId ? "inventory_receipt" : "purchase", refId: receiptId, note: receipt?.type === "consignment" ? `امانی از ${receiptPartyName} · ${note}` : note, userId: ctx.userId });
+        if (receipt?.type === "consignment") await tx.insert(inventoryConsignmentLots).values({ receiptId: receiptId!, partyId: receipt.partyId, productId, variantId: null, initialQty: qty, remainingQty: qty, unitCost });
         await audit(tx, ctx, "inventory.receive", "product", productId, { onHand: p.onHand, avgCost: p.avgCost }, { onHand: p.onHand + qty, avgCost: newAvg });
       }
-      await postJournal(tx, `خرید و ورود کالا ${p.sku}`, [
-        { code: "1201", debit: landed }, { code: "2104", credit: unitCost * qty }, { code: "1101", credit: freight + customs, description: "حمل و گمرک" },
-      ], { type: "product", id: productId }, ctx.userId);
+      if (receipt && receipt.type === "purchase") {
+        const entry = await postJournal(tx, `خرید انبار ${receipt.invoiceNumber || receiptId} · ${p.nameFa}`, [
+          { code: "1201", debit: landed }, { code: "2104", credit: landed, detail1Id: partyDetailId, description: `فاکتور ${receipt.invoiceNumber || "بدون شماره"}` },
+        ], { type: "inventory_receipt", id: receiptId! }, ctx.userId);
+        if (entry) await tx.update(inventoryReceipts).set({ journalEntryId: entry.id }).where(eq(inventoryReceipts.id, receiptId!));
+        if (receipt.paidAmount > 0) {
+          const paymentEntry = await postJournal(tx, `پرداخت فاکتور خرید ${receipt.invoiceNumber || receiptId} · ${receipt.paymentLocation}`, [
+            { code: "2104", debit: receipt.paidAmount, detail1Id: partyDetailId }, { code: "1101", credit: receipt.paidAmount, description: `${receipt.paymentLocation}${receipt.paymentTrackingNumber ? ` · پیگیری ${receipt.paymentTrackingNumber}` : ""}` },
+          ], { type: "inventory_receipt_payment", id: receiptId! }, ctx.userId);
+          await tx.insert(inventorySupplierPayments).values({ partyId: receipt.partyId, amount: receipt.paidAmount, paymentLocation: receipt.paymentLocation, trackingNumber: receipt.paymentTrackingNumber || null, note: `پرداخت اولیه فاکتور ${receipt.invoiceNumber || receiptId}`, journalEntryId: paymentEntry?.id ?? null, userId: ctx.userId });
+        }
+      } else if (!receipt) {
+        // Keep compatibility with existing system-generated stock initialization calls.
+        await postJournal(tx, `خرید و ورود کالا ${p.sku}`, [
+          { code: "1201", debit: landed }, { code: "2104", credit: unitCost * qty }, { code: "1101", credit: freight + customs, description: "حمل و گمرک" },
+        ], { type: "product", id: productId }, ctx.userId);
+      }
     } else {
       const out = -qty;
       if (stockVariant) {
         if (stockVariant.onHand - stockVariant.reserved < out) throw new HttpError(400, `موجودی آزاد این تنوع ${stockVariant.onHand - stockVariant.reserved} ${stockVariant.inventoryUnit} است`);
         const cost = stockVariant.costPrice ?? p.avgCost;
+        const consigned = await consumeConsignmentLots(tx, productId, stockVariant.id, out);
+        const consignedQty = consigned.reduce((sum, item) => sum + item.quantity, 0);
+        const consignedCost = consigned.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
         await tx.update(productVariants).set({ onHand: stockVariant.onHand - out }).where(eq(productVariants.id, stockVariant.id));
-        await tx.insert(stockMovements).values({ productId, variantId: stockVariant.id, type: "adjust_out", qty, unitCost: cost, note, userId: ctx.userId });
-        await postJournal(tx, `کسری/ضایعات انبار ${p.sku} · ${stockVariant.title}`, [{ code: "5101", debit: cost * out }, { code: "1201", credit: cost * out }], { type: "product", id: productId }, ctx.userId);
+        await tx.insert(stockMovements).values({ productId, variantId: stockVariant.id, type: "adjust_out", qty, unitCost: Math.round((cost * (out - consignedQty) + consignedCost) / out), note, userId: ctx.userId });
+        if (consigned.length) await postConsignmentPayables(tx, consigned, `خروج کالای امانی از انبار ${p.sku}`, { type: "inventory_adjustment", id: productId }, ctx.userId);
+        const ownedCost = cost * (out - consignedQty);
+        if (ownedCost) await postJournal(tx, `کسری/ضایعات انبار ${p.sku} · ${stockVariant.title}`, [{ code: "5101", debit: ownedCost }, { code: "1201", credit: ownedCost }], { type: "product", id: productId }, ctx.userId);
         await audit(tx, ctx, "inventory.adjust_variant", "product_variant", stockVariant.id, { onHand: stockVariant.onHand }, { onHand: stockVariant.onHand - out, note });
       } else {
         if (p.onHand - p.reserved < out) throw new HttpError(400, `موجودی آزاد ${p.onHand - p.reserved} ${p.inventoryBaseUnit} است`);
+        const consigned = await consumeConsignmentLots(tx, productId, null, out);
+        const consignedQty = consigned.reduce((sum, item) => sum + item.quantity, 0);
+        const consignedCost = consigned.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
         await tx.update(products).set({ onHand: p.onHand - out }).where(eq(products.id, productId));
-        await tx.insert(stockMovements).values({ productId, type: "adjust_out", qty, unitCost: p.avgCost, note, userId: ctx.userId });
-        await postJournal(tx, `کسری/ضایعات انبار ${p.sku}`, [{ code: "5101", debit: p.avgCost * out }, { code: "1201", credit: p.avgCost * out }], { type: "product", id: productId }, ctx.userId);
+        await tx.insert(stockMovements).values({ productId, type: "adjust_out", qty, unitCost: Math.round((p.avgCost * (out - consignedQty) + consignedCost) / out), note, userId: ctx.userId });
+        if (consigned.length) await postConsignmentPayables(tx, consigned, `خروج کالای امانی از انبار ${p.sku}`, { type: "inventory_adjustment", id: productId }, ctx.userId);
+        const ownedCost = p.avgCost * (out - consignedQty);
+        if (ownedCost) await postJournal(tx, `کسری/ضایعات انبار ${p.sku}`, [{ code: "5101", debit: ownedCost }, { code: "1201", credit: ownedCost }], { type: "product", id: productId }, ctx.userId);
         await audit(tx, ctx, "inventory.adjust", "product", productId, { onHand: p.onHand }, { onHand: p.onHand - out, note });
       }
     }
@@ -326,10 +369,17 @@ export async function repackStock(ctx: Ctx & { userId: number }, input: { produc
     const producedBase = outputQty * target.baseUnitAmount;
     if (producedBase > consumedBase) throw new HttpError(400, `مقدار تولیدشده از مصرف بیشتر است؛ مصرف معادل ${consumedBase.toLocaleString("fa-IR")} ${p.inventoryBaseUnit} و تولید ${producedBase.toLocaleString("fa-IR")} ${p.inventoryBaseUnit} می‌شود`);
     const sourceCost = source.costPrice ?? p.avgCost;
-    const targetCost = Math.round((target.onHand * (target.costPrice ?? p.avgCost) + inputQty * sourceCost) / (target.onHand + outputQty));
     const [job] = await tx.insert(inventoryRepackJobs).values({ productId: p.id, sourceVariantId: source.id, targetVariantId: target.id, inputQty, outputQty, note: input.note || null, userId: ctx.userId }).returning();
+    const consigned = await consumeConsignmentLots(tx, p.id, source.id, inputQty, { action: "repack", refType: "repack", refId: job.id });
+    const consignedQty = consigned.reduce((sum, item) => sum + item.quantity, 0);
+    const consignedOutputQty = Math.min(outputQty, Math.round(outputQty * consignedQty / inputQty));
+    const [{ qty: targetConsignedQty = 0 } = {}] = await tx.select({ qty: sql<number>`coalesce(sum(${inventoryConsignmentLots.remainingQty}),0)` }).from(inventoryConsignmentLots).where(eq(inventoryConsignmentLots.variantId, target.id));
+    const targetOwnedQty = Math.max(0, target.onHand - Number(targetConsignedQty));
+    const newOwnedQty = outputQty - consignedOutputQty;
+    const targetCost = targetOwnedQty + newOwnedQty > 0 ? Math.round((targetOwnedQty * (target.costPrice ?? p.avgCost) + (inputQty - consignedQty) * sourceCost) / (targetOwnedQty + newOwnedQty)) : target.costPrice ?? p.avgCost;
     await tx.update(productVariants).set({ onHand: source.onHand - inputQty }).where(eq(productVariants.id, source.id));
     await tx.update(productVariants).set({ onHand: target.onHand + outputQty, costPrice: targetCost }).where(eq(productVariants.id, target.id));
+    await transferConsignmentLots(tx, p.id, target.id, consigned, outputQty, inputQty);
     await tx.insert(stockMovements).values([
       { productId: p.id, variantId: source.id, type: "repack_out", qty: -inputQty, unitCost: sourceCost, refType: "repack", refId: job.id, note: input.note || "مصرف در بسته‌بندی", userId: ctx.userId },
       { productId: p.id, variantId: target.id, type: "repack_in", qty: outputQty, unitCost: targetCost, refType: "repack", refId: job.id, note: input.note || "تولید از بسته‌بندی", userId: ctx.userId },

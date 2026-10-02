@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications } from "@/db/schema";
+import { accounts, inventoryParties, inventorySupplierPayments, journalLines, orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal, reverseJournal } from "../accounting";
@@ -14,6 +14,7 @@ import { requestWithdrawal, reviewWithdrawal } from "../services/wallet";
 import { sellerQuote, staffSupplyAction, type SupplyAction } from "../services/supply";
 import { body, idParam, type Route } from "./router";
 import { assertSellerAllowed } from "../services/kyc";
+import { ensureInventoryPartyDetail } from "../services/inventory-accounting";
 
 async function requireSeller() {
   const u = await requireApi();
@@ -167,12 +168,52 @@ export const staffRoutes: Route[] = [
     await repackStock({ userId: u.id, ...m }, { productId: int(b.productId, 1), sourceVariantId: int(b.sourceVariantId, 1), targetVariantId: int(b.targetVariantId, 1), inputQty: int(b.inputQty, 1, 100000), outputQty: int(b.outputQty, 1, 100000), note: str(b.note, 300) });
     return { ok: true };
   } },
+  { method: "POST", pattern: "admin/inventory/parties", handler: async (req, _p, m) => {
+    const u = await requireApi("INVENTORY_MANAGE"), b = await body(req), name = str(b.name, 120);
+    if (!name) throw new HttpError(400, "نام تولیدکننده یا صاحب کالا الزامی است");
+    const party = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(inventoryParties).values({ name, phone: str(b.phone, 30) || null, nationalId: str(b.nationalId, 20) || null, address: str(b.address, 300) || null }).returning();
+      const detail = await ensureInventoryPartyDetail(tx, created.id);
+      const [saved] = await tx.select().from(inventoryParties).where(eq(inventoryParties.id, created.id));
+      await audit(tx, { userId: u.id, ...m }, "inventory_party.create", "inventory_party", created.id, null, { ...saved, detailAccount: detail.code });
+      return saved;
+    });
+    return party;
+  } },
+  { method: "POST", pattern: "admin/inventory/parties/:id/payments", handler: async (req, p, m) => {
+    const u = await requireApi("INVENTORY_MANAGE"), id = int(p.id, 1), b = await body(req), amount = int(b.amount, 1, 1_000_000_000_000);
+    const location = str(b.paymentLocation, 120);
+    if (!location) throw new HttpError(400, "محل پرداخت را وارد کنید");
+    return db.transaction(async (tx) => {
+      const detail = await ensureInventoryPartyDetail(tx, id);
+      const [party] = await tx.select().from(inventoryParties).where(eq(inventoryParties.id, id));
+      const [row] = await tx.select({ balance: sql<number>`coalesce(sum(${journalLines.credit} - ${journalLines.debit}),0)` }).from(journalLines)
+        .innerJoin(accounts, eq(accounts.id, journalLines.accountId)).where(and(eq(accounts.code, "2104"), eq(journalLines.detail1Id, detail.id)));
+      const outstanding = Number(row?.balance ?? 0);
+      if (amount > outstanding) throw new HttpError(400, `مانده بدهی ${party.name} فقط ${outstanding.toLocaleString("fa-IR")} است`);
+      const trackingNumber = str(b.trackingNumber, 100), note = str(b.note, 300);
+      const [payment] = await tx.insert(inventorySupplierPayments).values({ partyId: id, amount, paymentLocation: location, trackingNumber: trackingNumber || null, note: note || null, userId: u.id }).returning();
+      const entry = await postJournal(tx, `تسویه حساب با ${party.name} · ${location}${trackingNumber ? ` · پیگیری ${trackingNumber}` : ""}`, [
+        { code: "2104", debit: amount, detail1Id: detail.id }, { code: "1101", credit: amount, description: `${location}${trackingNumber ? ` · پیگیری ${trackingNumber}` : ""}` },
+      ], { type: "inventory_supplier_payment", id: payment.id }, u.id);
+      if (entry) await tx.update(inventorySupplierPayments).set({ journalEntryId: entry.id }).where(eq(inventorySupplierPayments.id, payment.id));
+      await audit(tx, { userId: u.id, ...m }, "inventory_supplier.settlement", "inventory_party", id, { outstanding }, { paymentId: payment.id, amount, outstandingAfter: outstanding - amount });
+      return { ok: true, id: payment.id, balance: outstanding - amount };
+    });
+  } },
   { method: "POST", pattern: "admin/inventory/:id", handler: async (req, p, m) => {
     const u = await requireApi("INVENTORY_MANAGE");
     const b = await body(req);
     const qty = Math.trunc(Number(b.qty));
     if (!Number.isFinite(qty) || qty === 0 || Math.abs(qty) > 100000) throw new HttpError(400, "تعداد نامعتبر");
-    await receiveStock({ userId: u.id, ...m }, idParam(p.id), qty, int(b.unitCost ?? 0), int(b.freight ?? 0), int(b.customs ?? 0), str(b.note, 300), b.variantId ? int(b.variantId, 1) : undefined);
+    const receiptType = String(b.receiptType ?? "");
+    if (qty > 0 && !["purchase", "consignment"].includes(receiptType)) throw new HttpError(400, "نوع رسید را انتخاب کنید");
+    const receipt = qty > 0 ? {
+      type: receiptType as "purchase" | "consignment", partyId: int(b.partyId, 1), invoiceNumber: str(b.invoiceNumber, 100),
+      paymentLocation: str(b.paymentLocation, 120), paymentTrackingNumber: str(b.paymentTrackingNumber, 100), paidAmount: int(b.paidAmount ?? 0, 0, 1_000_000_000_000),
+    } : undefined;
+    if (qty > 0 && receiptType === "purchase" && !receipt?.invoiceNumber) throw new HttpError(400, "شماره فاکتور خرید را وارد کنید");
+    await receiveStock({ userId: u.id, ...m }, idParam(p.id), qty, int(b.unitCost ?? 0), int(b.freight ?? 0), int(b.customs ?? 0), str(b.note, 300), b.variantId ? int(b.variantId, 1) : undefined, receipt);
     return { ok: true };
   } },
   { method: "POST", pattern: "admin/journal", handler: async (req, _p, m) => {
