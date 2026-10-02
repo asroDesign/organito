@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { inventoryConsignmentLots, inventoryParties, inventoryReceipts, inventoryRepackJobs, inventorySupplierPayments, media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq } from "@/db/schema";
+import { accounts, inventoryConsignmentLots, inventoryParties, inventoryReceipts, inventoryRepackJobs, inventorySupplierPayments, media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq } from "@/db/schema";
 import { audit, notify } from "../audit";
 import { postJournal } from "../accounting";
 import { sendSms } from "../sms";
@@ -305,11 +305,25 @@ export async function receiveStock(ctx: Ctx & { userId: number }, productId: num
         if (receipt?.type === "consignment") await tx.insert(inventoryConsignmentLots).values({ receiptId: receiptId!, partyId: receipt.partyId, productId, variantId: null, initialQty: qty, remainingQty: qty, unitCost });
         await audit(tx, ctx, "inventory.receive", "product", productId, { onHand: p.onHand, avgCost: p.avgCost }, { onHand: p.onHand + qty, avgCost: newAvg });
       }
-      if (receipt && receipt.type === "purchase") {
-        const entry = await postJournal(tx, `خرید انبار ${receipt.invoiceNumber || receiptId} · ${p.nameFa}`, [
-          { code: "1201", debit: landed }, { code: "2104", credit: landed, detail1Id: partyDetailId, description: `فاکتور ${receipt.invoiceNumber || "بدون شماره"}` },
-        ], { type: "inventory_receipt", id: receiptId! }, ctx.userId);
-        if (entry) await tx.update(inventoryReceipts).set({ journalEntryId: entry.id }).where(eq(inventoryReceipts.id, receiptId!));
+      if (receipt) {
+        if (receipt.type === "purchase") {
+          const entry = await postJournal(tx, `خرید انبار ${receipt.invoiceNumber || receiptId} · ${p.nameFa}`, [
+            { code: "1201", debit: landed, description: `رسید ${qty} واحد کالا` }, { code: "2104", credit: landed, detail1Id: partyDetailId, description: `فاکتور ${receipt.invoiceNumber || "بدون شماره"}` },
+          ], { type: "inventory_receipt", id: receiptId! }, ctx.userId);
+          if (entry) await tx.update(inventoryReceipts).set({ journalEntryId: entry.id }).where(eq(inventoryReceipts.id, receiptId!));
+        } else {
+          // Consigned stock is held by the store but is not yet a store asset or payable.
+          await tx.insert(accounts).values([
+            { code: "8101", name: "کالای امانی نزد فروشگاه (انتظامی)", level: "subsidiary", type: "memorandum" },
+            { code: "8201", name: "مالکیت دیگران بر کالای امانی (انتظامی)", level: "subsidiary", type: "memorandum" },
+          ]).onConflictDoNothing({ target: accounts.code });
+          const value = unitCost * qty;
+          const entry = await postJournal(tx, `دریافت امانی انبار ${receipt.invoiceNumber || receiptId} · ${p.nameFa}`, [
+            { code: "8101", debit: value, description: `دریافت ${qty} واحد امانی` },
+            { code: "8201", credit: value, detail1Id: partyDetailId, description: `مالک: ${receiptPartyName}` },
+          ], { type: "inventory_receipt", id: receiptId! }, ctx.userId);
+          if (entry) await tx.update(inventoryReceipts).set({ journalEntryId: entry.id }).where(eq(inventoryReceipts.id, receiptId!));
+        }
         if (receipt.paidAmount > 0) {
           const paymentEntry = await postJournal(tx, `پرداخت فاکتور خرید ${receipt.invoiceNumber || receiptId} · ${receipt.paymentLocation}`, [
             { code: "2104", debit: receipt.paidAmount, detail1Id: partyDetailId }, { code: "1101", credit: receipt.paidAmount, description: `${receipt.paymentLocation}${receipt.paymentTrackingNumber ? ` · پیگیری ${receipt.paymentTrackingNumber}` : ""}` },

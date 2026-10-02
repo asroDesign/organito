@@ -26,6 +26,8 @@ export const CHART: { code: string; name: string; level: string; type: string; p
   { code: "5", name: "هزینه‌ها", level: "group", type: "expense" },
   { code: "5101", name: "بهای تمام‌شده کالای فروش‌رفته", level: "subsidiary", type: "expense", parent: "5" },
   { code: "5201", name: "هزینه حمل و گمرک", level: "subsidiary", type: "expense", parent: "5" },
+  { code: "8101", name: "کالای امانی نزد فروشگاه (انتظامی)", level: "subsidiary", type: "memorandum" },
+  { code: "8201", name: "مالکیت دیگران بر کالای امانی (انتظامی)", level: "subsidiary", type: "memorandum" },
 ];
 
 export type Line = { code: string; debit?: number; credit?: number; detail1?: string; description?: string; detail1Id?: number | null; detail2Id?: number | null; detail3Id?: number | null };
