@@ -7,11 +7,25 @@ import { body, idParam, type Route } from "./router";
 import { HttpError } from "../util";
 
 export function baseUrl(req: NextRequest) {
-  const env = process.env.APP_URL?.replace(/\/$/, "");
-  if (env) return env;
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
-  const proto = req.headers.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto.split(",")[0]}://${host}`;
+  const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || req.nextUrl.host).split(",")[0].trim();
+  const forwardedProto = (req.headers.get("x-forwarded-proto") || "").split(",")[0].trim();
+  const proto = forwardedProto === "http" || forwardedProto === "https" ? forwardedProto : req.nextUrl.protocol.replace(":", "");
+  try {
+    const active = new URL(proto + "://" + host);
+    if (!["http:", "https:"].includes(active.protocol) || active.username || active.password || active.pathname !== "/") throw new Error();
+    if (process.env.NODE_ENV === "production" && ["localhost", "127.0.0.1", "0.0.0.0"].includes(active.hostname)) throw new Error();
+    return active.origin;
+  } catch {
+    const configured = process.env.APP_URL || process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL;
+    if (configured) {
+      try {
+        const fallback = new URL(configured);
+        const isLocal = ["localhost", "127.0.0.1", "0.0.0.0"].includes(fallback.hostname);
+        if (["http:", "https:"].includes(fallback.protocol) && !(process.env.NODE_ENV === "production" && isLocal)) return fallback.origin;
+      } catch {}
+    }
+    throw new HttpError(500, "دامنه عمومی سایت برای بازگشت از درگاه در دسترس نیست");
+  }
 }
 
 export const gatewayRoutes: Route[] = [

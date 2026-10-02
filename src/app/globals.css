@@ -5,19 +5,38 @@
   --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
   --color-cream: #faf7ef;
   --color-leaf: #2f6b3a;
+  /* Existing emerald utility classes now resolve to the yellow brand palette. */
+  --color-emerald-50: #fffde7;
+  --color-emerald-100: #fff9c4;
+  --color-emerald-200: #fff59d;
+  --color-emerald-300: #fff176;
+  --color-emerald-400: #ffee58;
+  --color-emerald-500: #ffeb3b;
+  --color-emerald-600: #fdd835;
+  --color-emerald-700: #fbc02d;
+  --color-emerald-800: #f9a825;
+  --color-emerald-900: #6d4c41;
+  --color-emerald-950: #3e2723;
 }
 
 html { font-family: "Vazirmatn", ui-sans-serif, system-ui, sans-serif; }
 body { font-feature-settings: "ss01"; }
 
 @layer components {
-  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-emerald-600 to-emerald-700 shadow-emerald-600/25 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:from-emerald-700 hover:to-emerald-800 disabled:cursor-not-allowed disabled:opacity-60; }
+  .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-emerald-600 to-emerald-700 shadow-emerald-600/25 px-4 py-2 text-sm font-bold text-amber-950 shadow-sm transition hover:from-emerald-700 hover:to-emerald-800 disabled:cursor-not-allowed disabled:opacity-60; }
   .btn-ghost { @apply inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60; }
   .btn-danger { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-60; }
-  .btn-success { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60; }
+  .btn-success { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-amber-950 hover:bg-emerald-700 disabled:opacity-60; }
   .btn-sm { @apply inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60; }
   .input { @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100; }
   .skeleton { @apply animate-pulse rounded-xl bg-slate-200; }
+}
+
+@layer utilities {
+  .bg-emerald-500.text-white, .bg-emerald-600.text-white, .bg-emerald-700.text-white,
+  .from-emerald-600.to-emerald-700.text-white, .from-emerald-600.to-emerald-800.text-white {
+    color: #3e2723 !important;
+  }
 }
 
 @media print {

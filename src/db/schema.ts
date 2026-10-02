@@ -804,15 +804,24 @@ export const notifications = pgTable("notifications", {
   createdAt: created(),
 });
 
+export type SitePageBlockItem = {
+  kind?: "text" | "image" | "cta";
+  title: string;
+  body: string;
+  mediaId?: number | null;
+  caption?: string;
+  buttonLabel?: string;
+  href?: string;
+};
 export type SitePageBlock = {
-  type: "hero" | "text" | "features" | "image" | "cta" | "faq";
+  type: "hero" | "text" | "features" | "image" | "cta" | "faq" | "grid" | "slider";
   title?: string;
   body?: string;
   mediaId?: number | null;
   caption?: string;
   buttonLabel?: string;
   href?: string;
-  items?: { title: string; body: string }[];
+  items?: SitePageBlockItem[];
 };
 export const contentPages = pgTable("content_pages", {
   id: serial("id").primaryKey(),

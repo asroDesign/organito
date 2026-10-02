@@ -4,9 +4,10 @@ import type { Metadata } from "next";
 import { and, desc, eq, lte } from "drizzle-orm";
 import { ShieldCheck, Truck, Leaf, Wallet, Flame, ArrowLeft, Sprout, Tractor, HeartPulse, FlaskConical, Star, Quote, BadgePercent, MapPin } from "lucide-react";
 import { db } from "@/db";
-import { blogPosts, sellers } from "@/db/schema";
+import { blogPosts, contentPages, sellers } from "@/db/schema";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
+import { SitePageRenderer, type SitePageData } from "@/components/SitePageRenderer";
 import { ProductCard } from "@/components/ProductCard";
 import { BlogCard } from "@/components/BlogCard";
 import { VehicleFinder } from "@/components/VehicleFinder";
@@ -31,10 +32,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function Home() {
   await ensureSeeded();
-  const [all, cats, makes, fests, farms, st, latestPosts] = await Promise.all([
+  const [all, cats, makes, fests, farms, st, latestPosts, homePage] = await Promise.all([
     listShopProducts({}), categoriesWithCounts(), vehicleMakes(), activeFestivals(),
     db.select().from(sellers).where(eq(sellers.status, "approved")).limit(6), getSettings(),
     db.select().from(blogPosts).where(and(eq(blogPosts.status, "published"), lte(blogPosts.publishedAt, new Date()))).orderBy(desc(blogPosts.publishedAt)).limit(3),
+    db.select().from(contentPages).where(and(eq(contentPages.slug, "home"), eq(contentPages.status, "published"))).then((rows) => rows[0] ?? null),
   ]);
   const mv = !!st.multiVendor;
   const deals = [...all].filter((p) => p.inStock && p.discountPct > 0).sort((a, b) => b.discountPct - a.discountPct).slice(0, 6);
@@ -202,6 +204,7 @@ export default async function Home() {
           </Link> : <Link href="/customer/supply" className="group flex items-center gap-5 rounded-[2rem] bg-gradient-to-l from-amber-100 to-orange-100 p-7"><Sprout className="h-14 w-14 shrink-0 text-amber-700 transition group-hover:scale-110" /><div><b className="text-lg text-amber-950">محصول خاصی می‌خواهید؟</b><p className="mt-1 text-sm text-amber-900/70">سفارش ویژه ثبت کنید تا برایتان تهیه کنیم.</p><span className="mt-3 inline-block text-sm font-bold text-amber-700">ثبت سفارش ویژه ←</span></div></Link>}
         </section>
       </main>
+      {homePage && homePage.blocks.length > 0 && <div className="mb-16"><SitePageRenderer page={homePage as SitePageData} settings={st} embedded /></div>}
       <SiteFooter />
     </>
   );

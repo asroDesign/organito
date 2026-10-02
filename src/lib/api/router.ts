@@ -6,19 +6,28 @@ export type Handler = (req: NextRequest, params: Record<string, string>, meta: M
 export type Route = { method: string; pattern: string; handler: Handler };
 
 export function match(routes: Route[], method: string, parts: string[]) {
+  let best: { route: Route; params: Record<string, string> } | null = null;
+  let bestSpecificity = -1;
   for (const r of routes) {
     if (r.method !== method) continue;
     const segs = r.pattern.split("/");
     if (segs.length !== parts.length) continue;
     const params: Record<string, string> = {};
     let ok = true;
+    let specificity = 0;
     for (let i = 0; i < segs.length; i++) {
       if (segs[i].startsWith(":")) params[segs[i].slice(1)] = decodeURIComponent(parts[i]);
       else if (segs[i] !== parts[i]) { ok = false; break; }
+      else specificity++;
     }
-    if (ok) return { route: r, params };
+    // Resolve fixed paths such as /admin/blog/categories before broader
+    // parameter paths such as /admin/blog/:id, regardless of declaration order.
+    if (ok && specificity > bestSpecificity) {
+      best = { route: r, params };
+      bestSpecificity = specificity;
+    }
   }
-  return null;
+  return best;
 }
 
 export async function dispatch(routes: Route[], req: NextRequest, parts: string[]) {

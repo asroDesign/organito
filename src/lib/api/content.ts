@@ -41,14 +41,21 @@ function pageValues(b: Record<string, unknown>) {
   const blocks = Array.isArray(b.blocks) ? b.blocks.slice(0, 30).map((raw) => {
     const x = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
     const type = String(x.type);
-    if (!["hero", "text", "features", "image", "cta", "faq"].includes(type)) throw new HttpError(400, "نوع بخش صفحه نامعتبر است");
+    if (!["hero", "text", "features", "image", "cta", "faq", "grid", "slider"].includes(type)) throw new HttpError(400, "نوع بخش صفحه نامعتبر است");
     const href = str(x.href, 500);
     if (type === "cta" && href && !(href.startsWith("/") && !href.startsWith("//")) && !/^https:\/\//i.test(href)) throw new HttpError(400, "نشانی دکمه باید داخلی یا HTTPS باشد");
     const items = Array.isArray(x.items) ? x.items.slice(0, 30).map((it) => {
       const item = it && typeof it === "object" ? it as Record<string, unknown> : {};
-      return { title: str(item.title, 180), body: str(item.body, 5000) };
+      const itemHref = str(item.href, 500);
+      if (itemHref && !(itemHref.startsWith("/") && !itemHref.startsWith("//")) && !/^https:\/\//i.test(itemHref)) throw new HttpError(400, "نشانی دکمه باید داخلی یا HTTPS باشد");
+      return {
+        kind: ["text", "image", "cta"].includes(String(item.kind)) ? String(item.kind) as "text" | "image" | "cta" : "text",
+        title: str(item.title, 180), body: str(item.body, 5000),
+        mediaId: item.mediaId ? int(item.mediaId, 1) : null, caption: str(item.caption, 300),
+        buttonLabel: str(item.buttonLabel, 80), href: itemHref,
+      };
     }) : [];
-    return { type: type as "hero" | "text" | "features" | "image" | "cta" | "faq", title: str(x.title, 180), body: str(x.body, 10000), mediaId: x.mediaId ? int(x.mediaId, 1) : null, caption: str(x.caption, 300), buttonLabel: str(x.buttonLabel, 80), href, items };
+    return { type: type as "hero" | "text" | "features" | "image" | "cta" | "faq" | "grid" | "slider", title: str(x.title, 180), body: str(x.body, 10000), mediaId: x.mediaId ? int(x.mediaId, 1) : null, caption: str(x.caption, 300), buttonLabel: str(x.buttonLabel, 80), href, items };
   }) : [];
   return {
     title, slug, template: ["nature", "editorial", "minimal", "contact"].includes(String(b.template)) ? String(b.template) : "nature",

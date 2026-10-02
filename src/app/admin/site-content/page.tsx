@@ -7,6 +7,7 @@ import { SiteContentManager } from "@/components/SiteContentManager";
 
 export default async function SiteContentAdmin() {
   await requirePage({ perm: "SETTINGS_MANAGE" });
+  await db.insert(contentPages).values({ title: "صفحه‌ساز صفحه اصلی", slug: "home", template: "nature", blocks: [], status: "published" }).onConflictDoNothing();
   const [pages, links] = await Promise.all([
     db.select().from(contentPages).orderBy(desc(contentPages.updatedAt)),
     db.select().from(footerLinks).orderBy(asc(footerLinks.groupTitle), asc(footerLinks.sortOrder), asc(footerLinks.id)),
