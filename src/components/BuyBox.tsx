@@ -3,19 +3,20 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ShoppingBag, Zap, Minus, Plus, Star, Truck, RotateCcw, ShieldCheck, Clock, ChevronDown, Store, Check, Flame, PackageSearch } from "lucide-react";
-import { addToCart } from "./client";
+import { addToCart, toast } from "./client";
 import { Countdown } from "./Countdown";
 import { currencyUnit } from "@/lib/util";
+type PurchaseOption = { name: string; type: "text" | "select" | "checkbox" | "radio"; required: boolean; values: { label: string; price: number; priceType: "fixed" | "percent" }[] };
 
 export type OfferView = { id: number; sellerId: number; shopName: string; rating: number; city: string; price: number; listPrice: number; available: number; shippingCost: number; prepDays: number; warranty: string | null; isBuyBox: boolean; condition: string };
-export type VariantView = { id: number; title: string; attrs: Record<string, string>; price: number; available: number };
+export type VariantView = { id: number; title: string; attrs: Record<string, string>; price: number; compareAtPrice?: number; available: number };
 type Choice = { key: string; kind: "central" | "variant" | "offer"; id: number | null; seller: string; price: number; available: number; ship: number | null; prep: number; warranty: string | null; rating?: number; buyBox?: boolean; city: string; variant?: VariantView };
 
 const fa = (n: number) => n.toLocaleString("fa-IR");
 
-export function BuyBox({ product, variants, offers, options = [], festival, multiVendor, siteName, freeShippingOver, returnDays, compareAt = 0, compact, onAdded }: {
+export function BuyBox({ product, variants, offers, options = [], purchaseOptions = [], festival, multiVendor, siteName, freeShippingOver, returnDays, compareAt = 0, compact, onAdded }: {
   product: { id: number; nameFa: string; basePrice: number; source: string; available: number; active: boolean; partNumber: string };
-  variants: VariantView[]; offers: OfferView[]; options?: { name: string; values: string[] }[];
+  variants: VariantView[]; offers: OfferView[]; options?: { name: string; values: string[] }[]; purchaseOptions?: PurchaseOption[];
   festival?: { title: string; pct: number; color: string; endsAt: string } | null; multiVendor: boolean; siteName: string; freeShippingOver: number; returnDays: number; compareAt?: number; compact?: boolean; onAdded?: () => void;
 }) {
   const router = useRouter();
@@ -46,28 +47,23 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
   const cur = all.find((c) => c.key === (hasOpts && matched ? `v:${matched.id}` : key)) ?? (hasOpts && !matched ? undefined : all[0]);
   const [qty, setQty] = useState(1);
   const [showSellers, setShowSellers] = useState(false);
+  const [purchaseSelection, setPurchaseSelection] = useState<Record<string, string | string[]>>({});
+  const optionExtra = purchaseOptions.reduce((sum, option) => { const chosen = purchaseSelection[option.name]; const labels = Array.isArray(chosen) ? chosen : chosen ? [chosen] : []; return sum + labels.reduce((n, label) => { const choice = option.values.find((v) => v.label === label); return n + (choice ? choice.priceType === "percent" ? Math.round((listPrice * choice.price) / 100) : choice.price : 0); }, 0); }, 0);
+  const missingRequired = purchaseOptions.some((o) => { const value = purchaseSelection[o.name]; return o.required && (!value || (Array.isArray(value) && value.length === 0)); });
   const canBuy = !!cur && cur.available > 0 && product.active;
   const listPrice = cur?.price ?? 0;
-  const strike = pct > 0 ? listPrice : compareAt > listPrice && cur?.kind !== "offer" ? compareAt : 0;
-  const final = fp(listPrice);
+  const selectedCompareAt = cur?.kind === "variant" && (cur.variant?.compareAtPrice ?? 0) > 0 ? cur.variant!.compareAtPrice! : compareAt;
+  const strike = pct > 0 ? listPrice : selectedCompareAt > listPrice && cur?.kind !== "offer" ? selectedCompareAt : 0;
+  const final = fp(listPrice + optionExtra);
   const off = strike ? Math.round(((strike - final) / strike) * 100) : 0;
 
   const add = (go: boolean) => {
     if (!cur) return;
-    addToCart({ productId: product.id, offerId: cur.kind === "offer" ? cur.id : null, variantId: cur.kind === "variant" ? cur.id : null, qty, title: cur.variant ? `${product.nameFa} — ${cur.variant.title}` : product.nameFa, seller: cur.seller });
+    if (missingRequired) { toast("لطفاً گزینه‌های ضروری محصول را انتخاب کنید", false); return; }
+    addToCart({ selectedOptions: purchaseSelection, productId: product.id, offerId: cur.kind === "offer" ? cur.id : null, variantId: cur.kind === "variant" ? cur.id : null, qty, title: cur.variant ? `${product.nameFa} — ${cur.variant.title}` : product.nameFa, seller: cur.seller });
     onAdded?.();
     if (go) router.push("/cart");
   };
-
-  const Price = ({ big }: { big?: boolean }) => (
-    <div className="flex items-end justify-between gap-2">
-      <div>
-        {strike > 0 && <div className="flex items-center gap-2"><s className="text-sm text-slate-400">{fa(strike)}</s><span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-black text-white">{fa(off)}٪</span></div>}
-        <div className={`${big ? "text-3xl" : "text-2xl"} font-black tracking-tight text-emerald-950`}>{cur ? fa(final) : "—"} <span className="text-sm font-medium text-slate-500">{currencyUnit()}</span></div>
-      </div>
-      {cur?.variant && <span className="rounded-xl bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-200">{cur.variant.title}</span>}
-    </div>
-  );
 
   return (
     <div className={`overflow-hidden rounded-[1.75rem] bg-white shadow-xl shadow-emerald-900/5 ring-1 ring-emerald-900/10 ${compact ? "" : ""}`}>
@@ -77,7 +73,13 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
         </div>
       )}
       <div className="space-y-5 p-5">
-        <Price big={!compact} />
+        <div className="flex items-end justify-between gap-2">
+          <div>
+            {strike > 0 && <div className="flex items-center gap-2"><s className="text-sm text-slate-400">{fa(strike)}</s><span className="rounded-full bg-rose-500 px-2 py-0.5 text-[11px] font-black text-white">{fa(off)}٪</span></div>}
+            <div className={`${compact ? "text-2xl" : "text-3xl"} font-black tracking-tight text-emerald-950`}>{cur ? fa(final) : "—"} <span className="text-sm font-medium text-slate-500">{currencyUnit()}</span></div>
+          </div>
+          {cur?.variant && <span className="rounded-xl bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800 ring-1 ring-amber-200">{cur.variant.title}</span>}
+        </div>
 
         {hasOpts && (
           <div className="space-y-3">
@@ -144,6 +146,7 @@ export function BuyBox({ product, variants, offers, options = [], festival, mult
           <div><div className="mb-1 flex justify-between text-[11px]"><span className="font-bold text-rose-600">فقط {fa(cur.available)} عدد در انبار باقی مانده</span></div><div className="h-1.5 overflow-hidden rounded-full bg-rose-100"><div className="h-full rounded-full bg-gradient-to-l from-rose-500 to-amber-400" style={{ width: `${Math.max(8, cur.available * 10)}%` }} /></div></div>
         )}
 
+        {purchaseOptions.length > 0 && <div className="space-y-3 rounded-2xl border border-slate-100 p-3">{purchaseOptions.map((o) => <label key={o.name} className="block text-xs font-bold text-slate-700">{o.name}{o.required && <span className="text-rose-500"> *</span>}{o.type === "text" ? <input className="input mt-1" value={String(purchaseSelection[o.name] ?? "")} onChange={(e) => setPurchaseSelection({ ...purchaseSelection, [o.name]: e.target.value })} /> : <>{o.type === "select" ? <select className="input mt-1" value={String(purchaseSelection[o.name] ?? "")} onChange={(e) => setPurchaseSelection({ ...purchaseSelection, [o.name]: e.target.value || "" })}><option value="">انتخاب کنید</option>{o.values.map((v) => <option key={v.label} value={v.label}>{v.label}{v.price ? ` (+${fa(v.price)}${v.priceType === "percent" ? "٪" : ` ${currencyUnit()}`})` : ""}</option>)}</select> : <div className="mt-2 flex flex-wrap gap-3">{o.values.map((v) => { const current = purchaseSelection[o.name]; const on = Array.isArray(current) ? current.includes(v.label) : current === v.label; return <label key={v.label} className="flex items-center gap-1.5 font-normal"><input type={o.type === "checkbox" ? "checkbox" : "radio"} name={`purchase-${o.name}`} checked={on} onChange={(e) => setPurchaseSelection({ ...purchaseSelection, [o.name]: o.type === "checkbox" ? (e.target.checked ? [...(Array.isArray(current) ? current : []), v.label] : (Array.isArray(current) ? current : []).filter((x) => x !== v.label)) : v.label })} />{v.label}{v.price ? ` (+${fa(v.price)}${v.priceType === "percent" ? "٪" : ` ${currencyUnit()}`})` : ""}</label>; })}</div>}</>}</label>)}</div>}
         {canBuy ? (
           <div className="space-y-2.5">
             <div className="flex gap-2">

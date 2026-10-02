@@ -27,7 +27,7 @@ async function load(slug: string) {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const row = await load((await params).slug);
   if (!row) return { title: "محصول یافت نشد" };
-  return { title: row.p.seoTitle || row.p.nameFa, description: row.p.metaDesc || stripHtml(row.p.shortDesc) || undefined };
+  return { title: row.p.seoTitle || row.p.nameFa, description: row.p.metaDesc || stripHtml(row.p.shortDesc) || undefined, keywords: row.p.seoKeywords ?? [], openGraph: { title: row.p.seoTitle || row.p.nameFa, description: row.p.metaDesc || stripHtml(row.p.shortDesc) || undefined, images: row.p.seoImageId ? [`/api/media/${row.p.seoImageId}`] : undefined }, twitter: { card: "summary_large_image", images: row.p.seoImageId ? [`/api/media/${row.p.seoImageId}`] : undefined } };
 }
 
 const ORG: [keyof import("@/db/schema").OrganicInfo, string, typeof MapPin][] = [
@@ -46,7 +46,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     db.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId))
       .where(and(eq(sellerOffers.productId, p.id), eq(sellerOffers.status, "approved"), eq(sellers.status, "approved"), eq(sellers.restricted, false))),
     activeFestivals(),
-    p.categoryId ? listShopProducts({ cat: String(p.categoryId) }, 12) : Promise.resolve([]),
+    listShopProducts({}, 200),
     getSettings(),
     db.select({ r: reviews, name: users.name }).from(reviews).innerJoin(users, eq(users.id, reviews.userId))
       .where(and(eq(reviews.productId, p.id), u ? or(eq(reviews.status, "approved"), eq(reviews.userId, u.id)) : eq(reviews.status, "approved"))).orderBy(desc(reviews.helpful), desc(reviews.createdAt)),
@@ -68,13 +68,18 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const topOf = (arr: string[]) => Object.entries(arr.reduce<Record<string, number>>((m, t) => ({ ...m, [t]: (m[t] ?? 0) + 1 }), {})).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const org = p.organicInfo ?? {};
   const orgRows = ORG.filter(([k]) => org[k]);
-  const rel = related.filter((r) => r.id !== p.id).slice(0, 5);
+  const byId = (ids: number[]) => ids.map((id) => related.find((x) => x.id === id)).filter((x): x is (typeof related)[number] => !!x);
+  const rel = (p.relatedProductIds?.length ? byId(p.relatedProductIds) : related.filter((r) => r.id !== p.id)).filter((r) => r.id !== p.id).slice(0, 5);
+  const crossSells = byId(p.crossSellProductIds ?? []).filter((r) => r.id !== p.id).slice(0, 5);
+  const visibleSpecs = [...(p.specs ?? [])].filter((sp) => !sp.hidden).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const specGroups = Array.from(new Set(visibleSpecs.map((sp) => sp.group || "مشخصات اصلی")));
   const nav: [string, string, typeof FileText][] = [["desc", "معرفی محصول", FileText], ["review", "بررسی تخصصی", Microscope], ["specs", "مشخصات و شناسنامه", ListChecks], ["reviews", `دیدگاه‌ها (${faNum(approved.length)})`, MessageSquareText], ["qa", `پرسش و پاسخ (${faNum(qs.filter((x) => x.q.status === "approved").length)})`, MessageCircleQuestion], ...(mv && offerViews.length ? [["sellers", "فروشندگان", Store] as [string, string, typeof FileText]] : [])];
   const jsonLd = { "@context": "https://schema.org", "@type": "Product", name: p.nameFa, sku: p.sku, brand: { "@type": "Brand", name: p.brand }, description: stripHtml(p.shortDesc), ...(approved.length ? { aggregateRating: { "@type": "AggregateRating", ratingValue: avg.toFixed(1), reviewCount: approved.length } } : {}) };
   return (
     <>
       <SiteHeader />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
+      {(p.productFaqs ?? []).length > 0 && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: p.productFaqs.map((faq) => ({ "@type": "Question", name: faq.question, acceptedAnswer: { "@type": "Answer", text: faq.answer } })) }).replace(/</g, "\\u003c") }} />}
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-6 pb-28 lg:pb-10">
         <nav className="text-xs text-slate-500"><Link href="/">خانه</Link> / <Link href="/shop">فروشگاه</Link>{row.cat && <> / <Link href={`/shop?cat=${row.cat.id}`}>{row.cat.name}</Link></>} / <span className="text-emerald-800">{p.nameFa}</span></nav>
         <div className="grid gap-8 lg:grid-cols-[1fr_1fr_380px]">
@@ -99,11 +104,12 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 {orgRows.slice(0, 4).map(([k, l, I]) => <div key={k} className="flex items-start gap-2.5 rounded-2xl bg-white p-3 ring-1 ring-emerald-900/5"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><I className="h-4 w-4" /></span><div className="min-w-0"><div className="text-[11px] text-slate-500">{l}</div><b className="line-clamp-2 text-xs text-emerald-950">{org[k] as string}</b></div></div>)}
               </div>
             )}
-            {p.specs.length > 0 && <ul className="grid gap-1.5 text-sm sm:grid-cols-2">{p.specs.slice(0, 6).map((sp) => <li key={sp.k} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-lime-500" /><span className="text-slate-500">{sp.k}:</span><b className="text-slate-700">{sp.v}</b></li>)}</ul>}
+            {visibleSpecs.length > 0 && <ul className="grid gap-1.5 text-sm sm:grid-cols-2">{visibleSpecs.slice(0, 6).map((sp) => <li key={sp.k} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-lime-500" /><span className="text-slate-500">{sp.k}:</span><b className="text-slate-700">{sp.v}</b></li>)}</ul>}
           </div>
           <div className="lg:sticky lg:top-40 lg:self-start">
+            {p.deliveryEstimateEnabled && <div className="mb-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><b>زمان تحویل مورد انتظار</b><span className="mr-2">حدود {faNum(p.deliveryMinDays)} تا {faNum(p.deliveryMaxDays)} روز کاری پس از ثبت سفارش</span></div>}
             <BuyBox product={{ id: p.id, nameFa: p.nameFa, basePrice: p.basePrice, source: p.source, available: p.onHand - p.reserved, active: p.status === "active", partNumber: p.partNumber }}
-              options={p.options} variants={variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, available: v.onHand - v.reserved }))} offers={offerViews}
+              options={p.options} purchaseOptions={p.purchaseOptions ?? []} variants={variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved }))} offers={offerViews}
               festival={fest ? { title: fest.title, pct: fest.discountPercent, color: fest.color, endsAt: fest.endsAt.toISOString() } : null}
               multiVendor={mv} siteName={s.siteName} freeShippingOver={s.freeShippingOver} returnDays={s.returnDays} compareAt={p.compareAtPrice} />
           </div>
@@ -119,11 +125,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <section id="specs" className="scroll-mt-44 grid gap-6 lg:grid-cols-2">
             <div className="rounded-[2rem] bg-white p-6 ring-1 ring-emerald-900/5">
               <h2 className="mb-4 text-xl font-black text-emerald-950">مشخصات محصول</h2>
-              <div className="divide-y divide-slate-100 overflow-hidden rounded-2xl ring-1 ring-slate-100">
-                {[...p.specs.map((sp) => [sp.k, sp.v]), ["برند", p.brand], ["نوع محصول", AUTH_LABEL[p.authenticity]], ["کشور / استان", p.country ?? "—"], ["وزن", p.weight ? `${faNum(p.weight)} گرم` : "—"], ["کد محصول", p.sku]].map(([k, v], i) => (
-                  <div key={i} className="grid grid-cols-[40%_1fr] text-sm"><div className="bg-[#faf7ef] px-4 py-3 text-slate-500">{k}</div><div className="px-4 py-3 font-medium text-slate-800">{v}</div></div>
-                ))}
-              </div>
+              <div className="space-y-4">{specGroups.map((group) => <div key={group} className="overflow-hidden rounded-2xl ring-1 ring-slate-100"><h3 className="bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900">{group}</h3><div className="divide-y divide-slate-100">{visibleSpecs.filter((sp) => (sp.group || "مشخصات اصلی") === group).map((sp, i) => <div key={`${group}-${i}`} className="grid grid-cols-[40%_1fr] text-sm"><div className="bg-[#faf7ef] px-4 py-3 text-slate-500">{sp.k}</div><div className="px-4 py-3 font-medium text-slate-800">{sp.v}</div></div>)}</div></div>)}{[["برند", p.brand], ["نوع محصول", AUTH_LABEL[p.authenticity]], ["کشور / استان", p.country ?? "—"], ["وزن", p.weight ? `${faNum(p.weight)} گرم` : "—"], ["کد محصول", p.sku]].map(([k, v]) => <div key={k} className="grid grid-cols-[40%_1fr] text-sm rounded-xl ring-1 ring-slate-100"><div className="bg-[#faf7ef] px-4 py-3 text-slate-500">{k}</div><div className="px-4 py-3 font-medium text-slate-800">{v}</div></div>)}</div>
             </div>
             <div className="rounded-[2rem] bg-emerald-950 p-6 text-white">
               <h2 className="mb-4 flex items-center gap-2 text-xl font-black"><Sprout className="h-5 w-5 text-lime-300" />شناسنامه محصول ارگانیک</h2>
@@ -174,7 +176,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             <h2 className="mb-5 flex items-center gap-2 text-xl font-black text-emerald-950"><MessageCircleQuestion className="h-5 w-5 text-lime-500" />پرسش و پاسخ</h2>
             <QuestionForm productId={p.id} loggedIn={!!u} />
             <div className="mt-6 space-y-4">
-              {qs.length === 0 && <p className="text-center text-sm text-slate-500">هنوز پرسشی ثبت نشده است.</p>}
+              {(p.productFaqs ?? []).map((faq, i) => <article key={`faq-${i}`} className="rounded-3xl bg-[#faf7ef] p-5"><div className="flex items-start gap-3"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emerald-600 text-sm font-black text-white">؟</span><div className="flex-1"><p className="font-bold leading-7 text-emerald-950">{faq.question}</p><div className="text-[11px] text-slate-400">پرسش پرتکرار خریداران · پاسخ رسمی فروشگاه</div></div></div><div className="mt-3 rounded-2xl bg-white p-3 text-sm"><div className="mb-1 flex items-center gap-2 text-[11px]"><RoleBadge role="admin" /><b>{s.siteName}</b></div><p className="whitespace-pre-line leading-7 text-slate-700">{faq.answer}</p></div></article>)}
+              {qs.length === 0 && (p.productFaqs ?? []).length === 0 && <p className="text-center text-sm text-slate-500">هنوز پرسشی ثبت نشده است.</p>}
               {qs.map(({ q, name }) => {
                 const as = answers.filter((x) => x.a.questionId === q.id);
                 return (
@@ -204,6 +207,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           )}
         </div>
 
+        {crossSells.length > 0 && <section><h2 className="mb-5 text-2xl font-black text-emerald-950">شاید این‌ها را هم بخواهید</h2><div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">{crossSells.map((r) => <ProductCard key={r.id} p={r} />)}</div></section>}
         {rel.length > 0 && (
           <section><h2 className="mb-5 flex items-center gap-2 text-2xl font-black text-emerald-950"><Leaf className="h-6 w-6 text-lime-500" />محصولات مرتبط</h2>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">{rel.map((r) => <ProductCard key={r.id} p={r} />)}</div></section>

@@ -162,7 +162,7 @@ export function LogoutButton() {
 }
 
 /* ---------------- cart (localStorage only for temp cart) ---------------- */
-export type CartItem = { productId: number; offerId: number | null; variantId: number | null; qty: number; title: string; seller?: string };
+export type CartItem = { productId: number; offerId: number | null; variantId: number | null; qty: number; title: string; seller?: string; selectedOptions?: Record<string, string | string[]> };
 const KEY = "yt_cart_v1";
 const cartSubs = new Set<() => void>();
 let cartCache: CartItem[] | null = null;
@@ -182,7 +182,7 @@ export function useCart() {
 }
 export function addToCart(item: CartItem) {
   const items = [...readCart()];
-  const i = items.findIndex((x) => x.productId === item.productId && x.offerId === item.offerId && x.variantId === item.variantId);
+  const i = items.findIndex((x) => x.productId === item.productId && x.offerId === item.offerId && x.variantId === item.variantId && JSON.stringify(x.selectedOptions ?? {}) === JSON.stringify(item.selectedOptions ?? {}));
   if (i >= 0) items[i] = { ...items[i], qty: Math.min(100, items[i].qty + item.qty) }; else items.push(item);
   writeCart(items);
   toast("به سبد خرید اضافه شد");

@@ -272,6 +272,13 @@ export async function ensureExtras() {
     if (!birthdayTpl) await db.insert(smsTemplates).values({ event: "birthday", title: SMS_EVENTS.birthday.title, body: SMS_EVENTS.birthday.body, variables: ["name"], patternId: "", isActive: true, isSystem: true });
     const [otpTpl] = await db.select().from(smsTemplates).where(eq(smsTemplates.event, "otp_login"));
     if (!otpTpl) await db.insert(smsTemplates).values({ event: "otp_login", title: "کد ورود یک‌بارمصرف (OTP)", body: SMS_EVENTS.otp_login.body, variables: ["code"], patternId: "100099", isSystem: true });
+    for (const event of ["cart_reminder", "cart_discount"] as const) {
+      const [tpl] = await db.select({ id: smsTemplates.id }).from(smsTemplates).where(eq(smsTemplates.event, event)).limit(1);
+      if (!tpl) {
+        const def = SMS_EVENTS[event];
+        await db.insert(smsTemplates).values({ event, title: def.title, body: def.body, variables: def.vars, patternId: "", isActive: true, isSystem: true });
+      }
+    }
   } finally {
     await client.query("select pg_advisory_unlock(99124)");
     client.release();

@@ -77,7 +77,7 @@ export const publicRoutes: Route[] = [
     return {
       product: { ...prod, avgCost: undefined, createdBy: undefined, available: prod.onHand - prod.reserved },
       images: images.map((i) => i.mediaId),
-      variants: variants.map((v) => ({ id: v.id, title: v.title, price: v.price, available: v.onHand - v.reserved })),
+      variants: variants.map((v) => ({ id: v.id, title: v.title, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved })),
       offers: offers.map(({ o, s }) => ({ id: o.id, sellerId: s.id, shopName: s.shopName, rating: s.rating, city: o.shipCity ?? s.city, price: o.salePrice ?? o.price, listPrice: o.price, available: o.stock - o.reserved, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, isBuyBox: o.isBuyBox, condition: o.condition }))
         .sort((a, b) => Number(b.isBuyBox) - Number(a.isBuyBox) || a.price - b.price),
     };
@@ -167,7 +167,9 @@ export const publicRoutes: Route[] = [
     if (!address.fullName || !address.phone || !address.city || address.address.length < 10) throw new HttpError(400, "آدرس تحویل کامل نیست");
     const key = str(b.idempotencyKey, 100);
     if (key.length < 8) throw new HttpError(400, "کلید یکتا الزامی است");
-    const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null });
+    const recoveryKey = str(b.recoveryKey, 80);
+    if (recoveryKey && !/^[\w-]{8,80}$/.test(recoveryKey)) throw new HttpError(400, "شناسه سبد نامعتبر است");
+    const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null, recoveryKey });
     return { id: order.id, number: order.number, paid:order.paymentStatus==="paid" };
   } },
   { method: "POST", pattern: "orders/:id/confirm", handler: async (_r, p, m) => {

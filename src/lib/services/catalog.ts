@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption } from "@/db/schema";
+import { media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq } from "@/db/schema";
 import { audit, notify } from "../audit";
 import { postJournal } from "../accounting";
 import { sendSms } from "../sms";
@@ -30,7 +30,7 @@ export function parseProductInput(b: Record<string, unknown>) {
   const brand = str(b.brand, 80);
   if (!nameFa || !partNumber || !sku || !brand) throw new HttpError(400, "نام فارسی، SKU، کد محصول و برند الزامی هستند");
   const authenticity = AUTH.includes(String(b.authenticity)) ? String(b.authenticity) : "Aftermarket";
-  const specs: Spec[] = Array.isArray(b.specs) ? (b.specs as Spec[]).map((s) => ({ k: str(s.k, 80), v: str(s.v, 200) })).filter((s) => s.k).slice(0, 40) : [];
+  const specs: Spec[] = Array.isArray(b.specs) ? (b.specs as Record<string, unknown>[]).map((s, i) => ({ k: str(s.k, 80), v: str(s.v, 200), group: str(s.group, 80) || undefined, hidden: s.hidden === true, order: Number.isFinite(Number(s.order)) ? int(s.order, 0, 999) : i })).filter((s) => s.k).slice(0, 80) : [];
   const compatibility: Compat[] = Array.isArray(b.compatibility) ? (b.compatibility as Compat[]).map((c) => ({ make: str(c.make, 60), model: str(c.model, 60), years: str(c.years, 40) })).filter((c) => c.make).slice(0, 40) : [];
   const crossRefs = Array.isArray(b.crossRefs) ? (b.crossRefs as unknown[]).map((x) => str(x, 60)).filter(Boolean).slice(0, 30) : str(b.crossRefs, 1000).split(/[,\n،]/).map((x) => x.trim()).filter(Boolean).slice(0, 30);
   const imageIds = Array.isArray(b.imageIds) ? (b.imageIds as unknown[]).map((x) => int(x, 1)).slice(0, 12) : [];
@@ -38,6 +38,18 @@ export function parseProductInput(b: Record<string, unknown>) {
     name: str(o.name, 40), values: Array.from(new Set((Array.isArray(o.values) ? o.values : String(o.values ?? "").split(/[,،]/)).map((x) => str(x, 40)).filter(Boolean))).slice(0, 20),
   })).filter((o) => o.name && o.values.length).slice(0, 3) : [];
   if (new Set(options.map((o) => o.name)).size !== options.length) throw new HttpError(400, "نام پارامترهای تنوع تکراری است");
+  const purchaseOptions: PurchaseOption[] = Array.isArray(b.purchaseOptions) ? (b.purchaseOptions as Record<string, unknown>[]).map((o) => ({
+    name: str(o.name, 80), type: (["text", "select", "checkbox", "radio"].includes(String(o.type)) ? String(o.type) : "select") as PurchaseOption["type"], required: o.required === true,
+    values: (Array.isArray(o.values) ? o.values as Record<string, unknown>[] : []).map((v) => ({ label: str(v.label, 80), price: int(v.price ?? 0, 0, 1000000000), priceType: v.priceType === "percent" ? "percent" as const : "fixed" as const })).filter((v) => v.label).slice(0, 30),
+  })).filter((o) => o.name).slice(0, 20) : [];
+  if (new Set(purchaseOptions.map((o) => o.name)).size !== purchaseOptions.length) throw new HttpError(400, "نام گزینه‌های محصول تکراری است");
+  for (const option of purchaseOptions) if (new Set(option.values.map((v) => v.label)).size !== option.values.length) throw new HttpError(400, `انتخاب تکراری در گزینه «${option.name}» وجود دارد`);
+  const productFaqs: ProductFaq[] = Array.isArray(b.productFaqs) ? (b.productFaqs as Record<string, unknown>[]).map((x) => ({ question: str(x.question, 1000), answer: str(x.answer, 3000) })).filter((x) => x.question && x.answer).slice(0, 40) : [];
+  const cleanIds = (v: unknown) => Array.isArray(v) ? Array.from(new Set(v.map((x) => int(x, 1)).filter(Boolean))).slice(0, 30) : [];
+  const relatedProductIds = cleanIds(b.relatedProductIds), crossSellProductIds = cleanIds(b.crossSellProductIds);
+  const seoKeywords = Array.isArray(b.seoKeywords) ? Array.from(new Set(b.seoKeywords.map((x) => str(x, 60)).filter(Boolean))).slice(0, 30) : str(b.seoKeywords, 1200).split(/[,،\n]/).map((x) => str(x, 60)).filter(Boolean).slice(0, 30);
+  const deliveryMinDays = int(b.deliveryMinDays ?? 2, 0, 365), deliveryMaxDays = int(b.deliveryMaxDays ?? 5, 0, 365);
+  if (deliveryMaxDays < deliveryMinDays) throw new HttpError(400, "حداکثر زمان تحویل نمی‌تواند کمتر از حداقل باشد");
   const variants = Array.isArray(b.variants) ? (b.variants as Record<string, unknown>[]).map((v) => {
     const rawAttrs = (v.attrs && typeof v.attrs === "object" ? v.attrs : {}) as Record<string, unknown>;
     const attrs: Record<string, string> = {};
@@ -59,10 +71,11 @@ export function parseProductInput(b: Record<string, unknown>) {
       basePrice: int(b.basePrice ?? 0), compareAtPrice: int(b.compareAtPrice ?? 0),
       shortDesc: str(b.shortDesc, 500) || null, description: sanitizeRich(str(b.description, 100000)) || null, technicalReview: sanitizeRich(str(b.technicalReview, 100000)) || null,
       specs, compatibility, weight: b.weight ? int(b.weight, 0, 1000000) : null, barcode: str(b.barcode, 40) || null,
-      seoTitle: str(b.seoTitle, 120) || null, metaDesc: str(b.metaDesc, 300) || null,
+      seoTitle: str(b.seoTitle, 120) || null, metaDesc: str(b.metaDesc, 300) || null, seoKeywords, seoImageId: b.seoImageId ? int(b.seoImageId, 1) : null,
       slug: slugify(str(b.slug, 120) || `${str(b.nameEn, 120) || nameFa}-${sku}`),
       lowStockThreshold: b.lowStockThreshold !== undefined ? int(b.lowStockThreshold, 0, 10000) : 3,
-      options,
+      options, purchaseOptions, relatedProductIds, crossSellProductIds, productFaqs,
+      deliveryEstimateEnabled: b.deliveryEstimateEnabled === true, deliveryMinDays, deliveryMaxDays,
       organicInfo: parseOrganic(b.organicInfo),
       videoMediaId: b.videoMediaId ? int(b.videoMediaId, 1) : null,
     },
@@ -77,6 +90,19 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
   if (isSeller && u.sellerStatus !== "approved") throw new HttpError(403, "حساب تأمین‌کننده هنوز تأیید نشده است");
   if (!isSeller && !u.permissions.includes(id ? "PRODUCTS_EDIT" : "PRODUCTS_CREATE")) throw new HttpError(403, "دسترسی غیرمجاز");
   return db.transaction(async (tx) => {
+    input.data.relatedProductIds = input.data.relatedProductIds.filter((x) => x !== id);
+    input.data.crossSellProductIds = input.data.crossSellProductIds.filter((x) => x !== id);
+    const linkedIds = [...new Set([...input.data.relatedProductIds, ...input.data.crossSellProductIds])];
+    if (linkedIds.length) {
+      const found = await tx.select({ id: products.id }).from(products).where(inArray(products.id, linkedIds));
+      if (found.length !== linkedIds.length) throw new HttpError(400, "یکی از محصولات مرتبط انتخاب‌شده معتبر نیست");
+    }
+    if (input.data.seoImageId) {
+      const [seoImg] = await tx.select({ id: media.id, uploadedBy: media.uploadedBy }).from(media).where(eq(media.id, input.data.seoImageId));
+      if (!seoImg) throw new HttpError(400, "تصویر سئو معتبر نیست");
+      if (isSeller && seoImg.uploadedBy !== u.id) throw new HttpError(403, "فقط تصویر آپلودشده توسط خودتان مجاز است");
+      await tx.update(media).set({ isPublic: true }).where(eq(media.id, seoImg.id));
+    }
     const dupSku = await tx.select({ id: products.id }).from(products).where(and(eq(products.sku, input.data.sku), id ? ne(products.id, id) : undefined));
     if (dupSku.length) throw new HttpError(409, "SKU تکراری است");
     const dupSlug = await tx.select({ id: products.id }).from(products).where(and(eq(products.slug, input.data.slug), id ? ne(products.id, id) : undefined));

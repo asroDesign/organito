@@ -204,7 +204,9 @@ export const media = pgTable("media", {
   updatedAt: updated(),
 }, (t) => [index("media_folder_created").on(t.folderId, t.createdAt), uniqueIndex("media_legacy_unique").on(t.legacySource, t.legacyId)]);
 
-export type Spec = { k: string; v: string };
+export type Spec = { k: string; v: string; group?: string; hidden?: boolean; order?: number };
+export type PurchaseOption = { name: string; type: "text" | "select" | "checkbox" | "radio"; required: boolean; values: { label: string; price: number; priceType: "fixed" | "percent" }[] };
+export type ProductFaq = { question: string; answer: string };
 export type Compat = { make: string; model: string; years: string };
 export type ProductOption = { name: string; values: string[] };
 export type OrganicInfo = {
@@ -237,6 +239,15 @@ export const products = pgTable("products", {
   barcode: text("barcode"),
   seoTitle: text("seo_title"),
   metaDesc: text("meta_desc"),
+  seoKeywords: jsonb("seo_keywords").$type<string[]>().notNull().default([]),
+  seoImageId: integer("seo_image_id"),
+  relatedProductIds: jsonb("related_product_ids").$type<number[]>().notNull().default([]),
+  crossSellProductIds: jsonb("cross_sell_product_ids").$type<number[]>().notNull().default([]),
+  purchaseOptions: jsonb("purchase_options").$type<PurchaseOption[]>().notNull().default([]),
+  productFaqs: jsonb("product_faqs").$type<ProductFaq[]>().notNull().default([]),
+  deliveryEstimateEnabled: boolean("delivery_estimate_enabled").notNull().default(false),
+  deliveryMinDays: integer("delivery_min_days").notNull().default(2),
+  deliveryMaxDays: integer("delivery_max_days").notNull().default(5),
   slug: text("slug").notNull().unique(),
   mainImageId: integer("main_image_id"),
   source: text("source").notNull().default("central"),
@@ -269,6 +280,8 @@ export const productVariants = pgTable("product_variants", {
   attrs: jsonb("attrs").$type<Record<string, string>>().notNull().default({}),
   sku: text("sku").notNull(),
   price: money("price"),
+  costPrice: money("cost_price"),
+  compareAtPrice: money("compare_at_price"),
   onHand: integer("on_hand").notNull().default(0),
   reserved: integer("reserved").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
@@ -360,6 +373,7 @@ export type Address = { fullName: string; phone: string; city: string; address: 
 export const orders = pgTable("orders", {
   creditAmount: money("credit_amount"),
   giftCardId: integer("gift_card_id"),
+  recoveryCartId: integer("recovery_cart_id"),
   id: serial("id").primaryKey(),
   number: text("number").notNull().unique(),
   customerId: integer("customer_id").notNull(),
@@ -762,6 +776,23 @@ export const discountUsages = pgTable("discount_usages", {
   amount: money("amount"),
   createdAt: created(),
 });
+
+export const incompleteCarts = pgTable("incomplete_carts", {
+  id: serial("id").primaryKey(),
+  cartKey: text("cart_key").notNull().unique(),
+  customerId: integer("customer_id"),
+  customerName: text("customer_name").notNull().default("مشتری"),
+  phone: text("phone").notNull(),
+  items: jsonb("items").$type<{ productId: number; variantId: number | null; offerId: number | null; qty: number; title?: string }[]>().notNull().default([]),
+  reason: text("reason").notNull().default("سبد خرید تکمیل نشده"),
+  status: text("status").notNull().default("open"),
+  lastSmsType: text("last_sms_type"),
+  lastSmsStatus: text("last_sms_status"),
+  discountCodeId: integer("discount_code_id"),
+  lastSmsAt: timestamp("last_sms_at", { withTimezone: true }),
+  createdAt: created(),
+  updatedAt: updated(),
+}, (t) => [index("incomplete_carts_status_updated").on(t.status, t.updatedAt), index("incomplete_carts_customer").on(t.customerId)]);
 
 export const festivals = pgTable("festivals", {
   id: serial("id").primaryKey(),

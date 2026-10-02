@@ -14,6 +14,8 @@ import { SiteBrand } from "./SiteBrand";
 const ADMIN_NAV: (NavItem & { perm?: Permission | Permission[] })[] = [
   { href: "/admin", label: "داشبورد", icon: "LayoutDashboard" },
   { href: "/admin/products", label: "محصولات و کاتالوگ", icon: "Package", perm: "PRODUCTS_VIEW" },
+  { href: "/admin/product-prices", label: "ویرایش سریع قیمت‌ها", icon: "Tag", perm: "PRODUCTS_EDIT" },
+  { href: "/admin/incomplete-carts", label: "سفارش‌ها و سبدهای ناقص", icon: "ShoppingBag", perm: "SMS_MANAGE" },
   { href: "/admin/reviews", label: "دیدگاه‌ها و پرسش‌ها", icon: "MessageSquare", perm: "PRODUCTS_APPROVE" },
   { href: "/admin/categories", label: "دسته‌بندی‌ها", icon: "FolderTree", perm: "PRODUCTS_EDIT" },
   { href: "/admin/media", label: "مرکز فایل", icon: "FileImage", perm: "PRODUCTS_EDIT" },

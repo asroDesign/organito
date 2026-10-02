@@ -12,7 +12,9 @@ const ORGANIC_FIELDS: [string, string, string][] = [
   ["ingredients", "ترکیبات", "۱۰۰٪ عسل خالص"], ["storage", "شرایط نگهداری", "دمای اتاق، دور از نور"], ["shelfLife", "ماندگاری", "۲۴ ماه"],
 ];
 
-type Spec = { k: string; v: string };
+type Spec = { k: string; v: string; group?: string; hidden?: boolean; order?: number };
+type PurchaseOption = { name: string; type: "text" | "select" | "checkbox" | "radio"; required: boolean; values: { label: string; price: number; priceType: "fixed" | "percent" }[] };
+type ProductFaq = { question: string; answer: string };
 type Compat = { make: string; model: string; years: string };
 type Variant = { id?: number; title: string; attrs: Record<string, string>; sku: string; price: number; onHand: number; isActive: boolean };
 type Opt = { name: string; values: string[] };
@@ -20,14 +22,14 @@ export type ProductInitial = Partial<{
   id: number; nameFa: string; nameEn: string | null; sku: string; partNumber: string; oemNumber: string | null; crossRefs: string[]; brand: string; manufacturer: string | null;
   country: string | null; categoryId: number | null; authenticity: string; basePrice: number; compareAtPrice: number; shortDesc: string | null; description: string | null;
   technicalReview: string | null; specs: Spec[]; compatibility: Compat[]; organicInfo: { [k: string]: string | string[] | undefined; suitableFor?: string[] }; videoMediaId: number | null; weight: number | null; barcode: string | null; seoTitle: string | null; metaDesc: string | null; slug: string;
-  lowStockThreshold: number; imageIds: number[]; variants: Variant[]; options: Opt[];
+  lowStockThreshold: number; imageIds: number[]; variants: Variant[]; options: Opt[]; purchaseOptions: PurchaseOption[]; relatedProductIds: number[]; crossSellProductIds: number[]; productFaqs: ProductFaq[]; deliveryEstimateEnabled: boolean; deliveryMinDays: number; deliveryMaxDays: number; seoKeywords: string[]; seoImageId: number | null;
 }>;
 
 function F({ name, label, dv, type = "text", ltr, req, half = true }: { name: string; label: string; dv?: string | number | null; type?: string; ltr?: boolean; req?: boolean; half?: boolean }) {
   return <label className={`flex flex-col gap-1 text-sm ${half ? "" : "sm:col-span-2"}`}><span className="text-slate-600">{label}{req && <span className="text-rose-500"> *</span>}</span><input name={name} type={type} defaultValue={dv ?? ""} required={req} className="input" dir={ltr ? "ltr" : undefined} /></label>;
 }
 
-export function ProductForm({ initial = {}, categories, mode, backTo }: { initial?: ProductInitial; categories: { id: number; name: string }[]; mode: "admin" | "seller"; backTo: string }) {
+export function ProductForm({ initial = {}, categories, mode, backTo, productChoices = [] }: { initial?: ProductInitial; categories: { id: number; name: string }[]; mode: "admin" | "seller"; backTo: string; productChoices?: { id: number; name: string }[] }) {
   const router = useRouter();
   const [images, setImages] = useState<number[]>(initial.imageIds ?? []);
   const [specs, setSpecs] = useState<Spec[]>(initial.specs?.length ? initial.specs : [{ k: "", v: "" }]);
@@ -37,16 +39,21 @@ export function ProductForm({ initial = {}, categories, mode, backTo }: { initia
   const [video, setVideo] = useState<number | null>(initial.videoMediaId ?? null);
   const [variants, setVariants] = useState<Variant[]>(initial.variants ?? []);
   const [opts, setOpts] = useState<Opt[]>(initial.options ?? []);
+  const [purchaseOptions, setPurchaseOptions] = useState<PurchaseOption[]>(initial.purchaseOptions ?? []);
+  const [faqs, setFaqs] = useState<ProductFaq[]>(initial.productFaqs ?? []);
+  const [relatedIds, setRelatedIds] = useState<number[]>(initial.relatedProductIds ?? []);
+  const [crossSellIds, setCrossSellIds] = useState<number[]>(initial.crossSellProductIds ?? []);
+  const [seoImage, setSeoImage] = useState<number[]>(initial.seoImageId ? [initial.seoImageId] : []);
   const [optText, setOptText] = useState<string[]>((initial.options ?? []).map((o) => o.values.join("، ")));
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("base");
   const isEdit = !!initial.id;
-  const tabs: [string, string][] = [["base", "اطلاعات پایه"], ["content", "توضیحات و بررسی تخصصی"], ["specs", "مشخصات و شناسنامه ارگانیک"], ["media", "تصاویر"], ["price", mode === "admin" ? "قیمت، تنوع و موجودی" : "قیمت و موجودی"], ["seo", "سئو"]];
+  const tabs: [string, string][] = [["base", "اطلاعات پایه"], ["content", "توضیحات و بررسی تخصصی"], ["specs", "مشخصات و شناسنامه ارگانیک"], ["media", "تصاویر"], ["price", mode === "admin" ? "قیمت، تنوع و موجودی" : "قیمت و موجودی"], ["commerce", "گزینه‌ها، ارتباط و تحویل"], ["qa", "پرسش و پاسخ"], ["seo", "سئو"]];
   return (
     <form className="space-y-4" onSubmit={async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.currentTarget));
-      const payload = { ...fd, crossRefs: String(fd.crossRefs ?? ""), specs: specs.filter((s) => s.k), organicInfo: org, description: desc, technicalReview: review, videoMediaId: video, imageIds: images, variants, options: opts };
+      const payload = { ...fd, crossRefs: String(fd.crossRefs ?? ""), specs: specs.filter((s) => s.k), organicInfo: org, description: desc, technicalReview: review, videoMediaId: video, imageIds: images, variants, options: opts, purchaseOptions, productFaqs: faqs, relatedProductIds: relatedIds, crossSellProductIds: crossSellIds, seoImageId: seoImage[0] ?? null, deliveryEstimateEnabled: fd.deliveryEstimateEnabled === "on", seoKeywords: String(fd.seoKeywords ?? "").split(/[,،\n]/).map((x) => x.trim()).filter(Boolean) };
       setBusy(true);
       try {
         const r = await api<{ id: number }>(isEdit ? `/api/products/${initial.id}` : "/api/products", isEdit ? "PUT" : "POST", payload);
@@ -77,8 +84,8 @@ export function ProductForm({ initial = {}, categories, mode, backTo }: { initia
         </div>
         <div className={tab === "specs" ? "grid gap-6 lg:grid-cols-2" : "hidden"}>
           <div className="space-y-2"><b className="text-sm">مشخصات و ارزش غذایی داینامیک</b>
-            {specs.map((s, i) => <div key={i} className="flex gap-2"><input value={s.k} placeholder="عنوان" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, k: e.target.value } : x)))} className="input" /><input value={s.v} placeholder="مقدار" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, v: e.target.value } : x)))} className="input" /><button type="button" onClick={() => setSpecs(specs.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-rose-500" /></button></div>)}
-            <button type="button" className="btn-sm" onClick={() => setSpecs([...specs, { k: "", v: "" }])}><Plus className="h-3 w-3" />افزودن مشخصه</button>
+            {specs.map((s, i) => <div key={i} className="grid grid-cols-2 gap-2 rounded-xl border border-slate-100 p-2 sm:grid-cols-[1fr_1fr_1fr_72px_auto_auto]"><input value={s.group ?? ""} placeholder="گروه مشخصات" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, group: e.target.value } : x)))} className="input" /><input value={s.k} placeholder="عنوان" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, k: e.target.value } : x)))} className="input" /><input value={s.v} placeholder="مقدار" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, v: e.target.value } : x)))} className="input" /><input type="number" value={s.order ?? i} title="ترتیب نمایش" aria-label="ترتیب نمایش" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, order: Number(e.target.value) } : x)))} className="input" /><label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={s.hidden === true} onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, hidden: e.target.checked } : x)))} />مخفی</label><button type="button" onClick={() => setSpecs(specs.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-rose-500" /></button></div>)}
+            <button type="button" className="btn-sm" onClick={() => setSpecs([...specs, { k: "", v: "", group: "", order: specs.length }])}><Plus className="h-3 w-3" />افزودن مشخصه</button>
           </div>
           <div className="space-y-3 rounded-2xl bg-lime-50/60 p-4 ring-1 ring-lime-200"><b className="flex items-center gap-2 text-sm text-emerald-900">🌿 شناسنامه محصول ارگانیک</b>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -107,15 +114,35 @@ export function ProductForm({ initial = {}, categories, mode, backTo }: { initia
             <VariantBuilder opts={opts} setOpts={setOpts} optText={optText} setOptText={setOptText} variants={variants} setVariants={setVariants} baseSku={initial.sku ?? ""} basePrice={initial.basePrice ?? 0} />
           )}
         </div>
+        <div className={tab === "commerce" ? "space-y-6" : "hidden"}>
+          <DeliveryEditor initial={initial} />
+          <ProductPicker title="محصولات مرتبط" choices={productChoices} selected={relatedIds} setSelected={setRelatedIds} />
+          <ProductPicker title="محصولات متقابل فروش" choices={productChoices} selected={crossSellIds} setSelected={setCrossSellIds} />
+          <PurchaseOptionEditor options={purchaseOptions} setOptions={setPurchaseOptions} />
+        </div>
+        <div className={tab === "qa" ? "space-y-3" : "hidden"}><div className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">این پرسش‌ها و پاسخ‌ها پس از ذخیره در صفحه محصول، در بخش پرسش‌وپاسخ کنار پرسش‌های واقعی خریداران نمایش داده می‌شوند.</div>{faqs.map((q, i) => <div key={i} className="grid gap-2 rounded-xl border p-3"><input className="input" placeholder="پرسش متداول" value={q.question} onChange={(e) => setFaqs(faqs.map((x, j) => j === i ? { ...x, question: e.target.value } : x))} /><textarea className="input min-h-20" placeholder="پاسخ" value={q.answer} onChange={(e) => setFaqs(faqs.map((x, j) => j === i ? { ...x, answer: e.target.value } : x))} /><button type="button" className="btn-sm w-fit" onClick={() => setFaqs(faqs.filter((_, j) => j !== i))}><Trash2 className="h-3 w-3" />حذف</button></div>)}<button type="button" className="btn-sm" onClick={() => setFaqs([...faqs, { question: "", answer: "" }])}><Plus className="h-3 w-3" />افزودن پرسش و پاسخ</button></div>
         <div className={tab === "seo" ? "grid gap-4 sm:grid-cols-2" : "hidden"}>
           <F name="seoTitle" label="SEO Title" dv={initial.seoTitle} /><F name="slug" label="Slug" dv={initial.slug} ltr />
           <label className="flex flex-col gap-1 text-sm sm:col-span-2">Meta Description<textarea name="metaDesc" defaultValue={initial.metaDesc ?? ""} className="input" /></label>
+          <label className="flex flex-col gap-1 text-sm sm:col-span-2">کلمات کلیدی SEO<input name="seoKeywords" defaultValue={initial.seoKeywords?.join("، ") ?? ""} className="input" placeholder="محصول ارگانیک، خرید عسل، ..." /><small className="text-slate-400">کلمات را با ویرگول جدا کنید.</small></label>
+          <div className="text-sm sm:col-span-2"><b className="mb-2 block">تصویر سئو و شبکه‌های اجتماعی</b><ImageUploader value={seoImage} onChange={setSeoImage} max={1} /></div>
         </div>
       </div>
       <div className="flex gap-2"><button disabled={busy} className="btn-primary">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{isEdit ? "ذخیره تغییرات" : "ثبت محصول"}</button>
         {mode === "seller" && isEdit && <span className="self-center text-xs text-amber-600">تغییر اطلاعات مهم، محصول را مجدداً به صف بررسی می‌فرستد.</span>}</div>
     </form>
   );
+}
+
+function ProductPicker({ title, choices, selected, setSelected }: { title: string; choices: { id: number; name: string }[]; selected: number[]; setSelected: (v: number[]) => void }) {
+  const [q, setQ] = useState("");
+  const shown = choices.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 80);
+  return <section className="rounded-xl border p-4"><b className="block text-sm">{title}</b><input className="input mt-2" value={q} onChange={(e) => setQ(e.target.value)} placeholder="جستجوی محصول" /><div className="mt-2 grid max-h-52 gap-1 overflow-y-auto sm:grid-cols-2">{shown.map((p) => <label key={p.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs hover:bg-slate-50"><input type="checkbox" checked={selected.includes(p.id)} onChange={(e) => setSelected(e.target.checked ? [...selected, p.id] : selected.filter((id) => id !== p.id))} />{p.name}</label>)}</div><small className="mt-2 block text-slate-400">{selected.length} محصول انتخاب شده</small></section>;
+}
+function DeliveryEditor({ initial }: { initial: ProductInitial }) { return <section className="rounded-xl border p-4"><label className="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="deliveryEstimateEnabled" defaultChecked={initial.deliveryEstimateEnabled ?? false} />نمایش تاریخ/بازه تحویل مورد انتظار</label><div className="mt-3 grid gap-3 sm:grid-cols-2"><F name="deliveryMinDays" label="حداقل روز کاری" dv={initial.deliveryMinDays ?? 2} type="number" /><F name="deliveryMaxDays" label="حداکثر روز کاری" dv={initial.deliveryMaxDays ?? 5} type="number" /></div></section>; }
+function PurchaseOptionEditor({ options, setOptions }: { options: PurchaseOption[]; setOptions: (v: PurchaseOption[]) => void }) {
+  const patch = (i: number, p: Partial<PurchaseOption>) => setOptions(options.map((x, j) => j === i ? { ...x, ...p } : x));
+  return <section className="space-y-3 rounded-xl border p-4"><b className="text-sm">گزینه‌های محصول</b>{options.map((o, i) => <div key={i} className="space-y-2 rounded-xl bg-slate-50 p-3"><div className="grid gap-2 sm:grid-cols-[1fr_170px_auto]"><input className="input" placeholder="نام گزینه؛ مانند بسته‌بندی هدیه" value={o.name} onChange={(e) => patch(i, { name: e.target.value })} /><select className="input" value={o.type} onChange={(e) => patch(i, { type: e.target.value as PurchaseOption["type"] })}><option value="text">متن</option><option value="select">فهرست انتخاب</option><option value="radio">تک‌انتخابی</option><option value="checkbox">چندانتخابی</option></select><button type="button" onClick={() => setOptions(options.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-rose-500" /></button></div><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={o.required} onChange={(e) => patch(i, { required: e.target.checked })} />الزامی</label>{o.type !== "text" && <div className="space-y-1">{o.values.map((v, vi) => <div key={vi} className="grid gap-1 sm:grid-cols-[1fr_120px_120px_auto]"><input className="input" placeholder="عنوان انتخاب" value={v.label} onChange={(e) => patch(i, { values: o.values.map((x, j) => j === vi ? { ...x, label: e.target.value } : x) })} /><input className="input" type="number" min="0" value={v.price} onChange={(e) => patch(i, { values: o.values.map((x, j) => j === vi ? { ...x, price: Number(e.target.value) } : x) })} /><select className="input" value={v.priceType} onChange={(e) => patch(i, { values: o.values.map((x, j) => j === vi ? { ...x, priceType: e.target.value as "fixed" | "percent" } : x) })}><option value="fixed">مبلغ ثابت</option><option value="percent">درصد</option></select><button type="button" onClick={() => patch(i, { values: o.values.filter((_, j) => j !== vi) })}><Trash2 className="h-4 w-4 text-rose-500" /></button></div>)}<button type="button" className="btn-sm" onClick={() => patch(i, { values: [...o.values, { label: "", price: 0, priceType: "fixed" }] })}><Plus className="h-3 w-3" />افزودن انتخاب</button></div>}</div>)}<button type="button" className="btn-sm" onClick={() => setOptions([...options, { name: "", type: "select", required: false, values: [{ label: "", price: 0, priceType: "fixed" }] }])}><Plus className="h-3 w-3" />افزودن گزینه</button></section>;
 }
 
 function combos(opts: Opt[]): Record<string, string>[] {

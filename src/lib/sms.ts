@@ -19,6 +19,8 @@ export const SMS_EVENTS: Record<string, { title: string; vars: string[]; body: s
   withdrawal_requested: { title: "ثبت برداشت", vars: ["amount"], body: "درخواست برداشت {amount} تومان ثبت شد." },
   birthday: { title: "تبریک تولد باشگاه مشتریان", vars: ["name"], body: "{name} عزیز، زادروزتان مبارک! از طرف خانواده سبزینه برایتان سلامتی و شادی آرزو می‌کنیم." },
   settlement_paid: { title: "پرداخت تسویه", vars: ["amount", "tracking"], body: "مبلغ {amount} تومان واریز شد. پیگیری: {tracking}" },
+  cart_reminder: { title: "یادآوری سبد خرید ناتمام", vars: ["name", "url"], body: "{name} عزیز، سبد خرید شما در سبزینه هنوز تکمیل نشده است. برای ادامه خرید: {url}" },
+  cart_discount: { title: "تخفیف تکمیل خرید", vars: ["name", "code", "url"], body: "{name} عزیز، برای تکمیل خریدتان کد تخفیف {code} را در سبزینه وارد کنید: {url}" },
 };
 
 export function renderTemplate(body: string, vars: Record<string, string | number>) {

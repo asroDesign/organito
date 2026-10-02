@@ -1,11 +1,12 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { randomBytes } from "node:crypto";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, detailAccounts, journalLines, media, products, sellers, smsTemplates, ticketDepartments, tickets, users } from "@/db/schema";
+import { accounts, categories, detailAccounts, discountCodes, incompleteCarts, journalLines, media, products, productVariants, sellers, smsTemplates, ticketDepartments, tickets, users } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword, verifyPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal } from "../accounting";
 import { HttpError, int, slugify, str } from "../util";
-import { SMS_EVENTS, extractVars, retryLog, sendTemplateTo } from "../sms";
+import { SMS_EVENTS, extractVars, retryLog, sendSms, sendTemplateTo } from "../sms";
 import { body, idParam, type Route } from "./router";
 
 function parseDate(v: unknown) {
@@ -26,6 +27,65 @@ function faqs(v: unknown) {
 }
 
 export const extraRoutes: Route[] = [
+  { method: "POST", pattern: "admin/product-prices", handler: async (req, _p, m) => {
+    const u = await requireApi("PRODUCTS_EDIT"), b = await body(req), productId = int(b.productId, 1);
+    const cost = int(b.cost ?? 0, 0, 1_000_000_000_000), price = int(b.price ?? 0, 0, 1_000_000_000_000), sale = int(b.sale ?? 0, 0, 1_000_000_000_000);
+    const variantId = b.variantId ? int(b.variantId, 1) : null;
+    const [product] = await db.select().from(products).where(eq(products.id, productId));
+    if (!product) throw new HttpError(404, "محصول پیدا نشد");
+    if (variantId) {
+      const [variant] = await db.select().from(productVariants).where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId)));
+      if (!variant) throw new HttpError(404, "تنوع محصول پیدا نشد");
+      await db.update(productVariants).set({ costPrice: cost, price, compareAtPrice: sale }).where(eq(productVariants.id, variantId));
+    } else await db.update(products).set({ basePrice: price, avgCost: cost, compareAtPrice: sale, updatedAt: new Date() }).where(eq(products.id, productId));
+    await audit(db, { userId: u.id, ...m }, "product.price_quick_update", "product", productId, { avgCost: product.avgCost, basePrice: product.basePrice, compareAtPrice: product.compareAtPrice }, { cost, price, sale, variantId });
+    return { ok: true };
+  } },
+  // ---------- cart recovery ----------
+  { method: "POST", pattern: "cart/recovery", handler: async (req) => {
+    const u = await requireApi();
+    const b = await body(req);
+    if (!Array.isArray(b.items) || b.items.length < 1 || b.items.length > 50) throw new HttpError(400, "اقلام سبد نامعتبر است");
+    const recoveryKey = str(b.recoveryKey, 80);
+    if (!/^[\w-]{8,80}$/.test(recoveryKey)) throw new HttpError(400, "شناسه سبد نامعتبر است");
+    const items = b.items.slice(0, 50).map((raw) => {
+      const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+      return { productId: int(row.productId, 1), variantId: row.variantId ? int(row.variantId, 1) : null, offerId: row.offerId ? int(row.offerId, 1) : null, qty: int(row.qty, 1, 100), title: str(row.title, 160) };
+    });
+    await db.insert(incompleteCarts).values({ cartKey: `user-${u.id}-${recoveryKey}`, customerId: u.id, customerName: u.name, phone: u.phone, items, reason: "مشتری پس از افزودن کالا سبد خرید را تکمیل نکرد", status: "open", updatedAt: new Date() })
+      .onConflictDoUpdate({ target: incompleteCarts.cartKey, set: { customerId: u.id, customerName: u.name, phone: u.phone, items, status: sql`CASE WHEN ${incompleteCarts.status} IN ('checkout_started','completed') THEN ${incompleteCarts.status} ELSE 'open' END`, updatedAt: new Date() } });
+    return { ok: true };
+  } },
+  { method: "POST", pattern: "admin/incomplete-carts/:id", handler: async (req, p, m) => {
+    const u = await requireApi("SMS_MANAGE"), id = idParam(p.id), b = await body(req);
+    const [row] = await db.select().from(incompleteCarts).where(eq(incompleteCarts.id, id));
+    if (!row) throw new HttpError(404, "سبد پیدا نشد");
+    if (b.reason !== undefined) {
+      const reason = str(b.reason, 500);
+      if (!reason) throw new HttpError(400, "دلیل ناقص ماندن سفارش را وارد کنید");
+      await db.update(incompleteCarts).set({ reason, updatedAt: new Date() }).where(eq(incompleteCarts.id, id));
+      await audit(db, { userId: u.id, ...m }, "incomplete_cart.reason", "incomplete_cart", id, { reason: row.reason }, { reason });
+      return { ok: true };
+    }
+    const action = str(b.action, 20);
+    if (action !== "reminder" && action !== "discount") throw new HttpError(400, "نوع پیام نامعتبر است");
+    const [customer] = row.customerId ? await db.select({ smsConsent: users.smsConsent }).from(users).where(eq(users.id, row.customerId)) : [];
+    if (!customer?.smsConsent) throw new HttpError(403, "مشتری اجازه دریافت پیامک تبلیغاتی نداده است");
+    const settingsRow = await import("../settings").then((x) => x.getSettings());
+    const url = `${settingsRow.siteUrl.replace(/\/$/, "")}/cart`;
+    let code: string | undefined, discountCodeId: number | undefined;
+    if (action === "discount") {
+      const value = int(b.percent ?? 10, 1, 50);
+      code = `CART${randomBytes(4).toString("hex").toUpperCase()}`;
+      const [createdCode] = await db.insert(discountCodes).values({ code, title: "تخفیف تکمیل سبد خرید", type: "percent", value, maxDiscount: 300000, minOrder: 0, startsAt: new Date(), endsAt: new Date(Date.now() + 7 * 86400000), usageLimit: 1, perUserLimit: 1, customerId: row.customerId, targetPhone: row.phone, isActive: true }).returning({ id: discountCodes.id });
+      discountCodeId = createdCode.id;
+    }
+    const result = await sendSms(action === "discount" ? "cart_discount" : "cart_reminder", row.phone, { name: row.customerName, url, ...(code ? { code } : {}) });
+    const sent = result.status === "sent" || result.status === "simulated";
+    await db.update(incompleteCarts).set({ lastSmsType: action, lastSmsStatus: result.status, lastSmsAt: sent ? new Date() : row.lastSmsAt, discountCodeId: discountCodeId ?? row.discountCodeId, updatedAt: new Date() }).where(eq(incompleteCarts.id, id));
+    await audit(db, { userId: u.id, ...m }, `incomplete_cart.sms_${action}`, "incomplete_cart", id, null, { phone: row.phone, status: result.status, discountCodeId });
+    return { status: result.status, code };
+  } },
   // ---------- categories ----------
   { method: "POST", pattern: "admin/categories", handler: async (req, _p, m) => {
     const u = await requireApi("PRODUCTS_EDIT");

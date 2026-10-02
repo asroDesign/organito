@@ -3,7 +3,7 @@ import { and, eq, inArray, sql, ne } from "drizzle-orm";
 import { db } from "@/db";
 import {
   orders, orderItems, sellerShipments, orderHistory, payments, products, productVariants, sellerOffers, sellers,
-  stockMovements, wallets, walletTransactions, users, discountCodes, discountUsages, carriers, referralAwards, type Address,
+  stockMovements, wallets, walletTransactions, users, discountCodes, discountUsages, carriers, referralAwards, incompleteCarts, type Address,
 } from "@/db/schema";
 import { activeCarriers, activeFestivals, carrierCost, evaluateCode, festivalFor } from "../marketing";
 import { audit, notify } from "../audit";
@@ -13,7 +13,7 @@ import { sendSms } from "../sms";
 import { HttpError, genNumber } from "../util";
 import type { Ctx, DB } from "../types";
 
-export type CartInput = { productId: number; offerId?: number | null; variantId?: number | null; qty: number };
+export type CartInput = { productId: number; offerId?: number | null; variantId?: number | null; qty: number; selectedOptions?: Record<string, string | string[]> };
 
 export type QuoteLine = {
   key: string; productId: number; offerId: number | null; variantId: number | null; sellerId: number | null;
@@ -42,12 +42,34 @@ export function sanitizeCart(raw: unknown): CartInput[] {
     const variantId = r.variantId ? Math.floor(Number(r.variantId)) : null;
     const qty = Math.floor(Number(r.qty));
     if (!(productId > 0) || !(qty > 0) || qty > 100) throw new HttpError(400, "قلم نامعتبر در سبد");
-    const key = `${productId}:${offerId ?? 0}:${variantId ?? 0}`;
+    const selectedOptions = r.selectedOptions && typeof r.selectedOptions === "object" && !Array.isArray(r.selectedOptions) ? Object.fromEntries(Object.entries(r.selectedOptions as Record<string, unknown>).slice(0, 20).map(([k, v]) => [String(k).slice(0, 80), Array.isArray(v) ? v.slice(0, 30).map((x) => String(x).slice(0, 80)) : String(v).slice(0, 300)])) as Record<string, string | string[]> : {};
+    const key = `${productId}:${offerId ?? 0}:${variantId ?? 0}:${JSON.stringify(selectedOptions)}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ productId, offerId, variantId, qty });
+    out.push({ productId, offerId, variantId, qty, selectedOptions });
   }
   return out;
+}
+
+function addPurchaseOptions(p: typeof products.$inferSelect, it: CartInput, basePrice: number): { price: number; title: string | null; error?: string } {
+  const definitions = p.purchaseOptions ?? [];
+  const selected = it.selectedOptions ?? {};
+  for (const key of Object.keys(selected)) if (!definitions.some((o) => o.name === key)) return { price: basePrice, title: null, error: "گزینه انتخاب‌شده معتبر نیست" };
+  let extra = 0; const labels: string[] = [];
+  for (const option of definitions) {
+    const raw = selected[option.name];
+    const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
+    if (option.required && values.length === 0) return { price: basePrice, title: null, error: `انتخاب گزینه «${option.name}» الزامی است` };
+    if (option.type === "text") { if (values.length > 1 || (values[0] && values[0].length > 300)) return { price: basePrice, title: null, error: "مقدار متنی گزینه معتبر نیست" }; if (values[0]) labels.push(`${option.name}: ${values[0]}`); continue; }
+    if (option.type !== "checkbox" && values.length > 1) return { price: basePrice, title: null, error: `برای «${option.name}» فقط یک انتخاب مجاز است` };
+    for (const value of values) {
+      const choice = option.values.find((v) => v.label === value);
+      if (!choice) return { price: basePrice, title: null, error: `انتخاب «${option.name}» معتبر نیست` };
+      extra += choice.priceType === "percent" ? Math.round(basePrice * choice.price / 100) : choice.price;
+      labels.push(`${option.name}: ${value}`);
+    }
+  }
+  return { price: basePrice + extra, title: labels.length ? labels.join("، ") : null };
 }
 
 async function alternativesFor(tx: DB, productId: number, qty: number) {
@@ -72,7 +94,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
     const pq = tx.select().from(products).where(eq(products.id, it.productId));
     const [p] = lock ? await pq.for("update") : await pq;
     const base: QuoteLine = {
-      key: `${it.productId}:${it.offerId ?? 0}:${it.variantId ?? 0}`, productId: it.productId, offerId: it.offerId ?? null, variantId: it.variantId ?? null,
+      key: `${it.productId}:${it.offerId ?? 0}:${it.variantId ?? 0}:${JSON.stringify(it.selectedOptions ?? {})}`, productId: it.productId, offerId: it.offerId ?? null, variantId: it.variantId ?? null,
       sellerId: null, title: p?.nameFa ?? "محصول نامشخص", slug: p?.slug ?? "", imageId: p?.mainImageId ?? null, unitPrice: 0, qty: it.qty, lineTotal: 0,
       available: 0, ok: false, unitCost: p?.avgCost ?? 0, alternatives: [],
       categoryId: p?.categoryId ?? null, weight: (p?.weight ?? 0) > 0 ? p!.weight! : 500, festivalPct: 0, festivalTitle: null, listPrice: 0,
@@ -81,6 +103,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
     const fest = p ? festivalFor(fests, p.id, p.categoryId) : null;
     if (fest) { base.festivalPct = fest.discountPercent; base.festivalTitle = fest.title; }
     if (!p || p.status !== "active") { lines.push({ ...base, error: "محصول قابل فروش نیست" }); continue; }
+    const basePrice = it.offerId ? undefined : it.variantId ? undefined : p.basePrice;
     if (it.offerId) {
       const oq = tx.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId))
         .where(and(eq(sellerOffers.id, it.offerId), eq(sellerOffers.productId, p.id)));
@@ -92,24 +115,27 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
       const prev = offerShip.get(row.s.id);
       offerShip.set(row.s.id, { ship: Math.max(prev?.ship ?? 0, row.o.shippingCost), prep: Math.max(prev?.prep ?? 0, row.o.prepDays) });
       const ok = available >= it.qty;
-      lines.push({ ...base, title: `${p.nameFa}`, sellerId: row.s.id, sellerName: row.s.shopName, warranty: row.o.warranty, maxQty: Math.max(0, available), unitPrice: price, lineTotal: price * it.qty, available, ok, unitCost: price,
-        error: ok ? undefined : "موجودی فروشنده کافی نیست", alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
+      const option = addPurchaseOptions(p, it, price);
+      lines.push({ ...base, title: `${p.nameFa}`, variantTitle: option.title, sellerId: row.s.id, sellerName: row.s.shopName, warranty: row.o.warranty, maxQty: Math.max(0, available), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error, unitCost: price,
+        error: option.error ?? (ok ? undefined : "موجودی فروشنده کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     } else if (it.variantId) {
       const vq = tx.select().from(productVariants).where(and(eq(productVariants.id, it.variantId), eq(productVariants.productId, p.id)));
       const [v] = lock ? await vq.for("update") : await vq;
       if (!v || !v.isActive) { lines.push({ ...base, error: "تنوع نامعتبر است" }); continue; }
       const available = v.onHand - v.reserved;
       const ok = available >= it.qty;
-      lines.push({ ...base, title: p.nameFa, variantTitle: v.title, attrs: v.attrs, maxQty: Math.max(0, available), unitPrice: v.price, lineTotal: v.price * it.qty, available, ok,
-        error: ok ? undefined : "موجودی انبار مرکزی کافی نیست", alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
+      const option = addPurchaseOptions(p, it, v.price);
+      lines.push({ ...base, title: p.nameFa, variantTitle: [v.title, option.title].filter(Boolean).join(" · ") || null, attrs: v.attrs, maxQty: Math.max(0, available), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error,
+        error: option.error ?? (ok ? undefined : "موجودی انبار مرکزی کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     } else {
       if (p.source !== "central") { lines.push({ ...base, error: "برای این محصول فروشنده را انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
       const hasVariants = await tx.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true))).limit(1);
       if (hasVariants.length) { lines.push({ ...base, error: "برای این محصول باید تنوع (مشخصات) را از صفحه محصول انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
       const available = p.onHand - p.reserved;
       const ok = available >= it.qty;
-      lines.push({ ...base, maxQty: Math.max(0, available), unitPrice: p.basePrice, lineTotal: p.basePrice * it.qty, available, ok,
-        error: ok ? undefined : "موجودی انبار مرکزی کافی نیست", alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
+      const option = addPurchaseOptions(p, it, p.basePrice);
+      lines.push({ ...base, variantTitle: option.title, maxQty: Math.max(0, available), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error,
+        error: option.error ?? (ok ? undefined : "موجودی انبار مرکزی کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     }
   }
   const groupsMap = new Map<string, QuoteGroup>();
@@ -183,7 +209,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   };
 }
 
-export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null } = {}) {
+export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; recoveryKey?: string } = {}) {
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idemKey}))`);
     const [existing] = await tx.select().from(orders).where(eq(orders.idempotencyKey, idemKey));
@@ -196,8 +222,13 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
     if (q.code && !q.code.ok) throw new HttpError(409, q.code.error ?? "کد تخفیف نامعتبر");
     if (q.lines.some((line) => line.ok) && (!q.carriers.length || !extra.carrierId || !q.carriers.some((carrier) => carrier.id === extra.carrierId))) throw new HttpError(409, "برای ثبت سفارش باید یک شرکت پستی فعال انتخاب کنید");
     const carrierName = q.carriers.find((c) => c.id === q.carrierId)?.name ?? null;
+    const [buyer] = await tx.select({ name: users.name, phone: users.phone }).from(users).where(eq(users.id, ctx.userId));
+    const cartKey = `user-${ctx.userId}-${extra.recoveryKey || idemKey.replace(/[^\w-]/g, "-")}`;
+    const [recovery] = await tx.insert(incompleteCarts).values({ cartKey, customerId: ctx.userId, customerName: buyer?.name ?? "مشتری", phone: buyer?.phone ?? address.phone, items: q.lines.map((line) => ({ productId: line.productId, variantId: line.variantId, offerId: line.offerId, qty: line.qty, selectedOptions: line.variantTitle, title: line.variantTitle ? `${line.title} — ${line.variantTitle}` : line.title })), reason: "سفارش ثبت شده اما پرداخت تکمیل نشده است", status: "checkout_started", updatedAt: new Date() })
+      .onConflictDoUpdate({ target: incompleteCarts.cartKey, set: { customerId: ctx.userId, customerName: buyer?.name ?? "مشتری", phone: buyer?.phone ?? address.phone, items: q.lines.map((line) => ({ productId: line.productId, variantId: line.variantId, offerId: line.offerId, qty: line.qty, selectedOptions: line.variantTitle, title: line.variantTitle ? `${line.title} — ${line.variantTitle}` : line.title })), reason: "سفارش ثبت شده اما پرداخت تکمیل نشده است", status: "checkout_started", updatedAt: new Date() } }).returning({ id: incompleteCarts.id });
     const [order] = await tx.insert(orders).values({
       number: genNumber("SB"), customerId: ctx.userId, status: "pending_payment", paymentStatus: "unpaid",
+      recoveryCartId: recovery.id,
       itemsSubtotal: q.itemsSubtotal, sellerShippingTotal: q.sellerShippingTotal, centralShipping: q.centralShipping,
       discount: q.discount, tax: q.tax, total: q.finalTotal, creditAmount:q.creditAmount,giftCardId:q.giftCardId,address, idempotencyKey: idemKey,
       festivalDiscount: q.festivalDiscount, codeDiscount: q.codeDiscount, discountCodeId: q.code?.ok ? q.code.codeId ?? null : null, discountCode: q.code?.ok ? q.code.code ?? null : null, carrierId: q.carrierId,
@@ -302,6 +333,7 @@ export async function payOrder(ctx: Ctx & { userId: number }, orderId: number, i
     if (o.discount > 0) lines.push({ code: "5301", debit: o.discount, description: `تخفیف سفارش ${o.number}${o.discountCode ? ` (کد ${o.discountCode})` : ""}` });
     const entry = await postJournal(tx, `فروش سفارش ${o.number}`, lines, { type: "order", id: o.id }, ctx.userId);
     const [upd] = await tx.update(orders).set({ status: "paid", paymentStatus: "paid", paymentEntryId: entry?.id ?? null, updatedAt: new Date() }).where(eq(orders.id, o.id)).returning();
+    if (o.recoveryCartId) await tx.update(incompleteCarts).set({ status: "completed", updatedAt: new Date() }).where(eq(incompleteCarts.id, o.recoveryCartId));
     const METHOD_FA: Record<string, string> = { gateway: "درگاه اینترنتی", card_to_card: "کارت به کارت", bank_transfer: "حواله بانکی", cash: "نقدی", pos: "کارتخوان" };
     await tx.insert(orderHistory).values({ orderId: o.id, status: "paid", note: `پرداخت موفق (${METHOD_FA[pay.method] ?? pay.method}) - کد ${pay.refCode}${pay.trackingCode ? ` - پیگیری ${pay.trackingCode}` : ""}`, userId: ctx.userId });
     await audit(tx, ctx, "payment.success", "order", o.id, { status: o.status }, { status: "paid", amount: o.total, payment: pay.id });

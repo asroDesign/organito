@@ -9,13 +9,14 @@ import type { Quote } from "@/lib/services/orders";
 import { toman } from "@/lib/util";
 
 const t = (n: number) => toman(n);
-const keyOf = (i: { productId: number; offerId: number | null; variantId: number | null }) => `${i.productId}:${i.offerId ?? 0}:${i.variantId ?? 0}`;
+const keyOf = (i: { productId: number; offerId: number | null; variantId: number | null; selectedOptions?: Record<string, string | string[]> }) => `${i.productId}:${i.offerId ?? 0}:${i.variantId ?? 0}:${JSON.stringify(i.selectedOptions ?? {})}`;
 const MapPicker = dynamic(() => import("./MapPicker"), { ssr: false, loading: () => <div className="skeleton h-56 rounded-xl" /> });
 
 type SavedAddress = { id:number; title:string; receiverName:string; receiverPhone:string; city:string; address:string; postalCode:string|null; latitude:string|null; longitude:string|null; isDefault:boolean };
 export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[], paymentGateway="zarinpal" }: { loggedIn: boolean; defaultName: string; defaultPhone: string; savedAddresses?:SavedAddress[]; paymentGateway?: string }) {
   const cart = useCart();
   const router = useRouter();
+  const recoveryKey = useRef(uid());
   const [quote, setQuote] = useState<Quote | null>(null);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
@@ -43,6 +44,13 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
       setErr("");
     }).catch((e) => { setErr(e.message); toast(e.message, false); }).finally(() => setLoading(false));
   }, [cart, code, cityQ, carrierId]);
+  useEffect(() => {
+    if (!loggedIn || !cart.length) return;
+    const timer = setTimeout(() => {
+      void api("/api/cart/recovery", "POST", { recoveryKey: recoveryKey.current, items: cart.map(({ productId, variantId, offerId, qty, title, selectedOptions }) => ({ productId, variantId, offerId, qty, title, selectedOptions })) }).catch(() => null);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [cart, loggedIn]);
 
   const setQty = (it: CartItem, q: number) => writeCart(cart.map((c) => (keyOf(c) === keyOf(it) ? { ...c, qty: Math.max(1, Math.min(100, q)) } : c)));
   const remove = (k: string) => writeCart(cart.filter((c) => keyOf(c) !== k));
@@ -159,7 +167,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
             if(quote?.lines.some(l=>l.ok)&&(!quote.carriers.length||!quote.carriers.some(c=>c.id===carrierId))){toast("ابتدا یک شرکت پستی فعال را انتخاب کنید",false);return;}
             setPlacing(true);
             try {
-              const r = await api<{ id: number;paid:boolean }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty }) => ({ productId, offerId, variantId, qty })), address: {fullName:selectedAddress.receiverName,phone:selectedAddress.receiverPhone,city:selectedAddress.city,address:selectedAddress.address,postalCode:selectedAddress.postalCode??"",latitude:selectedAddress.latitude??"",longitude:selectedAddress.longitude??""}, idempotencyKey: idem.current, code: quote?.code?.ok ? code : "", carrierId });
+              const r = await api<{ id: number;paid:boolean }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty, selectedOptions }) => ({ productId, offerId, variantId, qty, selectedOptions })), address: {fullName:selectedAddress.receiverName,phone:selectedAddress.receiverPhone,city:selectedAddress.city,address:selectedAddress.address,postalCode:selectedAddress.postalCode??"",latitude:selectedAddress.latitude??"",longitude:selectedAddress.longitude??""}, idempotencyKey: idem.current, recoveryKey: recoveryKey.current, code: quote?.code?.ok ? code : "", carrierId });
               writeCart([]);
               if (payMethod === "gateway"&&!r.paid) {
                 toast(`سفارش ثبت شد؛ در حال انتقال به درگاه ${paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}…`);
