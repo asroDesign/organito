@@ -33,6 +33,7 @@ export default async function SettingsPage() {
           { name: "loyaltyPointValue", label: "ارزش هر امتیاز باشگاه (تومان)", type: "number", half: true, defaultValue: s.loyaltyPointValue },
           { name: "releasePolicy", label: "سیاست آزادسازی وجه", type: "select", half: true, defaultValue: s.releasePolicy, options: [["on_customer_confirm", "پس از تأیید تحویل"], ["on_delivery", "پس از ثبت تحویل"]] },
           { name: "supportPhone", label: "تلفن پشتیبانی", half: true, defaultValue: s.supportPhone },
+          { name: "supportEmail", label: "ایمیل پشتیبانی", half: true, defaultValue: s.supportEmail },
           { name: "supportHours", label: "ساعات پاسخگویی", half: true, defaultValue: s.supportHours },
           { name: "freeShippingOver", label: "ارسال رایگان از مبلغ (نمایشی)", type: "number", half: true, defaultValue: s.freeShippingOver },
           { name: "returnDays", label: "مهلت بازگشت کالا (روز)", type: "number", half: true, defaultValue: s.returnDays },

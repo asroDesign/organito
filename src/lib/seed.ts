@@ -50,7 +50,7 @@ async function seed() {
   await db.insert(smsTemplates).values(Object.entries(SMS_EVENTS).map(([event, v], i) => ({ event, title: v.title, body: v.body, variables: v.vars, patternId: String(100100 + i) })));
 
   const pw = hashPassword("Demo@1234");
-  const mk = async (name: string, phone: string, role: string) => (await db.insert(users).values({ name, phone, role, passwordHash: pw, email: `${phone}@sabzineh.ir` }).returning())[0];
+  const mk = async (name: string, phone: string, role: string) => (await db.insert(users).values({ name, phone, role, passwordHash: pw, email: `${phone}@example.test` }).returning())[0];
   const admin = await mk("مدیر کل سامانه", "09120000001", "super_admin");
   await mk("سارا کریمی", "09120000002", "marketplace_manager");
   const proc = await mk("حمید نوری", "09120000003", "procurement_manager");
@@ -117,9 +117,9 @@ async function seed() {
       manufacturer: d.brand, country: d.country, categoryId: catRows[d.cat].id, authenticity: d.auth, basePrice: d.price, compareAtPrice: d.cmp,
       shortDesc: `${d.fa}؛ ${d.compat.map((c) => c[0]).join("، ")} — مستقیم از تولیدکننده، تازه و با کیفیت تضمین‌شده`,
       description: `${d.fa} محصول ${d.country} و برند ${d.brand} است که مستقیماً از تولیدکننده تهیه شده و پیش از ارسال، کنترل کیفیت و آزمون آزمایشگاهی شده است. بدون مواد نگهدارنده، رنگ و طعم‌دهنده مصنوعی. در جای خشک و خنک و دور از نور مستقیم نگهداری شود.`,
-      technicalReview: `در بررسی کارشناسان تغذیه سبزینه، ${d.fa} از نظر خلوص، ارزش غذایی و روش تولید مطابق استانداردهای ارگانیک است. نمونه این محصول برای بقایای سموم، فلزات سنگین و تقلب آزمایش شده و نتایج در محدوده مجاز بوده است. مصرف روزانه آن در کنار رژیم متعادل توصیه می‌شود.`,
+      technicalReview: `در بررسی کارشناسان تغذیه، ${d.fa} از نظر خلوص، ارزش غذایی و روش تولید مطابق استانداردهای ارگانیک است. نمونه این محصول برای بقایای سموم، فلزات سنگین و تقلب آزمایش شده و نتایج در محدوده مجاز بوده است. مصرف روزانه آن در کنار رژیم متعادل توصیه می‌شود.`,
       specs: d.specs.map(([k, v]) => ({ k, v })), compatibility: d.compat.map(([make, model, years]) => ({ make, model, years })), organicInfo: { ...(ORGANIC_SAMPLES[d.sku] ?? {}), suitableFor: d.compat.map((c) => c[0]).filter((t) => !/ارگانیک|خام/.test(t)) },
-      weight: 1000, barcode: `626${Math.floor(Math.random() * 1e10)}`, seoTitle: `خرید ${d.fa} | سبزینه`, metaDesc: `خرید آنلاین ${d.fa} ارگانیک با ضمانت اصالت و ارسال سریع`,
+      weight: 1000, barcode: `626${Math.floor(Math.random() * 1e10)}`, seoTitle: `خرید ${d.fa} | فروشگاه ارگانیک`, metaDesc: `خرید آنلاین ${d.fa} ارگانیک با ضمانت اصالت و ارسال سریع`,
       slug: d.en.toLowerCase().replace(/[^a-z0-9]+/g, "-"), mainImageId: img[d.img], source: d.src, createdBy: admin.id,
       ownerSellerId: d.src === "marketplace" ? s1.id : null, status: "active", lowStockThreshold: 3,
     }).returning();

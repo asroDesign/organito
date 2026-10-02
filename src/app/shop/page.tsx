@@ -20,7 +20,7 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
   const [sp, s] = await Promise.all([searchParams, getSettings()]);
   const [cat] = sp.cat ? await db.select().from(categories).where(eq(categories.id, Number(sp.cat))).limit(1) : [];
   const title = cat?.seoTitle || (cat ? `خرید ${cat.name} ارگانیک و طبیعی` : s.shopSeoTitle);
-  const description = cat?.metaDescription || (cat ? stripHtml(cat.description, 160) || `خرید اینترنتی ${cat.name} با تضمین کیفیت و ارسال مطمئن از سبزینه.` : s.shopSeoDescription);
+  const description = cat?.metaDescription || (cat ? stripHtml(cat.description, 160) || `خرید اینترنتی ${cat.name} با تضمین کیفیت و ارسال مطمئن از ${s.siteName}.` : s.shopSeoDescription);
   return seoMetadata(s, { title, description, keywords: cat?.seoKeywords || s.shopSeoKeywords, path: cat ? `/shop?cat=${cat.id}` : "/shop", canonical: cat?.canonicalUrl });
 }
 

@@ -15,6 +15,7 @@ import { categoriesWithCounts, listShopProducts, vehicleMakes } from "@/lib/quer
 import { activeFestivals } from "@/lib/marketing";
 import { ensureSeeded } from "@/lib/seed";
 import { getSettings } from "@/lib/settings";
+import { siteBrandText } from "@/lib/brand";
 import { faNum } from "@/lib/util";
 import { jsonLd, seoMetadata, siteBase } from "@/lib/seo";
 
@@ -51,7 +52,7 @@ export default async function Home() {
       <section className="relative overflow-hidden">
         {st.heroMediaId && st.heroType === "video"
           ? <video src={`/api/media/${st.heroMediaId}`} autoPlay muted loop playsInline preload="auto" poster="/images/home-harvest.jpg" className="absolute inset-0 h-full w-full object-cover" />
-          : <Image src={st.heroMediaId ? `/api/media/${st.heroMediaId}` : "/images/home-harvest.jpg"} alt="چیدمان محصولات تازه و ارگانیک سبزینه" fill priority sizes="100vw" className="object-cover" />}
+          : <Image src={st.heroMediaId ? `/api/media/${st.heroMediaId}` : "/images/home-harvest.jpg"} alt={`چیدمان محصولات تازه و ارگانیک ${st.siteName}`} fill priority sizes="100vw" className="object-cover" />}
         <div className="absolute inset-0 bg-gradient-to-l from-emerald-950/95 via-emerald-900/75 to-emerald-900/10" />
         <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 py-16 lg:grid-cols-[1.25fr_1fr] lg:py-24">
           <div className="space-y-6 text-white">
@@ -126,7 +127,7 @@ export default async function Home() {
 
         {/* BEST */}
         <section>
-          <Title title="محبوب‌ترین‌های سبزینه" sub="انتخاب مشتریان در هفته گذشته" href="/shop?sort=best" />
+          <Title title={`محبوب‌ترین‌های ${st.siteName}`} sub="انتخاب مشتریان در هفته گذشته" href="/shop?sort=best" />
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">{best.map((p) => <ProductCard key={p.id} p={p} />)}</div>
         </section>
 
@@ -135,7 +136,7 @@ export default async function Home() {
           <div className="space-y-4">
             <span className="text-sm font-bold text-lime-300">چرا ارگانیک؟</span>
             <h2 className="text-balance text-3xl font-black leading-snug">سلامت شما، سلامت زمین</h2>
-            <p className="leading-8 text-emerald-100/80">محصولات ارگانیک بدون سموم شیمیایی، کود مصنوعی و مواد نگهدارنده تولید می‌شوند. هر محصول در سبزینه پیش از عرضه از نظر اصالت، بقایای سموم و کیفیت بررسی می‌شود.</p>
+            <p className="leading-8 text-emerald-100/80">محصولات ارگانیک بدون سموم شیمیایی، کود مصنوعی و مواد نگهدارنده تولید می‌شوند. هر محصول در {st.siteName} پیش از عرضه از نظر اصالت، بقایای سموم و کیفیت بررسی می‌شود.</p>
             <Link href="/about" className="inline-flex items-center gap-2 rounded-2xl bg-lime-400 px-5 py-2.5 text-sm font-black text-emerald-950">بیشتر بدانید<ArrowLeft className="h-4 w-4" /></Link>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -175,16 +176,16 @@ export default async function Home() {
         </section>
 
         {latestPosts.length > 0 && <section>
-          <Title title="از مجله سبزینه" sub="راهنمای انتخاب آگاهانه و زندگی سالم" href="/blog" />
-          <div className="grid gap-5 md:grid-cols-3">{latestPosts.map((post) => <BlogCard key={post.id} post={post} />)}</div>
+          <Title title={`از مجله ${st.siteName}`} sub="راهنمای انتخاب آگاهانه و زندگی سالم" href="/blog" />
+          <div className="grid gap-5 md:grid-cols-3">{latestPosts.map((post) => <BlogCard key={post.id} post={post} siteName={st.siteName} />)}</div>
         </section>}
 
         {/* TESTIMONIALS */}
         <section>
-          <Title title="مشتریان درباره ما" sub="تجربه واقعی خرید از سبزینه" />
+          <Title title="مشتریان درباره ما" sub={`تجربه واقعی خرید از ${st.siteName}`} />
           <div className="grid gap-4 md:grid-cols-3">
             {[["مریم احمدی", "عسل آویشن واقعاً طبیعی بود؛ بسته‌بندی عالی و ارسال سریع. دیگه از هیچ جای دیگه خرید نمی‌کنم."], ["علی رضایی", "سبد سبزیجات هفتگی تازه و خوش‌طعمه. خوبیش اینه که مستقیم از کشاورز میاد."], ["سارا کریمی", "روغن زیتون فرابکر با گواهی معتبر و قیمت منصفانه. پشتیبانی هم خیلی پاسخگو بود."]].map(([n, t]) => (
-              <figure key={n} className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-emerald-900/5"><Quote className="h-8 w-8 text-lime-400" /><blockquote className="mt-3 text-sm leading-8 text-slate-600">{t}</blockquote><figcaption className="mt-4 flex items-center justify-between"><b className="text-sm text-emerald-950">{n}</b><span className="flex text-amber-400">{[1, 2, 3, 4, 5].map((i) => <Star key={i} className="h-3.5 w-3.5 fill-amber-400" />)}</span></figcaption></figure>
+              <figure key={n} className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-emerald-900/5"><Quote className="h-8 w-8 text-lime-400" /><blockquote className="mt-3 text-sm leading-8 text-slate-600">{siteBrandText(t, st.siteName)}</blockquote><figcaption className="mt-4 flex items-center justify-between"><b className="text-sm text-emerald-950">{n}</b><span className="flex text-amber-400">{[1, 2, 3, 4, 5].map((i) => <Star key={i} className="h-3.5 w-3.5 fill-amber-400" />)}</span></figcaption></figure>
             ))}
           </div>
         </section>

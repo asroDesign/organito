@@ -27,6 +27,7 @@ const ADMIN_GROUPS: { label: string; icon: NavItem["icon"]; items: (NavItem & { 
     { href: "/admin/categories", label: "دسته‌بندی‌ها", icon: "FolderTree", perm: "PRODUCTS_EDIT" },
     { href: "/admin/reviews", label: "دیدگاه‌ها و پرسش‌ها", icon: "MessageSquare", perm: "PRODUCTS_APPROVE" },
     { href: "/admin/blog", label: "وبلاگ و سئو", icon: "FileText", perm: "PRODUCTS_EDIT" },
+    { href: "/admin/site-content", label: "صفحه‌ساز و منوهای فوتر", icon: "FileText", perm: "SETTINGS_MANAGE" },
     { href: "/admin/media", label: "مرکز فایل و رسانه", icon: "FileImage", perm: "PRODUCTS_EDIT" },
   ] },
   { label: "مشتریان و بازاریابی", icon: "Users", items: [

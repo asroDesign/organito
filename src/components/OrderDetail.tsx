@@ -64,7 +64,7 @@ export async function OrderDetail({ id, user, view }: { id: number; user: Sessio
           {shipments.map(({ sh, s }) => {
             const its = items.filter((i) => i.shipmentId === sh.id);
             return (
-              <Card key={sh.id} title={<span className="flex items-center gap-2">مرسوله #{faNum(sh.id)} — {hideSellers ? settingsNow.siteName : s?.shopName ?? "انبار مرکزی سبزینه"} <StatusBadge status={sh.status} map={SHIPMENT_STATUS} /></span>}
+              <Card key={sh.id} title={<span className="flex items-center gap-2">مرسوله #{faNum(sh.id)} — {hideSellers ? settingsNow.siteName : s?.shopName ?? `انبار مرکزی ${settingsNow.siteName}`} <StatusBadge status={sh.status} map={SHIPMENT_STATUS} /></span>}
                 action={view === "seller" ? <ShipmentActions id={sh.id} status={sh.status} base="/api/seller/shipments" carriers={carrierList} defaultCarrierId={sh.carrierId} /> : canManageShip ? <ShipmentActions id={sh.id} status={sh.status} base="/api/admin/shipments" allowDeliver carriers={carrierList} defaultCarrierId={sh.carrierId} /> : null}>
                 {view !== "customer" && o.paymentStatus === "paid" && <div className="mb-3"><IssuePanel shipmentId={sh.id} packageCount={sh.packageCount} issue={issueFor(sh.id)} canIssue={view === "seller" ? true : canIssueStaff && sh.sellerId === null} /></div>}
                 <div className="mb-4"><ShipmentTimeline sh={sh} trackingUrl={sh.carrierId ? cmap.get(sh.carrierId)?.trackingUrl : null} /></div>

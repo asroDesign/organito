@@ -2,18 +2,19 @@ import { db } from "@/db";
 import { settings } from "@/db/schema";
 import type { DB } from "./types";
 import { setCurrencyUnit } from "./util";
+import { siteBrandText } from "./brand";
 
 export const DEFAULT_SETTINGS = {
-  siteName: "سبزینه",
+  siteName: "فروشگاه ارگانیک",
   siteTagline: "بازار آنلاین محصولات ارگانیک و طبیعی",
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://localhost:3000",
-  homeSeoTitle: "سبزینه | خرید محصولات ارگانیک و طبیعی",
+  homeSeoTitle: "{{siteName}} | خرید محصولات ارگانیک و طبیعی",
   homeSeoDescription: "خرید آنلاین محصولات ارگانیک، طبیعی و محلی مستقیم از کشاورزان و تولیدکنندگان معتبر با تضمین کیفیت.",
   homeSeoKeywords: "محصولات ارگانیک، خرید عسل طبیعی، روغن ارگانیک، غذای سالم",
   shopSeoTitle: "فروشگاه محصولات ارگانیک و طبیعی",
   shopSeoDescription: "فروشگاه آنلاین محصولات ارگانیک، طبیعی و محلی؛ مقایسه، انتخاب و خرید مستقیم از تولیدکنندگان منتخب.",
   shopSeoKeywords: "فروشگاه ارگانیک، محصولات طبیعی، خرید آنلاین محصولات سالم",
-  blogSeoTitle: "مجله سبزینه | راهنمای زندگی سالم و محصولات ارگانیک",
+  blogSeoTitle: "مجله {{siteName}} | راهنمای زندگی سالم و محصولات ارگانیک",
   blogSeoDescription: "مقالات تخصصی درباره تغذیه سالم، محصولات ارگانیک، کشاورزی پایدار و سبک زندگی طبیعی.",
   blogSeoKeywords: "مجله سلامت، تغذیه سالم، محصولات ارگانیک، سبک زندگی سالم",
   defaultOgImageId: 0,
@@ -26,7 +27,7 @@ export const DEFAULT_SETTINGS = {
   paymentGateway: "zarinpal",
   zibalMerchant: "",
   watermarkEnabled: 0,
-  watermarkText: "سبزینه",
+  watermarkText: "{{siteName}}",
   watermarkImageId: 0,
   watermarkPosition: "southeast",
   watermarkOpacity: 45,
@@ -38,7 +39,7 @@ export const DEFAULT_SETTINGS = {
   supplyDefaultMargin: 15,
   supplyShippingCost: 90000,
   centralShippingCost: 85000,
-  senderName: "انبار مرکزی سبزینه",
+  senderName: "انبار مرکزی {{siteName}}",
   senderAddress: "تهران، خیابان امین‌حضور، پلاک ۱۲",
   marketplaceRules: "فروشندگان موظف به ارسال کالای اصل و مطابق مشخصات هستند.",
   economicCode: "411111111111",
@@ -50,6 +51,7 @@ export const DEFAULT_SETTINGS = {
   heroTitle: "طعم واقعی طبیعت، ارگانیک و بی‌واسطه",
   heroSubtitle: "عسل طبیعی، روغن‌های پرس سرد، ادویه، خشکبار و سبزیجات تازه از کشاورزان و تولیدکنندگان منتخب با گواهی معتبر.",
   supportPhone: "021-91000000",
+  supportEmail: "info@example.com",
   supportHours: "همه روزه ۱۰ تا ۲۱",
   returnDays: 10,
   freeShippingOver: 2000000,
@@ -61,7 +63,7 @@ export const DEFAULT_SETTINGS = {
   senderPhone: "021-91000000",
   senderPostalCode: "1136914311",
   senderCity: "تهران",
-  bankAccountInfo: "بانک ملت — کارت ۶۱۰۴-۳۳۷۸-۱۲۳۴-۵۶۷۸ — شبا IR120120000000001234567890 — به نام شرکت سبزینه",
+  bankAccountInfo: "بانک ملت — کارت ۶۱۰۴-۳۳۷۸-۱۲۳۴-۵۶۷۸ — شبا IR120120000000001234567890 — به نام شرکت {{siteName}}",
   labelShowLogo: 1,
   labelShowOrderBarcode: 1,
   labelBorderStyle: "solid",
@@ -80,6 +82,8 @@ export async function getSettings(tx: DB = db): Promise<SettingsShape> {
   const rows = await tx.select().from(settings);
   const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
   for (const r of rows) out[r.key] = r.value;
+  const siteName = String(out.siteName || DEFAULT_SETTINGS.siteName);
+  for (const [key, value] of Object.entries(out)) if (typeof value === "string" && key !== "siteName") out[key] = siteBrandText(value, siteName);
   setCurrencyUnit(String(out.currency ?? DEFAULT_SETTINGS.currency));
   return out as SettingsShape;
 }

@@ -804,6 +804,41 @@ export const notifications = pgTable("notifications", {
   createdAt: created(),
 });
 
+export type SitePageBlock = {
+  type: "hero" | "text" | "features" | "image" | "cta" | "faq";
+  title?: string;
+  body?: string;
+  mediaId?: number | null;
+  caption?: string;
+  buttonLabel?: string;
+  href?: string;
+  items?: { title: string; body: string }[];
+};
+export const contentPages = pgTable("content_pages", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  slug: text("slug").notNull().unique(),
+  template: text("template").notNull().default("nature"),
+  summary: text("summary"),
+  blocks: jsonb("blocks").$type<SitePageBlock[]>().notNull().default([]),
+  metaTitle: text("meta_title"),
+  metaDescription: text("meta_description"),
+  status: text("status").notNull().default("draft"),
+  createdBy: integer("created_by"),
+  createdAt: created(),
+  updatedAt: updated(),
+}, (t) => [index("content_pages_status").on(t.status)]);
+export const footerLinks = pgTable("footer_links", {
+  id: serial("id").primaryKey(),
+  groupTitle: text("group_title").notNull().default("دسترسی سریع"),
+  label: text("label").notNull(),
+  href: text("href").notNull(),
+  sortOrder: integer("sort_order").notNull().default(0),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: created(),
+  updatedAt: updated(),
+}, (t) => [index("footer_links_order").on(t.enabled, t.sortOrder)]);
+
 export const idempotencyKeys = pgTable("idempotency_keys", {
   key: text("key").primaryKey(),
   scope: text("scope").notNull(),

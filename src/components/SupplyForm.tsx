@@ -34,7 +34,7 @@ export function SupplyForm({ defaultPn }: { defaultPn: string }) {
         <select name="priority" className="input" defaultValue="normal"><option value="low">اولویت کم</option><option value="normal">عادی</option><option value="high">بالا</option><option value="urgent">فوری</option></select>
       </div>
       <textarea name="description" placeholder="توضیحات" className="input min-h-20" />
-      <ImageUploader value={images} onChange={setImages} max={5} />
+      <ImageUploader value={images} onChange={setImages} max={5} allowLibrary={false} />
       <button disabled={busy} className="btn-primary w-full">{busy && <Loader2 className="h-4 w-4 animate-spin" />}ثبت درخواست تأمین</button>
     </form>
   );

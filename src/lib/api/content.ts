@@ -1,6 +1,6 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { blogCategories, blogPosts, blogTags } from "@/db/schema";
+import { blogCategories, blogPosts, blogTags, contentPages, footerLinks } from "@/db/schema";
 import { requireApi } from "../auth";
 import { audit } from "../audit";
 import { HttpError, int, slugify, str } from "../util";
@@ -34,7 +34,72 @@ const syncTaxonomy = async (category: string, tags: string[]) => {
   if (tags.length) await db.insert(blogTags).values(tags.map((name) => ({ name, slug: slugify(name) }))).onConflictDoNothing();
 };
 
+function pageValues(b: Record<string, unknown>) {
+  const title = str(b.title, 180);
+  const slug = slugify(str(b.slug, 100) || title);
+  if (!title || !slug) throw new HttpError(400, "عنوان و نشانی صفحه الزامی است");
+  const blocks = Array.isArray(b.blocks) ? b.blocks.slice(0, 30).map((raw) => {
+    const x = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const type = String(x.type);
+    if (!["hero", "text", "features", "image", "cta", "faq"].includes(type)) throw new HttpError(400, "نوع بخش صفحه نامعتبر است");
+    const href = str(x.href, 500);
+    if (type === "cta" && href && !(href.startsWith("/") && !href.startsWith("//")) && !/^https:\/\//i.test(href)) throw new HttpError(400, "نشانی دکمه باید داخلی یا HTTPS باشد");
+    const items = Array.isArray(x.items) ? x.items.slice(0, 30).map((it) => {
+      const item = it && typeof it === "object" ? it as Record<string, unknown> : {};
+      return { title: str(item.title, 180), body: str(item.body, 5000) };
+    }) : [];
+    return { type: type as "hero" | "text" | "features" | "image" | "cta" | "faq", title: str(x.title, 180), body: str(x.body, 10000), mediaId: x.mediaId ? int(x.mediaId, 1) : null, caption: str(x.caption, 300), buttonLabel: str(x.buttonLabel, 80), href, items };
+  }) : [];
+  return {
+    title, slug, template: ["nature", "editorial", "minimal", "contact"].includes(String(b.template)) ? String(b.template) : "nature",
+    summary: str(b.summary, 500) || null, blocks,
+    metaTitle: str(b.metaTitle, 180) || null, metaDescription: str(b.metaDescription, 320) || null,
+    status: b.status === "published" ? "published" : "draft",
+  };
+}
+
+function footerValues(b: Record<string, unknown>) {
+  const groupTitle = str(b.groupTitle, 60), label = str(b.label, 100), href = str(b.href, 500);
+  if (!groupTitle || !label || !href) throw new HttpError(400, "عنوان گروه، متن پیوند و نشانی الزامی است");
+  if (!(href.startsWith("/") && !href.startsWith("//")) && !/^https:\/\//i.test(href)) throw new HttpError(400, "نشانی پیوند باید داخلی یا HTTPS باشد");
+  return { groupTitle, label, href, sortOrder: int(b.sortOrder ?? 0, 0, 10000), enabled: b.enabled !== false, updatedAt: new Date() };
+}
+
 export const contentRoutes: Route[] = [
+  { method: "GET", pattern: "admin/site-pages", handler: async () => { await requireApi("SETTINGS_MANAGE"); return db.select().from(contentPages).orderBy(desc(contentPages.updatedAt)); } },
+  { method: "POST", pattern: "admin/site-pages", handler: async (req, _p, meta) => {
+    const user = await requireApi("SETTINGS_MANAGE"), values = pageValues(await body(req));
+    const [row] = await db.insert(contentPages).values({ ...values, createdBy: user.id }).returning();
+    await audit(db, { userId: user.id, ...meta }, "site_page.create", "content_page", row.id, null, { title: row.title, slug: row.slug });
+    return row;
+  } },
+  { method: "POST", pattern: "admin/site-pages/:id", handler: async (req, p, meta) => {
+    const user = await requireApi("SETTINGS_MANAGE"), id = idParam(p.id), b = await body(req);
+    const [old] = await db.select().from(contentPages).where(eq(contentPages.id, id));
+    if (!old) throw new HttpError(404, "صفحه یافت نشد");
+    if (b.delete === true) { await db.delete(contentPages).where(eq(contentPages.id, id)); await audit(db, { userId: user.id, ...meta }, "site_page.delete", "content_page", id, { title: old.title, slug: old.slug }, null); return { ok: true }; }
+    const values = pageValues(b);
+    await db.update(contentPages).set({ ...values, updatedAt: new Date() }).where(eq(contentPages.id, id));
+    await audit(db, { userId: user.id, ...meta }, "site_page.update", "content_page", id, { title: old.title, slug: old.slug, status: old.status }, { title: values.title, slug: values.slug, status: values.status });
+    return { ok: true, id, ...values };
+  } },
+  { method: "GET", pattern: "admin/footer-links", handler: async () => { await requireApi("SETTINGS_MANAGE"); return db.select().from(footerLinks).orderBy(asc(footerLinks.groupTitle), asc(footerLinks.sortOrder), asc(footerLinks.id)); } },
+  { method: "POST", pattern: "admin/footer-links", handler: async (req, _p, meta) => {
+    const user = await requireApi("SETTINGS_MANAGE"), values = footerValues(await body(req));
+    const [row] = await db.insert(footerLinks).values(values).returning();
+    await audit(db, { userId: user.id, ...meta }, "footer_link.create", "footer_link", row.id, null, row);
+    return row;
+  } },
+  { method: "POST", pattern: "admin/footer-links/:id", handler: async (req, p, meta) => {
+    const user = await requireApi("SETTINGS_MANAGE"), id = idParam(p.id), b = await body(req);
+    const [old] = await db.select().from(footerLinks).where(eq(footerLinks.id, id));
+    if (!old) throw new HttpError(404, "پیوند فوتر یافت نشد");
+    if (b.delete === true) { await db.delete(footerLinks).where(eq(footerLinks.id, id)); await audit(db, { userId: user.id, ...meta }, "footer_link.delete", "footer_link", id, old, null); return { ok: true }; }
+    const values = footerValues(b);
+    await db.update(footerLinks).set(values).where(eq(footerLinks.id, id));
+    await audit(db, { userId: user.id, ...meta }, "footer_link.update", "footer_link", id, old, values);
+    return { ok: true, id };
+  } },
   { method: "POST", pattern: "admin/blog", handler: async (req, _p, meta) => {
     const user = await requireApi("PRODUCTS_EDIT");
     const values = postValues(await body(req));

@@ -2,15 +2,10 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, Leaf, Smartphone, KeyRound, ArrowRight, ShieldCheck, Pencil } from "lucide-react";
+import { Loader2, Leaf, Smartphone, KeyRound, ArrowRight, ShieldCheck, Pencil, LockKeyhole, Sprout, BadgeCheck } from "lucide-react";
 import { api } from "./client";
 import { SiteBrand } from "./SiteBrand";
 
-const DEMO: [string, string][] = [
-  ["مدیر کل", "09120000001"], ["مدیر مارکت‌پلیس", "09120000002"], ["مدیر خرید و تأمین", "09120000003"], ["مدیر انبار", "09120000004"],
-  ["حسابدار", "09120000005"], ["پشتیبان", "09120000006"], ["مدیر کاتالوگ", "09120000007"], ["مشتری (علی)", "09121111111"],
-  ["مشتری (مریم)", "09122222222"], ["تولیدکننده ۱", "09123333331"], ["تولیدکننده ۲", "09123333332"], ["تولیدکننده ۳", "09123333333"],
-];
 const toEn = (s: string) => s.replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
 
 export function LoginForm({ siteName, siteLogoMediaId = 0 }: { siteName: string; siteLogoMediaId?: number }) {
@@ -68,9 +63,9 @@ export function LoginForm({ siteName, siteLogoMediaId = 0 }: { siteName: string;
   const ready = digits.join("").length === 5 && (!info?.isNew || name.trim().length >= 2);
 
   return (
-    <div className="grid w-full max-w-5xl overflow-hidden rounded-[2.5rem] bg-white shadow-2xl md:grid-cols-[1.1fr_1fr]">
-      <div className="p-8 md:p-10">
-        <Link href="/" className="mb-8 flex items-center gap-2"><SiteBrand name={siteName} logoMediaId={siteLogoMediaId}/><b className="text-2xl font-black text-emerald-950">{siteName}</b></Link>
+    <div className="grid w-full max-w-6xl overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_32px_100px_-38px_rgba(6,78,59,.42)] lg:min-h-[660px] lg:grid-cols-[1fr_.92fr]">
+      <div className="order-2 p-6 sm:p-9 lg:order-1 lg:p-12">
+        <Link href="/" className="mb-8 flex items-center gap-2.5"><SiteBrand name={siteName} logoMediaId={siteLogoMediaId}/><b className="text-xl font-black text-emerald-950">{siteName}</b></Link>
         {mode === "otp" ? (
           step === "phone" ? (
             <form onSubmit={request} className="space-y-5">
@@ -118,19 +113,21 @@ export function LoginForm({ siteName, siteLogoMediaId = 0 }: { siteName: string;
           {mode === "otp" ? <><KeyRound className="h-3.5 w-3.5" />ورود با رمز عبور</> : <><Smartphone className="h-3.5 w-3.5" />ورود با کد یک‌بارمصرف</>}
         </button>
       </div>
-      <div className="relative hidden flex-col justify-between bg-emerald-950 p-8 text-white md:flex">
-        <div className="absolute inset-0 bg-[url('/images/hero-organic.jpg')] bg-cover bg-center opacity-20" />
-        <div className="relative"><b className="text-2xl font-black leading-snug">طعم واقعی طبیعت،<br /><span className="text-lime-300">یک کد فاصله دارد.</span></b></div>
+      <div className="relative order-1 flex min-h-[220px] flex-col justify-between overflow-hidden bg-emerald-950 p-6 text-white sm:min-h-[260px] sm:p-9 lg:order-2 lg:min-h-full lg:p-12">
+        <div className="absolute inset-0 bg-[url('/images/hero-organic.jpg')] bg-cover bg-center opacity-30" />
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-950/70 via-emerald-950/50 to-emerald-900/90" />
+        <div className="absolute -left-20 -top-24 size-72 rounded-full border border-lime-200/15" /><div className="absolute -left-10 -top-14 size-52 rounded-full border border-lime-200/10" />
         <div className="relative">
-          <b className="text-xs text-emerald-100">حساب‌های آزمایشی — روی هر مورد کلیک کنید (رمز: <code dir="ltr">Demo@1234</code>)</b>
-          <div className="mt-3 grid grid-cols-2 gap-1.5">
-            {DEMO.map(([label, p]) => (
-              <button key={p} type="button" onClick={() => { setPhone(p); setStep("phone"); if (mode === "password") setPassword("Demo@1234"); }} className="rounded-xl bg-white/10 p-2 text-right text-[11px] ring-1 ring-white/10 transition hover:bg-white/20">
-                <div className="font-bold">{label}</div><div className="text-emerald-200/70" dir="ltr">{p}</div>
-              </button>
-            ))}
-          </div>
+          <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-lime-100 backdrop-blur"><Sprout className="size-4" />از دل طبیعت، برای زندگی سالم</span>
+          <h2 className="mt-6 max-w-md text-2xl font-black leading-relaxed sm:text-3xl lg:mt-12 lg:text-4xl">خرید آگاهانه،<br /><span className="text-lime-300">با خیال آسوده</span></h2>
+          <p className="mt-3 max-w-sm text-sm leading-7 text-emerald-50/80">به حساب کاربری‌تان وارد شوید و سفارش‌ها، علاقه‌مندی‌ها و امتیازهای خریدتان را یکجا دنبال کنید.</p>
         </div>
+        <div className="relative mt-7 grid grid-cols-1 gap-2.5 sm:grid-cols-3 lg:mt-12 lg:grid-cols-1 lg:gap-3">
+          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.08] p-3 backdrop-blur"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-lime-300/15 text-lime-200"><LockKeyhole className="size-4" /></span><div><b className="block text-xs">ورود امن</b><span className="text-[11px] text-emerald-100/70">تأیید با کد یک‌بارمصرف</span></div></div>
+          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.08] p-3 backdrop-blur"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-lime-300/15 text-lime-200"><BadgeCheck className="size-4" /></span><div><b className="block text-xs">محصولات منتخب</b><span className="text-[11px] text-emerald-100/70">از تولیدکنندگان معتبر</span></div></div>
+          <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[.08] p-3 backdrop-blur"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-lime-300/15 text-lime-200"><Leaf className="size-4" /></span><div><b className="block text-xs">همراه شما</b><span className="text-[11px] text-emerald-100/70">از انتخاب تا تحویل سفارش</span></div></div>
+        </div>
+        <p className="relative mt-5 hidden text-[11px] text-emerald-100/60 lg:block">{siteName} · تجربه‌ای سالم‌تر از خرید آنلاین</p>
       </div>
     </div>
   );

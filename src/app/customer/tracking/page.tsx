@@ -38,7 +38,7 @@ export default async function Tracking({ searchParams }: { searchParams: Promise
             <div className="flex items-center gap-2"><StatusBadge status={o.status} map={ORDER_STATUS} /><Link href={`/customer/orders/${o.id}`} className="btn-sm">جزئیات سفارش</Link></div>
           </div>
           {o.status === "pending_payment" && <div className="mb-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">این سفارش هنوز پرداخت نشده است. <Link href={`/customer/orders/${o.id}`} className="font-bold underline">پرداخت</Link></div>}
-          <div className="space-y-3">{shs.filter((x) => x.sh.orderId === o.id).map(({ sh, shop }) => <ShipmentTimeline key={sh.id} sh={sh} title={st.multiVendor ? shop ?? "انبار مرکزی سبزینه" : st.siteName} trackingUrl={sh.carrierId ? cmap.get(sh.carrierId)?.trackingUrl : null} />)}</div>
+          <div className="space-y-3">{shs.filter((x) => x.sh.orderId === o.id).map(({ sh, shop }) => <ShipmentTimeline key={sh.id} sh={sh} title={st.multiVendor ? shop ?? `انبار مرکزی ${st.siteName}` : st.siteName} trackingUrl={sh.carrierId ? cmap.get(sh.carrierId)?.trackingUrl : null} />)}</div>
         </section>
       ))}
     </div>

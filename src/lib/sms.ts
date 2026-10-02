@@ -3,10 +3,11 @@ import { db } from "@/db";
 import { smsLogs, smsTemplates, sellerSmsSettings } from "@/db/schema";
 import { getSettings } from "./settings";
 import { maskPhone } from "./util";
+import { siteBrandText } from "./brand";
 
 export const SMS_EVENTS: Record<string, { title: string; vars: string[]; body: string }> = {
-  otp_login: { title: "کد ورود یک‌بارمصرف (OTP)", vars: ["code"], body: "کد ورود شما به سبزینه: {code}\nاین کد را در اختیار دیگران قرار ندهید." },
-  order_created: { title: "ثبت سفارش", vars: ["name", "order"], body: "{name} عزیز، سفارش {order} ثبت شد. سبزینه" },
+  otp_login: { title: "کد ورود یک‌بارمصرف (OTP)", vars: ["code", "shop"], body: "کد ورود شما به {shop}: {code}\nاین کد را در اختیار دیگران قرار ندهید." },
+  order_created: { title: "ثبت سفارش", vars: ["name", "order", "shop"], body: "{name} عزیز، سفارش {order} در {shop} ثبت شد." },
   payment_success: { title: "پرداخت موفق", vars: ["order", "amount"], body: "پرداخت سفارش {order} به مبلغ {amount} تومان موفق بود." },
   product_approved: { title: "تأیید محصول", vars: ["product"], body: "محصول {product} تأیید شد." },
   product_rejected: { title: "رد محصول", vars: ["product"], body: "محصول {product} رد شد. لطفاً پنل را بررسی کنید." },
@@ -17,14 +18,14 @@ export const SMS_EVENTS: Record<string, { title: string; vars: string[]; body: s
   order_delivered: { title: "تحویل سفارش", vars: ["order"], body: "سفارش {order} تحویل شد. از خرید شما سپاسگزاریم." },
   ticket_reply: { title: "پاسخ تیکت", vars: ["ticket"], body: "به تیکت {ticket} پاسخ داده شد." },
   withdrawal_requested: { title: "ثبت برداشت", vars: ["amount"], body: "درخواست برداشت {amount} تومان ثبت شد." },
-  birthday: { title: "تبریک تولد باشگاه مشتریان", vars: ["name"], body: "{name} عزیز، زادروزتان مبارک! از طرف خانواده سبزینه برایتان سلامتی و شادی آرزو می‌کنیم." },
+  birthday: { title: "تبریک تولد باشگاه مشتریان", vars: ["name", "shop"], body: "{name} عزیز، زادروزتان مبارک! از طرف خانواده {shop} برایتان سلامتی و شادی آرزو می‌کنیم." },
   settlement_paid: { title: "پرداخت تسویه", vars: ["amount", "tracking"], body: "مبلغ {amount} تومان واریز شد. پیگیری: {tracking}" },
-  cart_reminder: { title: "یادآوری سبد خرید ناتمام", vars: ["name", "url"], body: "{name} عزیز، سبد خرید شما در سبزینه هنوز تکمیل نشده است. برای ادامه خرید: {url}" },
-  cart_discount: { title: "تخفیف تکمیل خرید", vars: ["name", "code", "url"], body: "{name} عزیز، برای تکمیل خریدتان کد تخفیف {code} را در سبزینه وارد کنید: {url}" },
+  cart_reminder: { title: "یادآوری سبد خرید ناتمام", vars: ["name", "url", "shop"], body: "{name} عزیز، سبد خرید شما در {shop} هنوز تکمیل نشده است. برای ادامه خرید: {url}" },
+  cart_discount: { title: "تخفیف تکمیل خرید", vars: ["name", "code", "url", "shop"], body: "{name} عزیز، برای تکمیل خریدتان کد تخفیف {code} را در {shop} وارد کنید: {url}" },
 };
 
 export function renderTemplate(body: string, vars: Record<string, string | number>) {
-  return body.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : `{${k}}`));
+  return body.replace(/\{\{\s*(\w+)\s*\}\}|\{(\w+)\}/g, (match, doubleKey, singleKey) => { const k = doubleKey ?? singleKey; return vars[k] !== undefined ? String(vars[k]) : match; });
 }
 
 function smsIrParameterName(name: string, mapping: string) {
@@ -88,8 +89,9 @@ export async function sendSms(event: string, phone: string, vars: Record<string,
     const out: string[] = [];
     let body = "";
     for (const tpl of tpls) {
-      body = renderTemplate(tpl.body, vars);
-      out.push(await deliver(event, phone, s.smsProvider, tpl.patternId, body, vars, s.smsApiKey, s.smsirParameterMap));
+      const dynamicVars = { ...vars, shop: s.siteName };
+      body = siteBrandText(renderTemplate(tpl.body, dynamicVars), s.siteName);
+      out.push(await deliver(event, phone, s.smsProvider, tpl.patternId, body, dynamicVars, s.smsApiKey, s.smsirParameterMap));
     }
     return { status: out.join(","), body };
   } catch {
@@ -103,7 +105,8 @@ export async function sendTemplateTo(templateId: number, phones: string[], vars:
   const s = await getSettings();
   let sent = 0, failed = 0;
   for (const phone of phones) {
-    const st = await deliver(`manual:${tpl.event}`, phone, s.smsProvider, tpl.patternId, renderTemplate(tpl.body, vars), vars, s.smsApiKey, s.smsirParameterMap);
+    const dynamicVars = { ...vars, shop: s.siteName };
+    const st = await deliver(`manual:${tpl.event}`, phone, s.smsProvider, tpl.patternId, siteBrandText(renderTemplate(tpl.body, dynamicVars), s.siteName), dynamicVars, s.smsApiKey, s.smsirParameterMap);
     if (st === "failed") failed++; else sent++;
   }
   return { sent, failed };
@@ -113,7 +116,7 @@ export async function retryLog(logId: number) {
   const [l] = await db.select().from(smsLogs).where(eq(smsLogs.id, logId));
   if (!l || l.status !== "failed" || !/^09\d{9}$/.test(l.phone)) return null;
   const s = await getSettings();
-  return deliver(l.event, l.phone, s.smsProvider, null, l.body, {}, s.smsApiKey, s.smsirParameterMap);
+  return deliver(l.event, l.phone, s.smsProvider, null, siteBrandText(l.body, s.siteName), {}, s.smsApiKey, s.smsirParameterMap);
 }
 
 export { maskPhone };
@@ -121,6 +124,8 @@ export { maskPhone };
 /** متن پیام باشگاه مشتریان را با پنل مستقل همان تأمین‌کننده ارسال و ثبت می‌کند. */
 export async function sendDirectSms(event: string, phone: string, body: string, vars: Record<string, string | number> = {}): Promise<"sent" | "simulated" | "failed"> {
   const settings = await getSettings();
+  body = renderTemplate(body, { ...vars, shop: settings.siteName });
+  body = siteBrandText(body, settings.siteName);
   const provider = settings.smsProvider;
   let status: "sent" | "simulated" | "failed" = "failed", response = "";
   try {
