@@ -12,7 +12,8 @@ import { faNum, jdate, toman } from "@/lib/util";
 export const metadata = { title: "لیبل پستی فروش حضوری" };
 
 export default async function CentralPosLabel({ params }: { params: Promise<{ id: string }> }) {
-  await requirePage({ perm: "INVENTORY_MANAGE" });
+  const user = await requirePage({ role: "staff" });
+  if (!user.permissions.includes("INVENTORY_MANAGE") && !user.permissions.includes("ORDERS_VIEW")) notFound();
   const id = Number((await params).id);
   if (!Number.isSafeInteger(id) || id < 1) notFound();
   const [sale] = await db.select().from(centralPosSales).where(eq(centralPosSales.id, id)).limit(1);
@@ -29,7 +30,7 @@ export default async function CentralPosLabel({ params }: { params: Promise<{ id
     postalCode: sale.shippingPostalCode,
     order: sale.number,
     shipment: "فروش حضوری",
-    carrier: "—",
+    carrier: sale.shippingCarrierName ?? "—",
     tracking: "—",
     packages: "۱",
     sender: settings.senderName,
