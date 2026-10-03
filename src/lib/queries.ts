@@ -5,10 +5,11 @@ import { normalizePn } from "./util";
 import { activeFestivals, applyPct, festivalFor } from "./marketing";
 import { getSettings } from "./settings";
 
-export type ShopFilters = { q?: string; cat?: string; auth?: string; brand?: string; stock?: string; sort?: string; min?: string; max?: string; make?: string; page?: string; fest?: string };
+export type ShopFilters = { ids?: number[]; q?: string; cat?: string; auth?: string; brand?: string; stock?: string; sort?: string; min?: string; max?: string; make?: string; page?: string; fest?: string };
 
 export async function listShopProducts(f: ShopFilters, limit = 200) {
   const conds: SQL[] = [inArray(products.status, ["active", "out_of_stock"])];
+  if (f.ids?.length) conds.push(inArray(products.id, f.ids));
   if (f.q) {
     const like = `%${f.q}%`;
     const pn = normalizePn(f.q);

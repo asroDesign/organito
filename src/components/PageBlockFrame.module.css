@@ -1,0 +1,17 @@
+.frame { min-width: 0; position: relative; width: 100%; scroll-margin-top: 100px; }
+.full { width: 100vw; margin-inline-start: calc((100% - 100vw) / 2); }
+.frame[data-background] > section { background: var(--block-bg) !important; }
+.frame[data-color] > section, .frame[data-color] :is(h1,h2,h3,p,b,blockquote,figcaption) { color: var(--block-color) !important; }
+.frame[data-accent] :global(.btn-primary) { background: var(--block-accent) !important; }
+.frame[data-padding] > section { padding: var(--block-padding); }
+.frame[data-radius] > section { border-radius: var(--block-radius); overflow: hidden; }
+.frame[data-columns] :global(.builder-grid), .frame[data-columns] > section:global(.grid), .frame[data-columns] > section > :global(.grid) { grid-template-columns: repeat(var(--block-columns), minmax(0,1fr)); }
+.frame[data-gap] :global(.builder-grid), .frame[data-gap] > section:global(.grid), .frame[data-gap] > section > :global(.grid) { gap: var(--block-gap); }
+@media (min-width: 768px) { .hideDesktop { display: none; } }
+@media (max-width: 767px) {
+  .hideMobile { display: none; }
+  .frame[data-mobile-padding] > section { padding: var(--block-mobile-padding); }
+  .frame[data-columns] :global(.builder-grid), .frame[data-columns] > section:global(.grid), .frame[data-columns] > section > :global(.grid), .frame[data-mobile-columns] :global(.builder-grid) { grid-template-columns: repeat(var(--block-mobile-columns, 1), minmax(0,1fr)); }
+  .frame[data-mobile-columns] > section:global(.grid), .frame[data-mobile-columns] > section > :global(.grid) { grid-template-columns: repeat(var(--block-mobile-columns), minmax(0,1fr)); }
+  .frame :global(.builder-cell) { grid-column: span 1 !important; }
+}

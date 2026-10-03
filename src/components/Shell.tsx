@@ -1,3 +1,4 @@
+import { AdminShellFrame } from "./AdminShellFrame";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { and, eq, count } from "drizzle-orm";
@@ -27,6 +28,7 @@ const ADMIN_GROUPS: { label: string; icon: NavItem["icon"]; items: (NavItem & { 
     { href: "/admin/categories", label: "دسته‌بندی‌ها", icon: "FolderTree", perm: "PRODUCTS_EDIT" },
     { href: "/admin/reviews", label: "دیدگاه‌ها و پرسش‌ها", icon: "MessageSquare", perm: "PRODUCTS_APPROVE" },
     { href: "/admin/blog", label: "وبلاگ و سئو", icon: "FileText", perm: "PRODUCTS_EDIT" },
+    { href: "/admin/home-builder", label: "صفحه‌ساز صفحه اصلی", icon: "LayoutDashboard", perm: "SETTINGS_MANAGE" },
     { href: "/admin/site-content", label: "صفحه‌ساز و منوهای فوتر", icon: "FileText", perm: "SETTINGS_MANAGE" },
     { href: "/admin/media", label: "مرکز فایل و رسانه", icon: "FileImage", perm: "PRODUCTS_EDIT" },
   ] },
@@ -114,7 +116,7 @@ export async function Shell({ user, area, children }: { user: SessionUser; area:
     </div>
   );
   return (
-    <div className="flex min-h-screen">
+    <AdminShellFrame content={children}><div className="flex min-h-screen">
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-l border-slate-200 bg-white lg:block">{side}</aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
@@ -127,6 +129,6 @@ export async function Shell({ user, area, children }: { user: SessionUser; area:
         </header>
         <main className="mx-auto w-full max-w-7xl flex-1 p-4 md:p-6">{children}</main>
       </div>
-    </div>
+    </div></AdminShellFrame>
   );
 }

@@ -282,6 +282,22 @@ export const productImages = pgTable("product_images", {
   sortOrder: integer("sort_order").notNull().default(0),
 });
 
+export const productViewLogs = pgTable("product_view_logs", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull(),
+  ip: text("ip").notNull(),
+  userAgent: text("user_agent"),
+  viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("product_view_logs_product_viewed").on(t.productId, t.viewedAt)]);
+
+export const productViewPresence = pgTable("product_view_presence", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").notNull(),
+  sessionId: text("session_id").notNull(),
+  ip: text("ip").notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [uniqueIndex("product_view_presence_product_session").on(t.productId, t.sessionId), index("product_view_presence_product_seen").on(t.productId, t.lastSeenAt)]);
+
 export const productVariants = pgTable("product_variants", {
   id: serial("id").primaryKey(),
   productId: integer("product_id").notNull(),
@@ -805,6 +821,8 @@ export const notifications = pgTable("notifications", {
 });
 
 export type SitePageBlockItem = {
+  id?: string;
+  colSpan?: number;
   kind?: "text" | "image" | "cta";
   title: string;
   body: string;
@@ -814,7 +832,27 @@ export type SitePageBlockItem = {
   href?: string;
 };
 export type SitePageBlock = {
-  type: "hero" | "text" | "features" | "image" | "cta" | "faq" | "grid" | "slider";
+  id?: string;
+  name?: string;
+  enabled?: boolean;
+  anchor?: string;
+  style?: {
+    background?: string; color?: string; accent?: string;
+    align?: "right" | "center" | "left";
+    width?: "contained" | "full";
+    padding?: number; paddingMobile?: number; marginBottom?: number;
+    radius?: number; minHeight?: number; gap?: number;
+    columns?: number; mobileColumns?: number;
+    hideDesktop?: boolean; hideMobile?: boolean;
+  };
+  options?: {
+    badge?: string; secondaryLabel?: string; secondaryHref?: string;
+    showSearch?: boolean; showStats?: boolean;
+    autoplay?: boolean; interval?: number;
+    limit?: number; categoryId?: number; productIds?: number[];
+  };
+  type: "hero" | "text" | "features" | "image" | "cta" | "faq" | "grid" | "slider" | "store_section";
+  sectionId?: string;
   title?: string;
   body?: string;
   mediaId?: number | null;
@@ -823,6 +861,17 @@ export type SitePageBlock = {
   href?: string;
   items?: SitePageBlockItem[];
 };
+export type HomeBuilderDocument = {
+  title: string; metaTitle: string; metaDescription: string; blocks: SitePageBlock[];
+};
+export type HomeBuilderRevision = { id: string; at: string; userId: number; document: HomeBuilderDocument };
+export const homeBuilderState = pgTable("home_builder_state", {
+  id: integer("id").primaryKey(),
+  draft: jsonb("draft").$type<HomeBuilderDocument>().notNull(),
+  revisions: jsonb("revisions").$type<HomeBuilderRevision[]>().notNull().default([]),
+  version: integer("version").notNull().default(1),
+  updatedAt: updated(),
+});
 export const contentPages = pgTable("content_pages", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),

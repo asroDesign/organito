@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Star, ThumbsUp, ThumbsDown, Plus, Minus, X, Loader2, ImagePlus, MessageCircleQuestion, CheckCircle2, ShieldCheck } from "lucide-react";
 import { api, toast } from "./client";
+import { Modal } from "./Modal";
 
 const fa = (n: number) => n.toLocaleString("fa-IR");
 
@@ -127,19 +128,26 @@ export function QuestionForm({ productId, loggedIn }: { productId: number; logge
   );
 }
 
-export function AnswerForm({ questionId, loggedIn }: { questionId: number; loggedIn: boolean }) {
+export function AnswerForm({ questionId, loggedIn, label = "پاسخ می‌دهم" }: { questionId: number; loggedIn: boolean; label?: string }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [v, setV] = useState("");
   const [busy, setBusy] = useState(false);
   if (!loggedIn) return null;
-  if (!open) return <button onClick={() => setOpen(true)} className="text-xs font-bold text-emerald-700 hover:underline">پاسخ می‌دهم</button>;
   return (
-    <div className="mt-2 flex gap-2">
-      <input value={v} onChange={(e) => setV(e.target.value)} placeholder="پاسخ شما…" className="input" />
-      <button disabled={busy || v.trim().length < 2} className="btn-sm" onClick={async () => { setBusy(true); try { const r = await api<{ status: string }>(`/api/questions/${questionId}/answers`, "POST", { body: v }); toast(r.status === "approved" ? "پاسخ منتشر شد" : "پاسخ ثبت شد و پس از بررسی نمایش داده می‌شود"); setV(""); setOpen(false); router.refresh(); } catch (e) { toast((e as Error).message, false); } finally { setBusy(false); } }}>ارسال</button>
-    </div>
+    <>
+      <button onClick={() => setOpen(true)} className="text-xs font-bold text-emerald-700 hover:underline">{label}</button>
+      {open && <Modal title="پاسخ به پرسش" onClose={() => setOpen(false)}><form className="space-y-4" onSubmit={async (event) => { event.preventDefault(); setBusy(true); try { const r = await api<{ status: string }>(`/api/questions/${questionId}/answers`, "POST", { body: v }); toast(r.status === "approved" ? "پاسخ منتشر شد" : "پاسخ ثبت شد و پس از بررسی نمایش داده می‌شود"); setV(""); setOpen(false); router.refresh(); } catch (e) { toast((e as Error).message, false); } finally { setBusy(false); } }}><label className="block text-sm font-bold">متن پاسخ<textarea autoFocus required minLength={2} maxLength={2000} value={v} onChange={(e) => setV(e.target.value)} placeholder="پاسخ خود را بنویسید…" className="input mt-2 min-h-32" /></label><div className="flex justify-end gap-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>انصراف</button><button disabled={busy || v.trim().length < 2} className="btn-primary">{busy && <Loader2 className="size-4 animate-spin" />}ثبت پاسخ</button></div></form></Modal>}
+    </>
   );
+}
+
+export function ReviewReplyButton({ reviewId, status, initialReply }: { reviewId: number; status: string; initialReply: string | null }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState(initialReply ?? "");
+  const [busy, setBusy] = useState(false);
+  return <><button type="button" className="btn-sm" onClick={() => setOpen(true)}>{initialReply ? "ویرایش پاسخ" : "پاسخ"}</button>{open && <Modal title="پاسخ فروشگاه به دیدگاه" onClose={() => setOpen(false)}><form className="space-y-4" onSubmit={async (event) => { event.preventDefault(); setBusy(true); try { await api(`/api/admin/reviews/${reviewId}`, "POST", { status, adminReply: value }); toast("پاسخ فروشگاه ذخیره شد"); setOpen(false); router.refresh(); } catch (error) { toast((error as Error).message, false); } finally { setBusy(false); } }}><label className="block text-sm font-bold">متن پاسخ<textarea autoFocus maxLength={1000} value={value} onChange={(e) => setValue(e.target.value)} placeholder="پاسخ محترمانه و روشن فروشگاه…" className="input mt-2 min-h-32" /></label><div className="flex justify-end gap-2"><button type="button" className="btn-ghost" onClick={() => setOpen(false)}>انصراف</button><button disabled={busy} className="btn-primary">{busy && <Loader2 className="size-4 animate-spin" />}ذخیره پاسخ</button></div></form></Modal>}</>;
 }
 
 export const RoleBadge = ({ role }: { role: string }) => role === "staff" ? <span className="flex items-center gap-0.5 rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white"><ShieldCheck className="h-3 w-3" />پاسخ فروشگاه</span>

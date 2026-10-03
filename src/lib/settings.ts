@@ -46,6 +46,7 @@ export const DEFAULT_SETTINGS = {
   orderExpiryMinutes: 120,
   multiVendor: 1,
   allowSellerSignup: 1,
+  productLiveViewers: 0,
   heroType: "image",
   heroMediaId: 0,
   heroTitle: "طعم واقعی طبیعت، ارگانیک و بی‌واسطه",

@@ -4,6 +4,7 @@ import { blogCategories, blogPosts, blogTags, contentPages, footerLinks } from "
 import { requireApi } from "../auth";
 import { audit } from "../audit";
 import { HttpError, int, slugify, str } from "../util";
+import { normalizeBlocks } from "../page-builder";
 import { body, idParam, type Route } from "./router";
 
 const postValues = (b: Record<string, unknown>) => {
@@ -38,25 +39,7 @@ function pageValues(b: Record<string, unknown>) {
   const title = str(b.title, 180);
   const slug = slugify(str(b.slug, 100) || title);
   if (!title || !slug) throw new HttpError(400, "عنوان و نشانی صفحه الزامی است");
-  const blocks = Array.isArray(b.blocks) ? b.blocks.slice(0, 30).map((raw) => {
-    const x = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
-    const type = String(x.type);
-    if (!["hero", "text", "features", "image", "cta", "faq", "grid", "slider"].includes(type)) throw new HttpError(400, "نوع بخش صفحه نامعتبر است");
-    const href = str(x.href, 500);
-    if (type === "cta" && href && !(href.startsWith("/") && !href.startsWith("//")) && !/^https:\/\//i.test(href)) throw new HttpError(400, "نشانی دکمه باید داخلی یا HTTPS باشد");
-    const items = Array.isArray(x.items) ? x.items.slice(0, 30).map((it) => {
-      const item = it && typeof it === "object" ? it as Record<string, unknown> : {};
-      const itemHref = str(item.href, 500);
-      if (itemHref && !(itemHref.startsWith("/") && !itemHref.startsWith("//")) && !/^https:\/\//i.test(itemHref)) throw new HttpError(400, "نشانی دکمه باید داخلی یا HTTPS باشد");
-      return {
-        kind: ["text", "image", "cta"].includes(String(item.kind)) ? String(item.kind) as "text" | "image" | "cta" : "text",
-        title: str(item.title, 180), body: str(item.body, 5000),
-        mediaId: item.mediaId ? int(item.mediaId, 1) : null, caption: str(item.caption, 300),
-        buttonLabel: str(item.buttonLabel, 80), href: itemHref,
-      };
-    }) : [];
-    return { type: type as "hero" | "text" | "features" | "image" | "cta" | "faq" | "grid" | "slider", title: str(x.title, 180), body: str(x.body, 10000), mediaId: x.mediaId ? int(x.mediaId, 1) : null, caption: str(x.caption, 300), buttonLabel: str(x.buttonLabel, 80), href, items };
-  }) : [];
+  const blocks = normalizeBlocks(b.blocks ?? []);
   return {
     title, slug, template: ["nature", "editorial", "minimal", "contact"].includes(String(b.template)) ? String(b.template) : "nature",
     summary: str(b.summary, 500) || null, blocks,
@@ -84,6 +67,7 @@ export const contentRoutes: Route[] = [
     const user = await requireApi("SETTINGS_MANAGE"), id = idParam(p.id), b = await body(req);
     const [old] = await db.select().from(contentPages).where(eq(contentPages.id, id));
     if (!old) throw new HttpError(404, "صفحه یافت نشد");
+    if (old.slug === "home") throw new HttpError(400, "صفحه اصلی را از صفحه‌ساز پیشرفته مدیریت کنید");
     if (b.delete === true) { await db.delete(contentPages).where(eq(contentPages.id, id)); await audit(db, { userId: user.id, ...meta }, "site_page.delete", "content_page", id, { title: old.title, slug: old.slug }, null); return { ok: true }; }
     const values = pageValues(b);
     await db.update(contentPages).set({ ...values, updatedAt: new Date() }).where(eq(contentPages.id, id));

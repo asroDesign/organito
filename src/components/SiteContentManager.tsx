@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, Plus, Save, Eye, EyeOff, FilePlus2, Trash2 } from "
 import { api, toast } from "./client";
 import { ImageUploader } from "./client";
 import type { SitePageBlock, SitePageBlockItem } from "@/db/schema";
+import { createHomeTemplateBlocks, DEFAULT_HOME_LAYOUT } from "@/lib/home-page-builder";
 
 type Page = {
   id: number; title: string; slug: string; template: string; summary: string | null;
@@ -30,8 +31,17 @@ export function SiteContentManager({ initialPages, initialLinks }: { initialPage
   const [linkBusy, setLinkBusy] = useState(false);
   const [newBlockType, setNewBlockType] = useState<Block["type"]>("text");
 
-  const homepage = pages.find((page) => page.slug === "home");
   const edit = (page: Page) => setDraft({ ...page, blocks: page.blocks ?? [] });
+  const createFromHomeDesign = () => setDraft({
+    title: "صفحه تازه",
+    slug: `page-${Date.now()}`,
+    template: "nature",
+    summary: "",
+    blocks: createHomeTemplateBlocks(DEFAULT_HOME_LAYOUT),
+    metaTitle: "",
+    metaDescription: "",
+    status: "draft",
+  });
   const patchPage = <K extends keyof Omit<Page, "id">>(key: K, value: Omit<Page, "id">[K]) => setDraft((old) => old ? { ...old, [key]: value } : old);
   const patchBlock = (index: number, value: Partial<Block>) => setDraft((old) => old ? { ...old, blocks: old.blocks.map((block, i) => i === index ? { ...block, ...value } : block) } : old);
   const patchItems = (blockIndex: number, items: SitePageBlockItem[]) => patchBlock(blockIndex, { items });
@@ -65,14 +75,13 @@ export function SiteContentManager({ initialPages, initialLinks }: { initialPage
 
   return <div className="space-y-6">
     <section className="rounded-2xl border bg-white p-4 shadow-sm sm:p-6">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">صفحه‌ساز سایت</h2><p className="mt-1 text-sm text-slate-500">متن و تصویر هیروی صفحه اصلی را از تنظیمات و بخش‌های تصویری/متنی آن را از صفحه‌ساز ویرایش کنید.</p></div><button className="btn-primary" onClick={() => setDraft(freshPage())}><FilePlus2 className="size-4"/>صفحه تازه</button></div>
-      {homepage && <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-yellow-200 bg-yellow-50 p-4"><div><b className="block text-base text-amber-950">صفحه‌ساز صفحه اصلی</b><span className="mt-1 block text-xs leading-6 text-amber-900/80">برای افزودن یا تغییر بخش‌های تصویری، متن، کارت ویژگی‌ها و دکمه‌های صفحه اصلی اینجا را باز کنید. تصویر و نوشته بنر اصلی در تنظیمات عمومی قابل ویرایش است.</span></div><button className="btn-primary shrink-0" onClick={() => edit(homepage)}><FilePlus2 className="size-4"/>ویرایش صفحه اصلی</button></div>}
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{pages.map((page) => <button key={page.id} onClick={() => edit(page)} className="rounded-xl border p-3 text-right hover:border-emerald-400 hover:bg-emerald-50/40"><span className="flex items-center justify-between gap-2"><b>{page.slug === "home" ? "صفحه اصلی · صفحه‌ساز" : page.title}</b><span className={"rounded-full px-2 py-0.5 text-[10px] " + (page.status === "published" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600")}>{page.status === "published" ? "منتشر" : "پیش‌نویس"}</span></span><small className="mt-1 block text-slate-500" dir="ltr">{page.slug === "home" ? "/" : page.slug === "about" || page.slug === "contact" ? "/" + page.slug : "/pages/" + page.slug}</small></button>)}</div>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">مدیریت صفحات سایت</h2><p className="mt-1 text-sm text-slate-500">صفحات درباره ما، تماس با ما و صفحه‌های محتوایی را ویرایش کنید.</p></div><div className="flex flex-wrap gap-2"><button className="btn-ghost" onClick={createFromHomeDesign}><FilePlus2 className="size-4"/>صفحه تازه از طرح آماده</button><button className="btn-primary" onClick={() => setDraft(freshPage())}><FilePlus2 className="size-4"/>صفحه خالی</button></div></div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{pages.map((page) => <button key={page.id} onClick={() => edit(page)} className="rounded-xl border p-3 text-right hover:border-emerald-400 hover:bg-emerald-50/40"><span className="flex items-center justify-between gap-2"><b>{page.title}</b><span className={"rounded-full px-2 py-0.5 text-[10px] " + (page.status === "published" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600")}>{page.status === "published" ? "منتشر" : "پیش‌نویس"}</span></span><small className="mt-1 block text-slate-500" dir="ltr">{page.slug === "about" || page.slug === "contact" ? "/" + page.slug : "/pages/" + page.slug}</small></button>)}</div>
       {!pages.length && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">هنوز صفحه‌ای ایجاد نشده است.</p>}
     </section>
 
     {draft && <section className="space-y-5 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-6">
-      <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-black">{draft.slug === "home" ? "ویرایش بخش‌های صفحه اصلی" : draft.id ? "ویرایش صفحه" : "ساخت صفحه جدید"}</h2><p className="text-xs text-slate-500">از دکمه افزودن بخش برای ساخت چیدمان استفاده کنید.</p></div><a href={draft.id ? (draft.slug === "home" ? "/" : draft.slug === "about" || draft.slug === "contact" ? "/" + draft.slug : "/pages/" + draft.slug) : "#"} target="_blank" className="btn-ghost"><Eye className="size-4"/>پیش‌نمایش</a></div>
+      <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-black">{draft.id ? "ویرایش صفحه" : "ساخت صفحه جدید"}</h2><p className="text-xs text-slate-500">از دکمه افزودن بخش برای ساخت چیدمان استفاده کنید.</p></div><a href={draft.id ? (draft.slug === "about" || draft.slug === "contact" ? "/" + draft.slug : "/pages/" + draft.slug) : "#"} target="_blank" className="btn-ghost"><Eye className="size-4"/>پیش‌نمایش</a></div>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="text-sm">عنوان صفحه<input className="input mt-1" value={draft.title} onChange={(e) => patchPage("title", e.target.value)} /></label>
         <label className="text-sm">نشانی (Slug)<input className="input mt-1" dir="ltr" placeholder="مثلاً shipping-guide" value={draft.slug} onChange={(e) => patchPage("slug", e.target.value)} /></label>
@@ -84,7 +93,7 @@ export function SiteContentManager({ initialPages, initialLinks }: { initialPage
       </div>
       <div className="space-y-4">
         {draft.blocks.map((block, index) => <article key={index} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><b>بخش {new Intl.NumberFormat("fa-IR").format(index + 1)}</b><div className="flex gap-1"><button type="button" disabled={index === 0} className="btn-sm" title="بالا" onClick={() => patchPage("blocks", draft.blocks.map((x, i, a) => i === index ? a[index - 1] : i === index - 1 ? a[index] : x))}><ArrowUp className="size-4"/></button><button type="button" disabled={index === draft.blocks.length - 1} className="btn-sm" title="پایین" onClick={() => patchPage("blocks", draft.blocks.map((x, i, a) => i === index ? a[index + 1] : i === index + 1 ? a[index] : x))}><ArrowDown className="size-4"/></button><button type="button" className="btn-sm text-rose-600" onClick={() => patchPage("blocks", draft.blocks.filter((_, i) => i !== index))}>حذف بخش</button></div></div>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><b>سکشن جدید {new Intl.NumberFormat("fa-IR").format(index + 1)}</b><div className="flex gap-1"><button type="button" disabled={index === 0} className="btn-sm" title="بالا" onClick={() => patchPage("blocks", draft.blocks.map((x, i, a) => i === index ? a[index - 1] : i === index - 1 ? a[index] : x))}><ArrowUp className="size-4"/></button><button type="button" disabled={index === draft.blocks.length - 1} className="btn-sm" title="پایین" onClick={() => patchPage("blocks", draft.blocks.map((x, i, a) => i === index ? a[index + 1] : i === index + 1 ? a[index] : x))}><ArrowDown className="size-4"/></button><button type="button" className="btn-sm text-rose-600" onClick={() => patchPage("blocks", draft.blocks.filter((_, i) => i !== index))}>حذف بخش</button></div></div>
           <div className="grid gap-3 md:grid-cols-2">
             <label className="text-sm">نوع بخش<select className="input mt-1" value={block.type} onChange={(e) => patchBlock(index, { ...newBlock(e.target.value as Block["type"]), title: block.title })}><option value="hero">بنر / معرفی</option><option value="text">متن و توضیح</option><option value="features">کارت‌های ویژگی</option><option value="image">تصویر</option><option value="cta">دعوت به اقدام</option><option value="faq">سؤالات متداول</option><option value="grid">گرید محتوایی</option><option value="slider">اسلایدر</option></select></label>
             <label className="text-sm">عنوان بخش<input className="input mt-1" value={block.title ?? ""} onChange={(e) => patchBlock(index, { title: e.target.value })} /></label>

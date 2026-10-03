@@ -130,10 +130,16 @@ export const communityRoutes: Route[] = [
   { method: "POST", pattern: "admin/answers/:id", handler: async (req, p, m) => {
     const u = await requireApi("PRODUCTS_APPROVE");
     const id = idParam(p.id);
-    const status = String((await body(req)).status);
-    if (!["approved", "rejected"].includes(status)) throw new HttpError(400, "وضعیت نامعتبر");
+    const b = await body(req);
     const [a] = await db.select().from(productAnswers).where(eq(productAnswers.id, id));
-    if (!a) throw new HttpError(404, "یافت نشد");
+    if (!a) throw new HttpError(404, "پاسخ یافت نشد");
+    if (b.delete === true) {
+      await db.delete(productAnswers).where(eq(productAnswers.id, id));
+      await audit(db, { userId: u.id, ...m }, "answer.delete", "product_answer", id, { questionId: a.questionId, status: a.status }, null);
+      return { ok: true };
+    }
+    const status = String(b.status);
+    if (!["approved", "rejected"].includes(status)) throw new HttpError(400, "وضعیت نامعتبر");
     await db.update(productAnswers).set({ status }).where(eq(productAnswers.id, id));
     if (status === "approved" && a.status !== "approved") {
       const [q] = await db.select().from(productQuestions).where(eq(productQuestions.id, a.questionId));

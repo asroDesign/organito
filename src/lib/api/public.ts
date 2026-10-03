@@ -1,7 +1,8 @@
-import { and, desc, eq, ilike, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, inArray, isNull, sql } from "drizzle-orm";
+import { after } from "next/server";
 import { db } from "@/db";
 import {
-  media, notifications, productImages, ticketDepartments, detailAccounts, products, productVariants, sellerOffers, sellers, supplyRequests, ticketMessages, tickets, users, wallets, auditLogs,
+  media, notifications, productImages, productViewLogs, productViewPresence, ticketDepartments, detailAccounts, products, productVariants, sellerOffers, sellers, supplyRequests, ticketMessages, tickets, users, wallets, auditLogs,
 } from "@/db/schema";
 import { createSession, destroySession, getUser, hashPassword, rateLimit, requireApi, verifyPassword } from "../auth";
 import { audit } from "../audit";
@@ -26,6 +27,48 @@ function sniff(buf: Buffer): string | null {
 }
 
 export const publicRoutes: Route[] = [
+  { method: "POST", pattern: "products/:id/views", handler: async (req, p, m) => {
+    const id = idParam(p.id), b = await body(req);
+    const [prod] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, id), inArray(products.status, ["active", "out_of_stock"])));
+    if (!prod) throw new HttpError(404, "محصول یافت نشد");
+    rateLimit(`product-view:${id}:${m.ip}`, 180, 60_000);
+    const sessionId = str(b.sessionId, 80);
+    if (!/^[a-zA-Z0-9_-]{16,80}$/.test(sessionId)) throw new HttpError(400, "شناسه بازدید معتبر نیست");
+    after(async () => {
+      try {
+        const writes: Promise<unknown>[] = [db.insert(productViewPresence).values({ productId: id, sessionId, ip: m.ip.slice(0, 100), lastSeenAt: new Date() }).onConflictDoUpdate({
+          target: [productViewPresence.productId, productViewPresence.sessionId],
+          set: { ip: m.ip.slice(0, 100), lastSeenAt: new Date() },
+        })];
+        if (b.trackView === true) writes.push(db.insert(productViewLogs).values({ productId: id, ip: m.ip.slice(0, 100), userAgent: m.ua?.slice(0, 500) ?? null }));
+        await Promise.all(writes);
+      } catch (error) {
+        console.error("Failed to save product view", { productId: id, error });
+      }
+    });
+    return { ok: true };
+  } },
+  { method: "GET", pattern: "products/:id/viewers", handler: async (_req, p, m) => {
+    const id = idParam(p.id);
+    rateLimit(`product-viewers:${id}:${m.ip}`, 60, 60_000);
+    const settings = await getSettings();
+    if (!settings.productLiveViewers) return { enabled: false, count: 0 };
+    const cutoff = new Date(Date.now() - 75_000);
+    const [row] = await db.select({ count: sql<number>`count(distinct ${productViewPresence.sessionId})::int` }).from(productViewPresence)
+      .where(and(eq(productViewPresence.productId, id), gt(productViewPresence.lastSeenAt, cutoff)));
+    return { enabled: true, count: Number(row?.count ?? 0) };
+  } },
+  { method: "GET", pattern: "admin/products/:id/views", handler: async (_req, p) => {
+    await requireApi("PRODUCTS_VIEW");
+    const id = idParam(p.id);
+    const [prod] = await db.select({ id: products.id }).from(products).where(eq(products.id, id));
+    if (!prod) throw new HttpError(404, "محصول یافت نشد");
+    const [[{ total = 0 } = {}], logs] = await Promise.all([
+      db.select({ total: sql<number>`count(*)::int` }).from(productViewLogs).where(eq(productViewLogs.productId, id)),
+      db.select().from(productViewLogs).where(eq(productViewLogs.productId, id)).orderBy(desc(productViewLogs.viewedAt)).limit(250),
+    ]);
+    return { total, logs };
+  } },
   { method: "POST", pattern: "auth/login", handler: async (req, _p, m) => {
     const b = await body(req);
     rateLimit(`login:${m.ip}`, 10, 60_000);

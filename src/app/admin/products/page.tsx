@@ -8,6 +8,7 @@ import { Img, PageHeader, StatusBadge, Table, Td, Badge } from "@/components/ui"
 import { PRODUCT_STATUS, faNum, toman } from "@/lib/util";
 import { Pagination } from "@/components/Pagination";
 import { paginationParams } from "@/lib/pagination";
+import { ProductViewLogButton } from "@/components/ProductViewLogButton";
 
 export default async function AdminProducts({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; page?: string; pageSize?: string }> }) {
   const u = await requirePage({ perm: "PRODUCTS_VIEW" });
@@ -41,7 +42,7 @@ export default async function AdminProducts({ searchParams }: { searchParams: Pr
             <Td>{p.source === "central" ? <span className={inventoryQty - reservedQty <= p.lowStockThreshold ? "font-bold text-rose-600" : ""}>{faNum(inventoryQty)} {p.inventoryBaseUnit} <span className="text-xs text-slate-400">(رزرو {faNum(reservedQty)})</span></span> : "—"}</Td>
             <Td>{faNum(offers)}</Td>
             <Td><StatusBadge status={p.status} map={PRODUCT_STATUS} /></Td>
-            <Td><div className="flex gap-1"><Link href={`/admin/products/${p.id}`} className="btn-sm">جزئیات</Link>{u.permissions.includes("PRODUCTS_EDIT") && <Link href={`/admin/products/${p.id}/edit`} className="btn-sm">ویرایش</Link>}</div></Td>
+            <Td><div className="flex flex-wrap gap-1"><Link href={`/admin/products/${p.id}`} className="btn-sm">جزئیات</Link><ProductViewLogButton productId={p.id} productName={p.nameFa}/>{u.permissions.includes("PRODUCTS_EDIT") && <Link href={`/admin/products/${p.id}/edit`} className="btn-sm">ویرایش</Link>}</div></Td>
           </tr>
         ))}
       </Table>

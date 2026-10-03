@@ -15,6 +15,7 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { BuyBox } from "@/components/BuyBox";
 import { Gallery } from "@/components/Gallery";
+import { ProductViewTracker } from "@/components/ProductViewTracker";
 import { ProductCard } from "@/components/ProductCard";
 import { AnswerForm, QuestionForm, ReviewForm, ReviewImages, RoleBadge, Stars, VoteButtons } from "@/components/Community";
 
@@ -91,6 +92,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
               {org.origin && <span className="flex items-center gap-1 rounded-full bg-white px-3 py-1 ring-1 ring-slate-200"><MapPin className="h-3 w-3" />{org.origin}</span>}
             </div>
             <h1 className="text-balance text-2xl font-black leading-[1.7] text-emerald-950 md:text-3xl">{p.nameFa}</h1>
+            <ProductViewTracker productId={p.id} showCount={!!s.productLiveViewers} />
             {p.nameEn && <div className="-mt-4 text-sm text-slate-400" dir="ltr">{p.nameEn}</div>}
             <a href="#reviews" className="flex flex-wrap items-center gap-3 text-sm">
               <Stars value={avg} /><b className="text-amber-600">{approved.length ? faNum(Number(avg.toFixed(1))) : "—"}</b>

@@ -5,7 +5,7 @@ import { jdate } from "@/lib/util";
 import { stripHtml } from "@/lib/html";
 import { siteBrandText } from "@/lib/brand";
 
-export type BlogCardPost = { id: number; title: string; slug: string; excerpt: string | null; content: string; coverImageId: number | null; category: string; publishedAt: Date | null };
+export type BlogCardPost = { id: number; title: string; slug: string; excerpt: string | null; content: string; coverImageId: number | null; category: string; publishedAt: Date | string | null };
 
 export function BlogCard({ post, featured = false, siteName = "فروشگاه ارگانیک" }: { post: BlogCardPost; featured?: boolean; siteName?: string }) {
   const title = siteBrandText(post.title, siteName), excerpt = siteBrandText(post.excerpt, siteName), content = siteBrandText(post.content, siteName), category = siteBrandText(post.category, siteName);

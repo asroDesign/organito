@@ -16,6 +16,7 @@ export default async function SettingsPage() {
           { name: "multiVendor", label: "حالت فروشگاه", type: "select", half: true, defaultValue: String(s.multiVendor), options: [["1", "مارکت‌پلیس چندفروشنده (نمایش و انتخاب فروشندگان)"], ["0", "فروشگاه تک‌فروشنده (بدون نمایش فروشندگان)"]] },
           { name: "allowSellerSignup", label: "ثبت‌نام تولیدکنندگان جدید", type: "select", half: true, defaultValue: String(s.allowSellerSignup), options: [["1", "مجاز"], ["0", "غیرفعال"]] },
           { name: "reviewAutoApprove", label: "انتشار دیدگاه و پرسش", type: "select", half: true, defaultValue: String(s.reviewAutoApprove), options: [["0", "پس از تأیید مدیر"], ["1", "انتشار خودکار"]] },
+          { name: "productLiveViewers", label: "نمایش تعداد بینندگان آنلاین صفحه محصول", type: "select", half: true, defaultValue: String(s.productLiveViewers), options: [["0", "غیرفعال"], ["1", "فعال"]] },
         ]} />
         <p className="mt-3 text-xs leading-6 text-slate-500">در حالت تک‌فروشنده، فهرست و مقایسه فروشندگان، تعداد فروشنده روی کارت‌ها، بخش تولیدکنندگان و لینک «تولیدکننده شوید» پنهان می‌شود و در صفحه محصول فقط یک گزینه خرید (موجودی فروشگاه یا بهترین پیشنهاد) با نام فروشگاه نمایش داده می‌شود. پنل و سفارش‌های فروشندگان فعلی حفظ می‌شود.</p>
       </Card>
