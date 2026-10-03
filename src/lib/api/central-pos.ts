@@ -3,7 +3,7 @@ import { getSettings } from "../settings";
 import { isJalaliBirthday } from "../commerce-common";
 import { and, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { centralBirthdaySms, centralLoyaltyMembers, settings, centralPosItems, centralPosSales, posTerminals, products, productVariants, stockMovements } from "@/db/schema";
+import { centralBirthdaySms, centralLoyaltyMembers, settings, centralPosItems, centralPosSales, posTerminals, products, productVariants, stockMovements, carriers } from "@/db/schema";
 import { requireApi, rateLimit } from "../auth";
 import { audit } from "../audit";
 import { postJournal, type Line } from "../accounting";
@@ -39,6 +39,28 @@ export const centralPosRoutes: Route[] = [
    await requireApi("INVENTORY_MANAGE");const b=await body(req),city=str(b.city,80);if(!city)return[];
    const weight=int(b.weight??0,0,100_000_000),itemsTotal=int(b.itemsTotal??0,0,1_000_000_000_000),available=await activeCarriers();
    return Promise.all(available.map(async carrier=>({id:carrier.id,name:carrier.name,cost:await carrierCost(db,carrier,city,weight,itemsTotal)})));
+ }},
+ { method:"POST", pattern:"admin/pos/:id/shipping", handler:async(req,p,meta)=>{
+   const user=await requireApi("SHIPMENTS_MANAGE"),id=int(p.id,1),b=await body(req),next=str(b.status,20);
+   const allowed:Record<string,string[]>={pending:["preparing"],preparing:["ready"],ready:["shipped"],shipped:["delivered"]};
+   const result=await db.transaction(async tx=>{
+     const [sale]=await tx.select().from(centralPosSales).where(eq(centralPosSales.id,id)).for("update");
+     if(!sale||!sale.shippingAddress)throw new HttpError(404,"فاکتور ارسال‌دار یافت نشد");
+     if(!(allowed[sale.shippingStatus]??[]).includes(next))throw new HttpError(400,"تغییر وضعیت ارسال مجاز نیست");
+     const patch:Partial<typeof centralPosSales.$inferInsert>={shippingStatus:next};
+     if(next==="shipped"){
+       const carrierId=b.carrierId?int(b.carrierId,1):sale.shippingCarrierId;
+       const trackingNumber=str(b.trackingNumber,80);
+       const shippedDate=str(b.shippedAt,10);
+       if(!carrierId||!trackingNumber||!/^\d{4}-\d{2}-\d{2}$/.test(shippedDate))throw new HttpError(400,"شرکت پستی، کد رهگیری و تاریخ ارسال الزامی است");
+       const [carrier]=await tx.select().from(carriers).where(and(eq(carriers.id,carrierId),eq(carriers.isActive,true)));
+       if(!carrier)throw new HttpError(400,"شرکت پستی فعال و معتبر نیست");
+       patch.shippingCarrierId=carrier.id;patch.shippingCarrierName=carrier.name;patch.shippingTrackingNumber=trackingNumber;patch.shippingShippedAt=new Date(`${shippedDate}T12:00:00+03:30`);patch.shippingNotes=str(b.notes,500)||null;
+     }
+     const [updated]=await tx.update(centralPosSales).set(patch).where(eq(centralPosSales.id,id)).returning();
+     await audit(tx,{userId:user.id,...meta},"central.pos_shipping","central_pos_sale",id,{status:sale.shippingStatus},{status:next,carrierId:patch.shippingCarrierId,trackingNumber:patch.shippingTrackingNumber});
+     return updated;
+   });return result;
  }},
  { method:"GET", pattern:"admin/pos/recent", handler:async()=>{await requireApi("INVENTORY_MANAGE");return db.select().from(centralPosSales).orderBy(desc(centralPosSales.createdAt)).limit(20)}},
  { method:"POST", pattern:"admin/pos", handler:async(req,_p,meta)=>{

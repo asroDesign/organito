@@ -3,14 +3,14 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 
 const SIZES = [10, 25, 50, 100];
-export function Pagination({ page, pageSize, total, onChange }: { page: number; pageSize: number; total: number; onChange?: (page: number, pageSize: number) => void }) {
+export function Pagination({ page, pageSize, total, onChange, pageKey = "page", pageSizeKey = "pageSize" }: { page: number; pageSize: number; total: number; onChange?: (page: number, pageSize: number) => void; pageKey?: string; pageSizeKey?: string }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   const change = (nextPage: number, nextSize = pageSize) => {
     const p = Math.max(1, Math.min(pages, nextPage));
     if (onChange) return onChange(p, nextSize);
     const url = new URL(window.location.href);
-    url.searchParams.set("page", String(p));
-    url.searchParams.set("pageSize", String(nextSize));
+    url.searchParams.set(pageKey, String(p));
+    url.searchParams.set(pageSizeKey, String(nextSize));
     window.location.href = `${url.pathname}?${url.searchParams.toString()}`;
   };
   const start = total ? (page - 1) * pageSize + 1 : 0;
