@@ -343,7 +343,7 @@ export const posTerminals = pgTable("pos_terminals", {
 export const centralPosSales = pgTable("central_pos_sales", {
   status: text("status").notNull().default("completed"),
   rewardCode: text("reward_code"),
-  id: serial("id").primaryKey(), number: text("number").notNull().unique(), idempotencyKey: text("idempotency_key").notNull().unique(), terminalId: integer("terminal_id"), createdBy: integer("created_by").notNull(), customerName: text("customer_name").notNull(), customerPhone: text("customer_phone").notNull(), subtotal: money("subtotal"), discount: money("discount"), total: money("total"), paymentMethod: text("payment_method").notNull(), settlement: jsonb("settlement").$type<{ cash: number; card: number }>().notNull().default({ cash: 0, card: 0 }), createdAt: created(),
+  id: serial("id").primaryKey(), number: text("number").notNull().unique(), idempotencyKey: text("idempotency_key").notNull().unique(), terminalId: integer("terminal_id"), createdBy: integer("created_by").notNull(), customerName: text("customer_name").notNull(), customerPhone: text("customer_phone").notNull(), shippingCity: text("shipping_city"), shippingAddress: text("shipping_address"), shippingPostalCode: text("shipping_postal_code"), subtotal: money("subtotal"), discount: money("discount"), total: money("total"), paymentMethod: text("payment_method").notNull(), settlement: jsonb("settlement").$type<{ cash: number; card: number }>().notNull().default({ cash: 0, card: 0 }), createdAt: created(),
 }, (t) => [index("central_pos_created").on(t.createdAt)]);
 
 export const centralPosItems = pgTable("central_pos_items", {
