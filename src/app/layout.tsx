@@ -5,6 +5,7 @@ import { getSettings } from "@/lib/settings";
 import { siteBase } from "@/lib/seo";
 import { setCurrencyUnit } from "@/lib/util";
 import { CurrencyInitializer } from "@/components/CurrencyInitializer";
+import { AttributionTracker } from "@/components/AttributionTracker";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" />
       </head>
       <body className="bg-leaf-pattern min-h-screen text-slate-900 antialiased">
-        <CurrencyInitializer currency={s.currency}>{children}<Toaster /></CurrencyInitializer>
+        <CurrencyInitializer currency={s.currency}><AttributionTracker />{children}<Toaster /></CurrencyInitializer>
       </body>
     </html>
   );

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { and, desc, eq, gte, lt, sql, count } from "drizzle-orm";
-import { Activity, AlertTriangle, ArrowDownToLine, ArrowUpRight, BadgeDollarSign, Boxes, CalendarClock, ChartNoAxesCombined, CircleHelp, LifeBuoy, Package, Search, ShoppingBag, Store, Ticket, TrendingUp, Wallet } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownToLine, ArrowUpRight, BadgeDollarSign, Boxes, CalendarClock, ChartNoAxesCombined, CircleHelp, Eye, LifeBuoy, Package, Search, ShoppingBag, Store, Ticket, TrendingUp, Wallet } from "lucide-react";
 import { db } from "@/db";
-import { centralPosItems, centralPosSales, marketingCampaigns, orderItems, orders, payments, products, sellerPosItems, sellerPosSales, sellers, smsLogs, supplyRequests, tickets, users, withdrawals } from "@/db/schema";
+import { centralPosItems, centralPosSales, marketingCampaigns, orderItems, orders, payments, productViewLogs, products, sellerPosItems, sellerPosSales, sellers, smsLogs, supplyRequests, tickets, users, withdrawals } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
 import { Card, PageHeader, Stat, StatusBadge } from "@/components/ui";
 import { ORDER_STATUS, faNum, jdate, toman } from "@/lib/util";
@@ -42,7 +42,7 @@ export default async function AdminHome({ searchParams }: { searchParams: Search
     db.execute(sql`select coalesce(sum(total),0)::bigint value,count(*)::int n from (select total from central_pos_sales where status='completed' and created_at >= ${startAt} and created_at < ${endAt} union all select total from seller_pos_sales where status='completed' and created_at >= ${startAt} and created_at < ${endAt}) q`),
   ]);
 
-  const [chartRows, topProductsRows, topSellersRows, recentOrders, recentCentralSales, recentSellerSales, recentTickets, newestSellers, recentWithdrawals, recentRequests, todaysCampaigns, smsFailures, gatewayFailures] = await Promise.all([
+  const [chartRows, topProductsRows, topSellersRows, recentOrders, recentCentralSales, recentSellerSales, recentTickets, newestSellers, recentWithdrawals, recentRequests, todaysCampaigns, smsFailures, gatewayFailures, mostViewedProducts] = await Promise.all([
     metric === "profit"
       ? db.execute(sql`select d, sum(value)::bigint as value from (select to_char(date_trunc(${interval}, o.created_at at time zone 'Asia/Tehran'), 'YYYY-MM-DD') d, sum((i.unit_price-i.unit_cost)*i.qty)::bigint value from orders o join order_items i on i.order_id=o.id where o.payment_status='paid' and o.created_at >= ${startAt} and o.created_at < ${endAt} and i.seller_id is null group by 1 union all select to_char(date_trunc(${interval}, s.created_at at time zone 'Asia/Tehran'), 'YYYY-MM-DD'), sum((i.unit_price-i.unit_cost)*i.quantity)::bigint from central_pos_sales s join central_pos_items i on i.sale_id=s.id where s.status='completed' and s.created_at >= ${startAt} and s.created_at < ${endAt} group by 1) q group by d order by d`)
       : metric === "orders"
@@ -60,6 +60,7 @@ export default async function AdminHome({ searchParams }: { searchParams: Search
     db.select().from(marketingCampaigns).where(and(eq(marketingCampaigns.status, "active"), sql`((${marketingCampaigns.scheduleAt} >= ${dayStart} and ${marketingCampaigns.scheduleAt} < ${tomorrow}) or ${marketingCampaigns.type} in ('birthday','welcome','purchase','review'))`)).orderBy(marketingCampaigns.scheduleAt).limit(6),
     db.select().from(smsLogs).where(eq(smsLogs.status, "failed")).orderBy(desc(smsLogs.createdAt)).limit(5),
     db.select().from(payments).where(and(eq(payments.method, "gateway"), sql`${payments.status} in ('failed','needs_refund')`)).orderBy(desc(payments.createdAt)).limit(5),
+    db.select({ id: products.id, name: products.nameFa, slug: products.slug, views: count(productViewLogs.id) }).from(productViewLogs).innerJoin(products, eq(products.id, productViewLogs.productId)).groupBy(products.id).orderBy(desc(count(productViewLogs.id))).limit(10),
   ]);
 
   const chart = chartRows.rows as { d: string; value: number | string }[];
@@ -103,6 +104,10 @@ export default async function AdminHome({ searchParams }: { searchParams: Search
           <div className="flex items-end gap-2"><button className="btn-primary flex-1"><ChartNoAxesCombined className="size-4"/>اعمال فیلتر</button><Link href="/admin" className="btn-ghost">پاک‌کردن</Link></div>
         </form>
         <DashboardCharts points={points} pie={pie} metric={metric} />
+      </Card>
+
+      <Card title="۱۰ محصول پربازدید" action={<span className="text-xs text-slate-400">از زمان فعال‌شدن ثبت بازدید</span>}>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">{mostViewedProducts.map((product, index) => <Link key={product.id} href={`/admin/products/${product.id}`} className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-100 p-3 hover:border-emerald-200 hover:bg-emerald-50/50"><span className={`grid size-9 shrink-0 place-items-center rounded-xl ${index < 3 ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-600"}`}><Eye className="size-4"/></span><span className="min-w-0 flex-1"><b className="block truncate text-sm">{product.name}</b><small className="text-slate-500">رتبه {fa(index + 1)} · {fa(product.views)} بازدید</small></span></Link>)}{!mostViewedProducts.length && <EmptyState text="هنوز بازدیدی برای محصولات ثبت نشده است."/>}</div>
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-3">

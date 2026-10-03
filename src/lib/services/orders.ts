@@ -210,7 +210,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   };
 }
 
-export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; recoveryKey?: string; officialInvoiceType?: string | null; officialInvoiceDetails?: Record<string,string> | null } = {}) {
+export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; recoveryKey?: string; officialInvoiceType?: string | null; officialInvoiceDetails?: Record<string,string> | null; attribution?: { source: string; referrerHost?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; landingPath?: string } | null } = {}) {
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idemKey}))`);
     const [existing] = await tx.select().from(orders).where(eq(orders.idempotencyKey, idemKey));
@@ -234,6 +234,7 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
       discount: q.discount, tax: q.tax, total: q.finalTotal, creditAmount:q.creditAmount,giftCardId:q.giftCardId,address, idempotencyKey: idemKey,
       festivalDiscount: q.festivalDiscount, codeDiscount: q.codeDiscount, discountCodeId: q.code?.ok ? q.code.codeId ?? null : null, discountCode: q.code?.ok ? q.code.code ?? null : null, carrierId: q.carrierId,
       officialInvoiceType: extra.officialInvoiceType ?? null, officialInvoiceDetails: extra.officialInvoiceDetails ?? null,
+      attribution: extra.attribution ?? null,
     }).returning();
     if(q.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,ctx.userId));await reserveCredit(tx,customer.phone,q.creditAmount,q.giftCardId,order.id,ctx.userId);}
     if (q.code?.ok && q.code.codeId) {

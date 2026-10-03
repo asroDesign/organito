@@ -510,6 +510,7 @@ export const orders = pgTable("orders", {
   carrierId: integer("carrier_id"),
   officialInvoiceType: text("official_invoice_type"),
   officialInvoiceDetails: jsonb("official_invoice_details").$type<Record<string, string> | null>(),
+  attribution: jsonb("attribution").$type<{ source: string; referrerHost?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; landingPath?: string } | null>(),
   idempotencyKey: text("idempotency_key").unique(),
   paymentEntryId: integer("payment_entry_id"),
   customerConfirmedAt: timestamp("customer_confirmed_at", { withTimezone: true }),

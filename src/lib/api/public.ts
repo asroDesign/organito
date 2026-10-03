@@ -26,6 +26,31 @@ function sniff(buf: Buffer): string | null {
   return null;
 }
 
+function readAttribution(req: Request) {
+  const cookie = req.headers.get("cookie")?.split(";").map((part) => part.trim()).find((part) => part.startsWith("sbz_attribution="));
+  if (!cookie) return null;
+  try {
+    const value = JSON.parse(decodeURIComponent(cookie.slice("sbz_attribution=".length))) as Record<string, unknown>;
+    const clean = (input: unknown, max: number) => typeof input === "string" ? input.trim().slice(0, max) : undefined;
+    const source = clean(value.source, 100);
+    if (!source) return null;
+    const rawHost = clean(value.referrerHost, 190);
+    let referrerHost: string | undefined;
+    if (rawHost) {
+      try { referrerHost = new URL(`https://${rawHost}`).hostname.slice(0, 190); } catch { /* Ignore invalid client input. */ }
+    }
+    const rawPath = clean(value.landingPath, 700);
+    return {
+      source,
+      ...(referrerHost ? { referrerHost } : {}),
+      ...(clean(value.utmSource, 100) ? { utmSource: clean(value.utmSource, 100) } : {}),
+      ...(clean(value.utmMedium, 100) ? { utmMedium: clean(value.utmMedium, 100) } : {}),
+      ...(clean(value.utmCampaign, 150) ? { utmCampaign: clean(value.utmCampaign, 150) } : {}),
+      ...(rawPath?.startsWith("/") ? { landingPath: rawPath } : {}),
+    };
+  } catch { return null; }
+}
+
 export const publicRoutes: Route[] = [
   { method: "POST", pattern: "products/:id/views", handler: async (req, p, m) => {
     const id = idParam(p.id), b = await body(req);
@@ -224,7 +249,7 @@ export const publicRoutes: Route[] = [
         invoiceDetails={companyName:identity.companyName,companyNationalId:identity.companyNationalId,managerName:identity.companyManager};
       } else throw new HttpError(400,"نوع فاکتور رسمی را انتخاب کنید");
     }
-    const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null, recoveryKey, officialInvoiceType:invoiceType, officialInvoiceDetails:invoiceDetails });
+    const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null, recoveryKey, officialInvoiceType:invoiceType, officialInvoiceDetails:invoiceDetails, attribution: readAttribution(req) });
     return { id: order.id, number: order.number, paid:order.paymentStatus==="paid" };
   } },
   { method: "POST", pattern: "orders/:id/confirm", handler: async (_r, p, m) => {

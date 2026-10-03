@@ -106,6 +106,15 @@ export async function OrderDetail({ id, user, view }: { id: number; user: Sessio
             <Card title="خلاصه سهم شما">{shipments.map(({ sh }) => <div key={sh.id}><KV k="مبلغ اقلام" v={toman(sh.itemsTotal)} /><KV k="هزینه ارسال" v={toman(sh.shippingCost)} /><KV k="کمیسیون" v={toman(sh.commission)} /></div>)}</Card>
           )}
           {view === "admin" && <Card title="جزئیات پرداخت‌ها">{pendingVerify && <div className="mb-3 rounded-lg bg-amber-100 p-2 text-xs font-bold text-amber-800">فیش پرداخت در انتظار تأیید است.</div>}<PaymentDetails pays={pays} orderId={o.id} canManage={user.permissions.includes("PAYMENTS_MANAGE")} /></Card>}
+          {view === "admin" && <Card title="منبع ورود مشتری">
+            <KV k="منبع" v={o.attribution?.source ?? "نامشخص (ثبت قبل از این قابلیت)"} />
+            {o.attribution?.referrerHost && <KV k="سایت ارجاع‌دهنده" v={<span dir="ltr">{o.attribution.referrerHost}</span>} />}
+            {o.attribution?.utmSource && <KV k="UTM Source" v={o.attribution.utmSource} />}
+            {o.attribution?.utmMedium && <KV k="UTM Medium" v={o.attribution.utmMedium} />}
+            {o.attribution?.utmCampaign && <KV k="کمپین" v={o.attribution.utmCampaign} />}
+            {o.attribution?.landingPath && <KV k="صفحه ورود" v={<span dir="ltr" className="break-all text-xs">{o.attribution.landingPath}</span>} />}
+            {!o.attribution && <p className="text-xs text-slate-500">اطلاعات منبع برای این سفارش ذخیره نشده است.</p>}
+          </Card>}
           {view === "customer" && pendingVerify && <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">فیش پرداخت شما ثبت شده و در انتظار تأیید واحد مالی است.</div>}
           <Card title="مشتری و آدرس تحویل">
             <KV k="مشتری" v={customer?.name} />
