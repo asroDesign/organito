@@ -168,11 +168,11 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   const active = groups.length ? await activeCarriers(tx) : [];
   for (const c of active) {
     let cost = 0;
-    for (const group of groups) cost += await carrierCost(tx, c, city, group.weight, group.itemsTotal);
+    if (!c.supportsFreightCollect) for (const group of groups) cost += await carrierCost(tx, c, city, group.weight, group.itemsTotal);
     carrierOpts.push({ id: c.id, name: c.name, minDays: c.minDays, maxDays: c.maxDays, cost, supportsFreightCollect: c.supportsFreightCollect });
   }
   const chosen = carrierOpts.find((c) => c.id === opts.carrierId) ?? carrierOpts.slice().sort((a, b) => a.cost - b.cost)[0];
-  const freightCollect = !!opts.freightCollect && !!chosen?.supportsFreightCollect;
+  const freightCollect = !!chosen?.supportsFreightCollect;
   if (chosen) {
     const carrier = active.find((c) => c.id === chosen.id)!;
     carrierId = carrier.id;

@@ -38,7 +38,7 @@ export const centralPosRoutes: Route[] = [
  { method:"POST", pattern:"admin/pos/shipping-options", handler:async(req)=>{
    await requireApi("INVENTORY_MANAGE");const b=await body(req),city=str(b.city,80);
    const weight=int(b.weight??0,0,100_000_000),itemsTotal=int(b.itemsTotal??0,0,1_000_000_000_000),available=await activeCarriers();
-   return Promise.all(available.map(async carrier=>({id:carrier.id,name:carrier.name,cost:city?await carrierCost(db,carrier,city,weight,itemsTotal):0,supportsFreightCollect:carrier.supportsFreightCollect})));
+   return Promise.all(available.map(async carrier=>({id:carrier.id,name:carrier.name,cost:carrier.supportsFreightCollect?0:city?await carrierCost(db,carrier,city,weight,itemsTotal):0,supportsFreightCollect:carrier.supportsFreightCollect})));
  }},
  { method:"POST", pattern:"admin/pos/:id/shipping", handler:async(req,p,meta)=>{
    const user=await requireApi("SHIPMENTS_MANAGE"),id=int(p.id,1),b=await body(req),next=str(b.status,20);
@@ -78,8 +78,8 @@ export const centralPosRoutes: Route[] = [
     for(const x of norm)if(x.variant.onHand-x.variant.reserved<x.qty)throw new HttpError(409,`موجودی «${x.product.nameFa}» کافی نیست`);
     const subtotal=norm.reduce((s,x)=>s+(x.variant.price??x.product.basePrice)*x.qty,0);if(!Number.isSafeInteger(subtotal))throw new HttpError(400,"مبلغ فاکتور بیش از حد مجاز است");
     for(const x of norm){const price=x.variant.price??x.product.basePrice,cost=x.lastCost,max=Math.max(0,Math.floor(((price-cost)*100)/price));if(percent>max)throw new HttpError(400,`حداکثر تخفیف مجاز برای «${x.product.nameFa}» ${max.toLocaleString("fa-IR")}٪ است؛ قیمت فروش نباید از آخرین قیمت خرید انبار کمتر شود`)}
-    const discount=Math.floor(subtotal*percent/100);let shippingCarrierId:number|null=null,shippingCarrierName:string|null=null,shippingCost=0;const shippingFreightCollect=hasShipping&&b.shippingFreightCollect===true;
-    if(hasShipping){shippingCarrierId=int(b.shippingCarrierId,1);const available=await activeCarriers(tx);const carrier=available.find(c=>c.id===shippingCarrierId);if(!carrier)throw new HttpError(400,"شرکت پستی فعال را انتخاب کنید");if(shippingFreightCollect&&!carrier.supportsFreightCollect)throw new HttpError(400,"این شرکت پستی امکان پس‌کرایه ندارد");shippingCarrierName=carrier.name;const shippingWeight=norm.reduce((sum,x)=>sum+(x.product.weight??0)*x.qty,0);shippingCost=shippingFreightCollect?0:await carrierCost(tx,carrier,shippingCity,shippingWeight,subtotal-discount)}
+    const discount=Math.floor(subtotal*percent/100);let shippingCarrierId:number|null=null,shippingCarrierName:string|null=null,shippingCost=0,shippingFreightCollect=false;
+    if(hasShipping){shippingCarrierId=int(b.shippingCarrierId,1);const available=await activeCarriers(tx);const carrier=available.find(c=>c.id===shippingCarrierId);if(!carrier)throw new HttpError(400,"شرکت پستی فعال را انتخاب کنید");shippingCarrierName=carrier.name;shippingFreightCollect=carrier.supportsFreightCollect;const shippingWeight=norm.reduce((sum,x)=>sum+(x.product.weight??0)*x.qty,0);shippingCost=shippingFreightCollect?0:await carrierCost(tx,carrier,shippingCity,shippingWeight,subtotal-discount)}
     const total=subtotal-discount+shippingCost;
     const minimumTotal=norm.reduce((sum,x)=>sum+x.lastCost*x.qty,0);if(total<minimumTotal)throw new HttpError(400,`مبلغ نهایی فاکتور نباید از بهای آخرین خرید کالاها (${minimumTotal.toLocaleString("fa-IR")} تومان) کمتر باشد`);
     if(!["cash","card","mixed"].includes(method)||cash+card!==total||(method==="cash"&&(cash!==total||card!==0))||(method==="card"&&(card!==total||cash!==0))||(method==="mixed"&&(!cash||!card)))throw new HttpError(400,"جمع نقد و کارت باید با مبلغ فاکتور برابر باشد");

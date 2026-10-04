@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Images, Loader2, LogOut, Upload, X, Star } from "lucide-react";
+import { AlertTriangle, Images, Loader2, LogOut, Upload, X, Star } from "lucide-react";
 import { JalaliDatePicker } from "./JalaliDatePicker";
+import { Modal } from "./Modal";
 
 export async function api<T = Record<string, unknown>>(url: string, method = "POST", data?: unknown): Promise<T> {
   const r = await fetch(url, { method, headers: { "Content-Type": "application/json", "x-csrf": "1" }, body: data === undefined ? undefined : JSON.stringify(data) });
@@ -37,25 +38,44 @@ export function ActionButton({ url, data, method = "POST", children, confirm, cl
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [promptValue, setPromptValue] = useState("");
+  const [dialogError, setDialogError] = useState("");
+  const run = async (payload: Record<string, unknown>, fromDialog = false) => {
+    setBusy(true);
+    setDialogError("");
+    try {
+      await api(url, method, payload);
+      toast(success);
+      setDialogOpen(false);
+      if (redirect) router.push(redirect);
+      router.refresh();
+    } catch (e) {
+      const message = (e as Error).message;
+      if (fromDialog) setDialogError(message); else toast(message, false);
+    } finally { setBusy(false); }
+  };
   return (
-    <button type="button" disabled={busy} className={className} onClick={async () => {
-      if (confirm && !window.confirm(confirm)) return;
-      let payload = { ...(data ?? {}) };
-      if (prompt) {
-        const v = window.prompt(prompt);
-        if (v === null) return;
-        payload = { ...payload, [promptKey ?? "note"]: v };
-      }
-      setBusy(true);
-      try {
-        await api(url, method, payload);
-        toast(success);
-        if (redirect) router.push(redirect);
-        router.refresh();
-      } catch (e) { toast((e as Error).message, false); } finally { setBusy(false); }
-    }}>
-      {busy && <Loader2 className="h-4 w-4 animate-spin" />}{children}
-    </button>
+    <>
+      <button type="button" disabled={busy} className={className} onClick={() => {
+        if (confirm || prompt) { setPromptValue(""); setDialogError(""); setDialogOpen(true); return; }
+        void run({ ...(data ?? {}) });
+      }}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}{children}</button>
+      {dialogOpen && <Modal title={prompt ? "تأیید و تکمیل اطلاعات" : "تأیید عملیات"} onClose={() => { if (!busy) setDialogOpen(false); }}>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-amber-600 shadow-sm"><AlertTriangle className="size-5" /></span>
+            <p className="pt-1 text-sm leading-7">{confirm ?? "برای ادامه، اطلاعات خواسته‌شده را وارد کنید."}</p>
+          </div>
+          {prompt && <label className="block text-sm font-bold text-slate-700">{prompt}<textarea autoFocus required rows={3} className="input mt-2 min-h-24" value={promptValue} onChange={(e) => setPromptValue(e.target.value)} /></label>}
+          {dialogError && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{dialogError}</p>}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" disabled={busy} className="btn-ghost" onClick={() => setDialogOpen(false)}>انصراف</button>
+            <button type="button" disabled={busy || Boolean(prompt && !promptValue.trim())} className={className} onClick={() => void run({ ...(data ?? {}), ...(prompt ? { [promptKey ?? "note"]: promptValue.trim() } : {}) }, true)}>{busy && <Loader2 className="size-4 animate-spin" />}{children}</button>
+          </div>
+        </div>
+      </Modal>}
+    </>
   );
 }
 
