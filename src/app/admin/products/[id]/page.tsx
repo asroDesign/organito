@@ -6,7 +6,7 @@ import { auditLogs, categories, inventoryConsignmentLots, inventoryParties, prod
 import { requirePage } from "@/lib/auth";
 import { Badge, Card, Img, KV, PageHeader, StatusBadge, Table, Td } from "@/components/ui";
 import { ActionButton } from "@/components/client";
-import { AUTH_LABEL, OFFER_STATUS, PRODUCT_STATUS, faNum, jdate, toman } from "@/lib/util";
+import { OFFER_STATUS, PRODUCT_STATUS, faNum, jdate, toman } from "@/lib/util";
 
 export default async function AdminProductDetail({ params }: { params: Promise<{ id: string }> }) {
   const u = await requirePage({ perm: "PRODUCTS_VIEW" });
@@ -50,7 +50,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
         <Card title="اطلاعات محصول" className="lg:col-span-2">
           <div className="grid gap-x-8 sm:grid-cols-2">
             <KV k="نام انگلیسی" v={p.nameEn ?? "—"} /><KV k="کد محصول" v={<span dir="ltr">{p.partNumber}</span>} /><KV k="OEM" v={<span dir="ltr">{p.oemNumber ?? "—"}</span>} />
-            <KV k="برند / سازنده" v={`${p.brand} / ${p.manufacturer ?? "—"}`} /><KV k="کشور" v={p.country ?? "—"} /><KV k="اصالت" v={AUTH_LABEL[p.authenticity]} />
+            <KV k="برند / سازنده" v={`${p.brand} / ${p.manufacturer ?? "—"}`} /><KV k="کشور" v={p.country ?? "—"} /><KV k="نوع محصول" v={p.productType ?? "—"} /><KV k="گواهی ارگانیک" v={p.certifiedOrganic ? "تأیید شده" : "ندارد"} />
             <KV k="قیمت پایه" v={toman(p.basePrice)} /><KV k="قبل از تخفیف" v={toman(p.compareAtPrice)} /><KV k="منبع" v={p.source === "central" ? "انبار مرکزی" : `Marketplace — ${row.shop ?? ""}`} />
             <KV k={`موجودی پایه / رزرو (${p.inventoryBaseUnit})`} v={`${faNum(stockQty)} / ${faNum(reservedQty)}`} /><KV k={vars.length ? "بهای تمام‌شده تنوع‌ها (برای هر تنوع جداگانه)" : "میانگین موزون خرید"} v={vars.length ? "محاسبه‌شده در انبار" : toman(p.avgCost)} /><KV k="ارزش موجودی متعلق به فروشگاه" v={toman(stockValue)} />
             <KV k="حد هشدار" v={faNum(p.lowStockThreshold)} /><KV k="Slug" v={<span dir="ltr">{p.slug}</span>} /><KV k="به‌روزرسانی" v={jdate(p.updatedAt, true)} />
@@ -72,7 +72,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
         ))}
       </Table>
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        <Card title="تنوع‌ها">{vars.length ? vars.map((v) => <KV key={v.id} k={`${v.title} (${v.sku})`} v={`${toman(v.price)} · موجودی ${faNum(v.onHand - v.reserved)} ${v.inventoryUnit} · هر واحد ${faNum(v.baseUnitAmount)} ${p.inventoryBaseUnit} · ${v.isSellable ? "قابل فروش" : "فقط انبار / بسته‌بندی"}${consignments.filter((x) => x.lot.variantId === v.id).map((x) => ` · امانی ${faNum(x.lot.remainingQty)} به نام ${x.party}`).join("")}${v.deletedAt ? " · حذف نرم‌شده" : v.isActive ? "" : " · غیرفعال"}`} />) : <p className="text-sm text-slate-500">بدون تنوع</p>}</Card>
+        <Card title="تنوع‌ها">{vars.length ? <><div className="mb-2"><Link className="btn-sm" href={`/print/product-barcodes/${id}`}>چاپ بارکد تنوع‌ها</Link></div>{vars.map((v) => <KV key={v.id} k={`${v.title} (${v.sku})`} v={`${toman(v.price)} · موجودی ${faNum(v.onHand - v.reserved)} ${v.inventoryUnit} · هر واحد ${faNum(v.baseUnitAmount)} ${p.inventoryBaseUnit} · ${v.isSellable ? "قابل فروش" : "فقط انبار / بسته‌بندی"}${consignments.filter((x) => x.lot.variantId === v.id).map((x) => ` · امانی ${faNum(x.lot.remainingQty)} به نام ${x.party}`).join("")}${v.deletedAt ? " · حذف نرم‌شده" : v.isActive ? "" : " · غیرفعال"}`} />)}</> : <p className="text-sm text-slate-500">بدون تنوع</p>}</Card>
         <Card title="گردش موجودی">{moves.map((m) => <KV key={m.id} k={`${m.type} ${m.note ?? ""}`} v={`${faNum(m.qty)} · ${jdate(m.createdAt)}`} />)}{!moves.length && <p className="text-sm text-slate-500">—</p>}</Card>
         <Card title="تاریخچه تغییرات (Audit)">{logs.map((l) => <KV key={l.id} k={l.action} v={jdate(l.createdAt, true)} />)}{!logs.length && <p className="text-sm text-slate-500">—</p>}</Card>
       </div>

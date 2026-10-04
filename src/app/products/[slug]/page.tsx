@@ -11,7 +11,7 @@ import { activeFestivals, festivalFor } from "@/lib/marketing";
 import { listShopProducts } from "@/lib/queries";
 import { stripHtml, toSafeHtml } from "@/lib/html";
 import { RichContent } from "@/components/RichContent";
-import { AUTH_LABEL, faNum, jdate, toman } from "@/lib/util";
+import { faNum, jdate, toman } from "@/lib/util";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { BuyBox } from "@/components/BuyBox";
@@ -69,7 +69,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const allPros = approved.flatMap((x) => x.r.pros), allCons = approved.flatMap((x) => x.r.cons);
   const topOf = (arr: string[]) => Object.entries(arr.reduce<Record<string, number>>((m, t) => ({ ...m, [t]: (m[t] ?? 0) + 1 }), {})).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const org = p.organicInfo ?? {};
-  const orgRows = ORG.filter(([k]) => org[k]);
+  const orgRows = ORG.filter(([k]) => org[k] && (k !== "certificate" || p.certifiedOrganic));
   const byId = (ids: number[]) => ids.map((id) => related.find((x) => x.id === id)).filter((x): x is (typeof related)[number] => !!x);
   const rel = (p.relatedProductIds?.length ? byId(p.relatedProductIds) : related.filter((r) => r.id !== p.id)).filter((r) => r.id !== p.id).slice(0, 5);
   const crossSells = byId(p.crossSellProductIds ?? []).filter((r) => r.id !== p.id).slice(0, 5);
@@ -85,7 +85,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-6 pb-28 lg:pb-10">
         <nav className="text-xs text-slate-500"><Link href="/">خانه</Link> / <Link href="/shop">فروشگاه</Link>{row.cat && <> / <Link href={`/shop?cat=${row.cat.id}`}>{row.cat.name}</Link></>} / <span className="text-emerald-800">{p.nameFa}</span></nav>
         <div className="grid gap-8 lg:grid-cols-[1fr_1fr_380px]">
-          <div className="lg:sticky lg:top-40 lg:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={AUTH_LABEL[p.authenticity]} /></div>
+          <div className="lg:sticky lg:top-40 lg:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? "ارگانیک گواهی‌شده" : undefined} /></div>
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Link href={`/shop?brand=${encodeURIComponent(p.brand)}`} className="rounded-full bg-emerald-50 px-3 py-1 font-bold text-emerald-800 ring-1 ring-emerald-200">🌿 {p.brand}</Link>
@@ -128,7 +128,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           <section id="specs" className="scroll-mt-44 grid gap-6 lg:grid-cols-2">
             <div className="rounded-[2rem] bg-white p-6 ring-1 ring-emerald-900/5">
               <h2 className="mb-4 text-xl font-black text-emerald-950">مشخصات محصول</h2>
-              <div className="space-y-4">{specGroups.map((group) => <div key={group} className="overflow-hidden rounded-2xl ring-1 ring-slate-100"><h3 className="bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900">{group}</h3><div className="divide-y divide-slate-100">{visibleSpecs.filter((sp) => (sp.group || "مشخصات اصلی") === group).map((sp, i) => <div key={`${group}-${i}`} className="grid grid-cols-[40%_1fr] text-sm"><div className="bg-[#faf7ef] px-4 py-3 text-slate-500">{sp.k}</div><div className="px-4 py-3 font-medium text-slate-800">{sp.v}</div></div>)}</div></div>)}{[["برند", p.brand], ["نوع محصول", AUTH_LABEL[p.authenticity]], ["کشور / استان", p.country ?? "—"], ["وزن", p.weight ? `${faNum(p.weight)} گرم` : "—"], ["کد محصول", p.sku]].map(([k, v]) => <div key={k} className="grid grid-cols-[40%_1fr] text-sm rounded-xl ring-1 ring-slate-100"><div className="bg-[#faf7ef] px-4 py-3 text-slate-500">{k}</div><div className="px-4 py-3 font-medium text-slate-800">{v}</div></div>)}</div>
+              <div className="space-y-4">{specGroups.map((group) => <div key={group} className="overflow-hidden rounded-2xl ring-1 ring-slate-100"><h3 className="bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900">{group}</h3><div className="divide-y divide-slate-100">{visibleSpecs.filter((sp) => (sp.group || "مشخصات اصلی") === group).map((sp, i) => <div key={`${group}-${i}`} className="grid grid-cols-[40%_1fr] text-sm"><div className="bg-[#faf7ef] px-4 py-3 text-slate-500">{sp.k}</div><div className="px-4 py-3 font-medium text-slate-800">{sp.v}</div></div>)}</div></div>)}{[["برند", p.brand], ...(p.productType ? [["نوع محصول", p.productType]] : []), ["کشور / استان", p.country ?? "—"], ["وزن", p.weight ? `${faNum(p.weight)} گرم` : "—"], ["کد محصول", p.sku]].map(([k, v]) => <div key={k} className="grid grid-cols-[40%_1fr] text-sm rounded-xl ring-1 ring-slate-100"><div className="bg-[#faf7ef] px-4 py-3 text-slate-500">{k}</div><div className="px-4 py-3 font-medium text-slate-800">{v}</div></div>)}</div>
             </div>
             <div className="rounded-[2rem] bg-emerald-950 p-6 text-white">
               <h2 className="mb-4 flex items-center gap-2 text-xl font-black"><Sprout className="h-5 w-5 text-lime-300" />شناسنامه محصول ارگانیک</h2>

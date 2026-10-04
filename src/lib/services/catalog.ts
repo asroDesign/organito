@@ -22,7 +22,7 @@ import type { SessionUser } from "../auth";
 import type { Ctx } from "../types";
 
 const AUTH = ["Original", "OEM", "Aftermarket"];
-const IMPORTANT = ["nameFa", "partNumber", "oemNumber", "brand", "authenticity", "categoryId", "specs", "organicInfo"] as const;
+const IMPORTANT = ["nameFa", "partNumber", "oemNumber", "brand", "productType", "certifiedOrganic", "categoryId", "specs", "organicInfo"] as const;
 
 export function parseProductInput(b: Record<string, unknown>) {
   const nameFa = str(b.nameFa, 200);
@@ -84,6 +84,7 @@ export function parseProductInput(b: Record<string, unknown>) {
       nameFa, nameEn: str(b.nameEn, 200) || null, sku, partNumber, normalizedPn: normalizePn(partNumber), oemNumber: str(b.oemNumber, 80) || null,
       crossRefs, brand, manufacturer: str(b.manufacturer, 80) || null, country: str(b.country, 60) || null,
       categoryId: b.categoryId ? int(b.categoryId, 1) : null, authenticity,
+      productType: str(b.productType, 80) || null, certifiedOrganic: b.certifiedOrganic === true,
       basePrice: int(b.basePrice ?? 0), compareAtPrice: int(b.compareAtPrice ?? 0),
       shortDesc: str(b.shortDesc, 500) || null, description: sanitizeRich(str(b.description, 100000)) || null, technicalReview: sanitizeRich(str(b.technicalReview, 100000)) || null,
       specs, compatibility, weight: b.weight ? int(b.weight, 0, 1000000) : null, barcode: str(b.barcode, 40) || null,
@@ -143,7 +144,7 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
       [old] = await tx.select().from(products).where(eq(products.id, id)).for("update");
       if (!old || old.status === "deleted") throw new HttpError(404, "محصول یافت نشد");
       if (isSeller && old.ownerSellerId !== u.sellerId) throw new HttpError(404, "محصول یافت نشد");
-      if (isSeller) { input.data.allowBackorder = old.allowBackorder; input.data.inventoryBaseUnit = old.inventoryBaseUnit; }
+      if (isSeller) { input.data.allowBackorder = old.allowBackorder; input.data.inventoryBaseUnit = old.inventoryBaseUnit; input.data.certifiedOrganic = old.certifiedOrganic; }
       else if (old.source !== "central") { input.data.allowBackorder = false; input.data.inventoryBaseUnit = old.inventoryBaseUnit; }
       if (old.inventoryBaseUnit !== input.data.inventoryBaseUnit) {
         const stockedVariants = await tx.select({ onHand: productVariants.onHand, reserved: productVariants.reserved }).from(productVariants).where(eq(productVariants.productId, id));
@@ -157,7 +158,7 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
         { basePrice: old.basePrice, status: old.status, nameFa: old.nameFa }, { basePrice: input.data.basePrice, status, nameFa: input.data.nameFa });
     } else {
       const [p] = await tx.insert(products).values({
-        ...input.data, allowBackorder: !isSeller && input.data.allowBackorder, status: isSeller ? "pending" : (body.status === "active" ? "active" : "draft"),
+        ...input.data, certifiedOrganic: !isSeller && input.data.certifiedOrganic, allowBackorder: !isSeller && input.data.allowBackorder, status: isSeller ? "pending" : (body.status === "active" ? "active" : "draft"),
         source: isSeller ? "marketplace" : "central", ownerSellerId: isSeller ? u.sellerId : null, createdBy: u.id, mainImageId: input.imageIds[0] ?? null,
       }).returning();
       productId = p.id;

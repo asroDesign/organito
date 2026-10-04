@@ -3,7 +3,7 @@ import { loadShipmentForPrint } from "@/lib/printAccess";
 import { getSettings } from "@/lib/settings";
 import { PrintButton } from "@/components/PrintButton";
 import { PaymentInfoBox } from "@/components/PaymentInfoBox";
-import { Barcode } from "@/components/LabelView";
+import { Barcode, fillLabel } from "@/components/LabelView";
 import { faNum, jdate } from "@/lib/util";
 
 export const metadata = { title: "فاکتور" };
@@ -19,10 +19,13 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const grand = itemsTotal + taxTotal + sh.shippingCost;
   const back = u.staff ? `/orders/${o.id}` : u.sellerId ? `/seller/orders/${o.id}` : `/customer/orders/${o.id}`;
   const box = "rounded-lg border border-slate-400 p-3";
+  const headerText = fillLabel(s.invoiceHeaderTemplate, { siteName: s.siteName, invoiceNumber: `INV-${o.number}-${sh.id}`, date: jdate(o.createdAt) });
+  const invoiceBorder = s.invoiceBorderStyle === "none" ? "none" : s.invoiceBorderStyle === "dashed" ? "2px dashed #475569" : "1px solid #94a3b8";
   return (
-    <div className="mx-auto max-w-[210mm]">
+    <div className="mx-auto" style={{ maxWidth: `${s.invoiceWidth}mm` }}>
       <div className="no-print mb-4 flex justify-between px-2"><Link href={back} className="btn-ghost">بازگشت به سفارش</Link><PrintButton label="چاپ فاکتور" /></div>
-      <div className="invoice-sheet bg-white p-8 text-[13px] leading-7 text-black shadow print:shadow-none">
+      <div className="invoice-sheet bg-white p-8 leading-7 text-black shadow print:shadow-none" style={{ fontSize: `${s.invoiceFontSize}px`, border: invoiceBorder }}>
+        <div className="mb-4 whitespace-pre-line border-b-2 border-black pb-3 text-center font-bold">{headerText}</div>
         <header className="flex items-start justify-between border-b-2 border-black pb-3">
           <div><div className="text-2xl font-black">{s.siteName}</div><div className="text-xs">{s.siteTagline}</div></div>
           <div className="text-center">

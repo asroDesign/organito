@@ -47,7 +47,7 @@ export async function listShopProducts(f: ShopFilters, limit = 200) {
     const minPrice = fest ? applyPct(minList, fest.discountPercent) : minList;
     const compareAt = fest ? minList : p.compareAtPrice > minList ? p.compareAtPrice : 0;
     return {
-      id: p.id, slug: p.slug, nameFa: p.nameFa, brand: p.brand, sku: p.sku, partNumber: p.partNumber, authenticity: p.authenticity, country: p.country, categoryId: p.categoryId,
+      id: p.id, slug: p.slug, nameFa: p.nameFa, brand: p.brand, sku: p.sku, partNumber: p.partNumber, authenticity: p.authenticity, certifiedOrganic: p.certifiedOrganic, country: p.country, categoryId: p.categoryId,
       imageId: p.mainImageId, category: cat, minPrice, listPrice: minList, maxPrice: prices.length ? Math.max(...prices) : 0, compareAt,
       discountPct: compareAt > minPrice && compareAt ? Math.round(((compareAt - minPrice) / compareAt) * 100) : 0,
       festival: fest ? { title: fest.title, color: fest.color, endsAt: fest.endsAt.toISOString(), pct: fest.discountPercent } : null,

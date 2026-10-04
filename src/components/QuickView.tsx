@@ -10,7 +10,7 @@ import { Stars } from "./Community";
 export type { OfferView };
 type Data = {
   product: {
-    id: number; slug: string; nameFa: string; nameEn: string | null; sku: string; partNumber: string; brand: string; country: string | null; authenticity: string; category: string | null;
+    id: number; slug: string; nameFa: string; nameEn: string | null; sku: string; partNumber: string; brand: string; country: string | null; authenticity: string; certifiedOrganic: boolean; category: string | null;
     shortDesc: string | null; specs: { k: string; v: string }[]; basePrice: number; source: string; available: number; status: string; allowBackorder: boolean; options: { name: string; values: string[] }[];
     purchaseOptions: { name: string; type: "text" | "select" | "checkbox" | "radio"; required: boolean; values: { label: string; price: number; priceType: "fixed" | "percent" }[] }[]; organicInfo: { origin?: string; harvest?: string; method?: string; certificate?: string; suitableFor?: string[] }; videoMediaId: number | null; compareAtPrice: number;
   };
@@ -18,7 +18,6 @@ type Data = {
   images: number[]; variants: VariantView[]; offers: OfferView[];
   rating: { avg: number; n: number }; store: { multiVendor: boolean; siteName: string; freeShippingOver: number; returnDays: number };
 };
-const AUTH: Record<string, string> = { Original: "ارگانیک گواهی‌شده", OEM: "طبیعی و بدون افزودنی", Aftermarket: "محلی و سنتی" };
 const fa = (n: number) => n.toLocaleString("fa-IR");
 
 export function QuickViewButton({ id }: { id: number }) {
@@ -47,7 +46,7 @@ function QuickViewModal({ id, onClose }: { id: number; onClose: () => void }) {
   if (!mounted) return null;
   const p = data?.product;
   const org = p?.organicInfo ?? {};
-  const facts = p ? ([[MapPin, "خاستگاه", org.origin], [CalendarDays, "برداشت", org.harvest], [Sprout, "روش تولید", org.method], [BadgeCheck, "گواهی", org.certificate]] as const).filter(([, , v]) => v) : [];
+  const facts = p ? ([[MapPin, "خاستگاه", org.origin], [CalendarDays, "برداشت", org.harvest], [Sprout, "روش تولید", org.method], [BadgeCheck, "گواهی", p.certifiedOrganic ? org.certificate : undefined]] as const).filter(([, , v]) => v) : [];
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-emerald-950/60 p-3 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} role="dialog" aria-modal="true" dir="rtl">
       <div className="qv-in relative my-6 w-full max-w-5xl overflow-hidden rounded-[2rem] bg-[#faf7ef] shadow-2xl ring-1 ring-emerald-900/10">
@@ -56,7 +55,7 @@ function QuickViewModal({ id, onClose }: { id: number; onClose: () => void }) {
           <div className="grid h-96 place-items-center">{err ? <div className="text-sm text-rose-600">{err}</div> : <Loader2 className="h-9 w-9 animate-spin text-emerald-600" />}</div>
         ) : (
           <div className="grid gap-6 p-5 md:grid-cols-2 md:p-7 lg:grid-cols-[1fr_1fr_340px]">
-            <div className="lg:col-span-1"><Gallery ids={data.images} alt={p.nameFa} videoId={p.videoMediaId} badge={AUTH[p.authenticity]} /></div>
+            <div className="lg:col-span-1"><Gallery ids={data.images} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? "ارگانیک گواهی‌شده" : undefined} /></div>
             <div className="space-y-4">
               <div className="flex flex-wrap gap-1.5 text-[11px]">
                 {p.category && <span className="rounded-full bg-amber-50 px-2.5 py-1 font-bold text-amber-800 ring-1 ring-amber-200">{p.category}</span>}

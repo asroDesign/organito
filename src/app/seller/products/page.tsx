@@ -27,6 +27,7 @@ export default async function SellerProducts() {
             <Td>{toman(o.salePrice ?? o.price)}</Td><Td>{faNum(o.stock)} / {faNum(o.reserved)} / <b>{faNum(o.stock - o.reserved)}</b></Td><Td>{toman(o.shippingCost)}</Td><Td>{faNum(o.prepDays)} روز</Td>
             <Td><StatusBadge status={o.status} map={OFFER_STATUS} />{o.isBuyBox && <div className="mt-1 text-[10px] text-orange-600">Buy Box</div>}</Td>
             <Td><div className="flex flex-wrap gap-1">
+              <Link href={`/print/product-barcodes/${p.id}`} className="btn-sm">چاپ بارکد</Link>
               {o.status === "approved" && <ActionButton url={`/api/seller/offers/${o.id}/status`} data={{ status: "inactive" }} className="btn-sm">غیرفعال</ActionButton>}
               {o.status === "inactive" && <ActionButton url={`/api/seller/offers/${o.id}/status`} data={{ status: "approved" }} className="btn-sm">فعال‌سازی</ActionButton>}
               <OfferEditor productId={p.id} initial={{ price: o.price, costPrice: o.costPrice, salePrice: o.salePrice, stock: o.stock, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, shipCity: o.shipCity }} label="ویرایش" />
@@ -41,7 +42,7 @@ export default async function SellerProducts() {
             <div className="divide-y">{mine.map((p) => (
               <div key={p.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                 <div><b>{p.nameFa}</b> <StatusBadge status={p.status} map={PRODUCT_STATUS} />{p.rejectReason && <div className="text-xs text-rose-600">دلیل رد: {p.rejectReason}</div>}</div>
-                <div className="flex gap-1"><Link href={`/seller/products/${p.id}/edit`} className="btn-sm">ویرایش</Link>
+                <div className="flex gap-1"><Link href={`/seller/products/${p.id}/edit`} className="btn-sm">ویرایش</Link><Link href={`/print/product-barcodes/${p.id}`} className="btn-sm">چاپ بارکد</Link>
                   {["draft", "rejected"].includes(p.status) && <ActionButton url={`/api/products/${p.id}/status`} data={{ status: "pending" }} className="btn-sm">ارسال برای بررسی</ActionButton>}
                   {p.status !== "active" && <ActionButton url={`/api/products/${p.id}/status`} data={{ status: "deleted" }} confirm="حذف؟" className="btn-sm">حذف</ActionButton>}</div>
               </div>

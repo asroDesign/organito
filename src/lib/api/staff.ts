@@ -304,7 +304,15 @@ export const staffRoutes: Route[] = [
     for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) {
       if (!(k in b)) continue;
       if (k === "smsApiKey" && !str(b[k], 1000)) continue;
-      const v = typeof def === "number" ? int(b[k], 0, 1_000_000_000) : str(b[k], 1000);
+      let v: unknown;
+      if (k === "productTypes") {
+        if (!Array.isArray(b[k])) throw new HttpError(400, "فهرست نوع محصولات نامعتبر است");
+        v = (b[k] as Record<string, unknown>[]).map((x) => ({ name: str(x.name, 80), parameters: Array.isArray(x.parameters) ? [...new Set(x.parameters.map((p) => str(p, 80)).filter(Boolean))].slice(0, 40) : [] })).filter((x) => x.name).slice(0, 80);
+        if (new Set((v as {name:string}[]).map((x) => x.name)).size !== (v as {name:string}[]).length) throw new HttpError(400, "نام نوع محصول تکراری است");
+      } else v = typeof def === "number" ? int(b[k], 0, 1_000_000_000) : str(b[k], k === "footerScripts" ? 20000 : 1000);
+      if (["invoiceWidth", "barcodeLabelWidth", "barcodeLabelHeight"].includes(k) && Number(v) < 20) throw new HttpError(400, "ابعاد چاپ باید دست‌کم ۲۰ میلی‌متر باشد");
+      if (["invoiceFontSize", "barcodeFontSize"].includes(k) && (Number(v) < 6 || Number(v) > 40)) throw new HttpError(400, "اندازه فونت چاپ باید بین ۶ تا ۴۰ باشد");
+      if (k === "invoiceBorderStyle" && !["solid", "dashed", "none"].includes(String(v))) throw new HttpError(400, "نوع کادر فاکتور معتبر نیست");
       if (k === "paymentGateway" && v !== "zarinpal" && v !== "zibal") throw new HttpError(400, "درگاه پرداخت نامعتبر است");
       changes[k] = k === "smsApiKey" ? "[configured]" : v;
       await db.insert(settings).values({ key: k, value: v }).onConflictDoUpdate({ target: settings.key, set: { value: v } });

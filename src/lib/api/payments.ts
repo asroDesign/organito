@@ -71,7 +71,7 @@ export const paymentRoutes: Route[] = [
     return {
       product: {
         id: pr.id, slug: pr.slug, nameFa: pr.nameFa, nameEn: pr.nameEn, sku: pr.sku, partNumber: pr.partNumber, oemNumber: pr.oemNumber, crossRefs: pr.crossRefs,
-        brand: pr.brand, manufacturer: pr.manufacturer, country: pr.country, authenticity: pr.authenticity, category: row.cat, shortDesc: pr.shortDesc,
+        brand: pr.brand, manufacturer: pr.manufacturer, country: pr.country, authenticity: pr.authenticity, certifiedOrganic: pr.certifiedOrganic, category: row.cat, shortDesc: pr.shortDesc,
         technicalReview: pr.technicalReview, specs: pr.specs, compatibility: pr.compatibility, weight: pr.weight, basePrice: pr.basePrice, source: pr.source,
         available: pr.onHand - pr.reserved, allowBackorder: pr.allowBackorder, status: pr.status, options: pr.options, mainImageId: pr.mainImageId,
         organicInfo: pr.organicInfo, videoMediaId: pr.videoMediaId, compareAtPrice: pr.compareAtPrice, purchaseOptions: pr.purchaseOptions,

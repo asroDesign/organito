@@ -78,7 +78,7 @@ export const SUPPLY_STATUS: Record<string, string> = {
   customer_approved: "تأیید مشتری", payment_pending: "در انتظار پرداخت", paid: "پرداخت‌شده", purchasing: "در حال خرید",
   received: "دریافت‌شده", ready_to_ship: "آماده ارسال", shipped: "ارسال‌شده", completed: "تکمیل‌شده", cancelled: "لغوشده", rejected: "ردشده",
 };
-export const AUTH_LABEL: Record<string, string> = { Original: "ارگانیک گواهی‌شده", OEM: "طبیعی و بدون افزودنی", Aftermarket: "محلی و سنتی" };
+export const AUTH_LABEL: Record<string, string> = { Original: "اصلی", OEM: "سازنده اصلی", Aftermarket: "متفرقه" };
 
 export function str(v: unknown, max = 2000): string {
   if (v === null || v === undefined) return "";

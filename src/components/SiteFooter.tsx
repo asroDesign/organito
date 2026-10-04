@@ -5,6 +5,7 @@ import { SiteBrand } from "./SiteBrand";
 import { db } from "@/db";
 import { footerLinks } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
+import { FooterScripts } from "./FooterScripts";
 
 export async function SiteFooter() {
   const s = await getSettings();
@@ -18,6 +19,7 @@ export async function SiteFooter() {
         <div className="space-y-2 text-sm"><b className="mb-3 block text-white">ارتباط با ما</b><div className="flex items-center gap-2"><MapPin className="h-4 w-4" />{s.senderAddress}</div><div className="flex items-center gap-2"><Phone className="h-4 w-4" /><span dir="ltr">{s.supportPhone}</span></div><div className="flex items-center gap-2"><Clock className="h-4 w-4" />{s.supportHours}</div><div className="flex items-center gap-2"><Mail className="h-4 w-4" />{s.supportEmail}</div></div>
       </div>
       <div className="border-t border-slate-800 py-4 text-center text-xs">© {s.siteName} — تمامی حقوق محفوظ است.</div>
+      <FooterScripts code={s.footerScripts} />
     </footer>
   );
 }

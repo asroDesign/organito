@@ -20,7 +20,7 @@ export type QuoteLine = {
   key: string; productId: number; offerId: number | null; variantId: number | null; sellerId: number | null;
   title: string; slug: string; imageId: number | null; unitPrice: number; qty: number; lineTotal: number; available: number; categoryId: number | null; weight: number; festivalPct: number; festivalTitle: string | null; listPrice: number;
   ok: boolean; error?: string; unitCost: number; allowBackorder: boolean;
-  brand: string; partNumber: string; sku: string; authenticity: string; sellerName: string; attrs: Record<string, string>; variantTitle: string | null; warranty: string | null; maxQty: number;
+  brand: string; partNumber: string; sku: string; authenticity: string; certifiedOrganic: boolean; sellerName: string; attrs: Record<string, string>; variantTitle: string | null; warranty: string | null; maxQty: number;
   alternatives: { offerId: number; sellerId: number; shopName: string; price: number; available: number; prepDays: number; shippingCost: number; isBuyBox: boolean }[];
 };
 export type QuoteGroup = { key: string; sellerId: number | null; name: string; lines: QuoteLine[]; itemsTotal: number; shippingCost: number; prepDays: number; packages: number; weight: number };
@@ -99,7 +99,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
       sellerId: null, title: p?.nameFa ?? "محصول نامشخص", slug: p?.slug ?? "", imageId: p?.mainImageId ?? null, unitPrice: 0, qty: it.qty, lineTotal: 0,
       available: 0, ok: false, unitCost: p?.avgCost ?? 0, allowBackorder: p?.allowBackorder ?? false, alternatives: [],
       categoryId: p?.categoryId ?? null, weight: (p?.weight ?? 0) > 0 ? p!.weight! : 500, festivalPct: 0, festivalTitle: null, listPrice: 0,
-      brand: p?.brand ?? "", partNumber: p?.partNumber ?? "", sku: p?.sku ?? "", authenticity: p?.authenticity ?? "", sellerName: s.senderName, attrs: {}, variantTitle: null, warranty: null, maxQty: 0,
+      brand: p?.brand ?? "", partNumber: p?.partNumber ?? "", sku: p?.sku ?? "", authenticity: p?.authenticity ?? "", certifiedOrganic: p?.certifiedOrganic ?? false, sellerName: s.senderName, attrs: {}, variantTitle: null, warranty: null, maxQty: 0,
     };
     const fest = p ? festivalFor(fests, p.id, p.categoryId) : null;
     if (fest) { base.festivalPct = fest.discountPercent; base.festivalTitle = fest.title; }

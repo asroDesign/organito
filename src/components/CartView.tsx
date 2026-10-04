@@ -94,7 +94,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
                         </div>
                         <div className="flex flex-wrap gap-1.5 text-[11px]">
                           {l.brand && <span className="rounded bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">{l.brand}</span>}
-                          {l.authenticity && <span className={`rounded px-2 py-0.5 font-bold text-white ${l.authenticity === "Original" ? "bg-emerald-500" : l.authenticity === "OEM" ? "bg-emerald-500" : "bg-slate-500"}`}>{({ Original: "ارگانیک گواهی‌شده", OEM: "طبیعی", Aftermarket: "محلی و سنتی" } as Record<string, string>)[l.authenticity] ?? l.authenticity}</span>}
+                          {l.certifiedOrganic && <span className="rounded bg-emerald-700 px-2 py-0.5 font-bold text-white">ارگانیک گواهی‌شده</span>}
                           {l.partNumber && <span className="rounded border border-slate-200 px-2 py-0.5 font-mono text-slate-600" dir="ltr">PN: {l.partNumber}</span>}
                           {l.sku && <span className="rounded border border-slate-200 px-2 py-0.5 font-mono text-slate-500" dir="ltr">SKU: {l.sku}</span>}
                         </div>

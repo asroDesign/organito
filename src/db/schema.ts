@@ -235,6 +235,8 @@ export const products = pgTable("products", {
   country: text("country"),
   categoryId: integer("category_id"),
   authenticity: text("authenticity").notNull().default("Aftermarket"),
+  productType: text("product_type"),
+  certifiedOrganic: boolean("certified_organic").notNull().default(false),
   basePrice: money("base_price"),
   compareAtPrice: money("compare_at_price"),
   shortDesc: text("short_desc"),

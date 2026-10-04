@@ -21,7 +21,7 @@ type Variant = { id?: number; title: string; attrs: Record<string, string>; sku:
 type Opt = { name: string; values: string[] };
 export type ProductInitial = Partial<{
   id: number; nameFa: string; nameEn: string | null; sku: string; partNumber: string; oemNumber: string | null; crossRefs: string[]; brand: string; manufacturer: string | null; source: string;
-  country: string | null; categoryId: number | null; authenticity: string; basePrice: number; compareAtPrice: number; shortDesc: string | null; description: string | null;
+  country: string | null; categoryId: number | null; authenticity: string; productType: string | null; certifiedOrganic: boolean; basePrice: number; compareAtPrice: number; shortDesc: string | null; description: string | null;
   technicalReview: string | null; specs: Spec[]; compatibility: Compat[]; organicInfo: { [k: string]: string | string[] | undefined; suitableFor?: string[] }; videoMediaId: number | null; weight: number | null; barcode: string | null; seoTitle: string | null; metaDesc: string | null; slug: string;
   lowStockThreshold: number; allowBackorder: boolean; inventoryBaseUnit: string; imageIds: number[]; variants: Variant[]; options: Opt[]; purchaseOptions: PurchaseOption[]; relatedProductIds: number[]; crossSellProductIds: number[]; productFaqs: ProductFaq[]; deliveryEstimateEnabled: boolean; deliveryMinDays: number; deliveryMaxDays: number; seoKeywords: string[]; seoImageId: number | null;
 }>;
@@ -30,7 +30,7 @@ function F({ name, label, dv, type = "text", ltr, req, half = true }: { name: st
   return <label className={`flex flex-col gap-1 text-sm ${half ? "" : "sm:col-span-2"}`}><span className="text-slate-600">{label}{req && <span className="text-rose-500"> *</span>}</span><input name={name} type={type} defaultValue={dv ?? ""} required={req} className="input" dir={ltr ? "ltr" : undefined} /></label>;
 }
 
-export function ProductForm({ initial = {}, categories, mode, backTo, productChoices = [] }: { initial?: ProductInitial; categories: { id: number; name: string }[]; mode: "admin" | "seller"; backTo: string; productChoices?: { id: number; name: string }[] }) {
+export function ProductForm({ initial = {}, categories, mode, backTo, productChoices = [], productTypes = [] }: { initial?: ProductInitial; categories: { id: number; name: string }[]; mode: "admin" | "seller"; backTo: string; productChoices?: { id: number; name: string }[]; productTypes?: { name: string; parameters: string[] }[] }) {
   const router = useRouter();
   const [images, setImages] = useState<number[]>(initial.imageIds ?? []);
   const [specs, setSpecs] = useState<Spec[]>(initial.specs?.length ? initial.specs : [{ k: "", v: "" }]);
@@ -48,13 +48,15 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
   const [optText, setOptText] = useState<string[]>((initial.options ?? []).map((o) => o.values.join("، ")));
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState("base");
+  const [productType, setProductType] = useState(initial.productType ?? "");
+  const selectedType = productTypes.find((t) => t.name === productType);
   const isEdit = !!initial.id;
   const tabs: [string, string][] = [["base", "اطلاعات پایه"], ["content", "توضیحات و بررسی تخصصی"], ["specs", "مشخصات و شناسنامه ارگانیک"], ["media", "تصاویر"], ["price", mode === "admin" ? "قیمت، تنوع و موجودی" : "قیمت و موجودی"], ["commerce", "گزینه‌ها، ارتباط و تحویل"], ["qa", "پرسش و پاسخ"], ["seo", "سئو"]];
   return (
     <form className="space-y-4" onSubmit={async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.currentTarget));
-      const payload = { ...fd, crossRefs: String(fd.crossRefs ?? ""), specs: specs.filter((s) => s.k), organicInfo: org, description: desc, technicalReview: review, videoMediaId: video, imageIds: images, variants, options: opts, purchaseOptions, productFaqs: faqs, relatedProductIds: relatedIds, crossSellProductIds: crossSellIds, seoImageId: seoImage[0] ?? null, deliveryEstimateEnabled: fd.deliveryEstimateEnabled === "on", allowBackorder: fd.allowBackorder === "on", seoKeywords: String(fd.seoKeywords ?? "").split(/[,،\n]/).map((x) => x.trim()).filter(Boolean) };
+      const payload = { ...fd, productType, certifiedOrganic: fd.certifiedOrganic === "on", crossRefs: String(fd.crossRefs ?? ""), specs: specs.filter((s) => s.k), organicInfo: org, description: desc, technicalReview: review, videoMediaId: video, imageIds: images, variants, options: opts, purchaseOptions, productFaqs: faqs, relatedProductIds: relatedIds, crossSellProductIds: crossSellIds, seoImageId: seoImage[0] ?? null, deliveryEstimateEnabled: fd.deliveryEstimateEnabled === "on", allowBackorder: fd.allowBackorder === "on", seoKeywords: String(fd.seoKeywords ?? "").split(/[,،\n]/).map((x) => x.trim()).filter(Boolean) };
       setBusy(true);
       try {
         const r = await api<{ id: number }>(isEdit ? `/api/products/${initial.id}` : "/api/products", isEdit ? "PUT" : "POST", payload);
@@ -74,7 +76,8 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
           <F name="brand" label="برند" dv={initial.brand} req /><F name="manufacturer" label="سازنده" dv={initial.manufacturer} />
           <F name="country" label="کشور سازنده" dv={initial.country} />
           <label className="flex flex-col gap-1 text-sm"><span className="text-slate-600">دسته‌بندی</span><select name="categoryId" defaultValue={initial.categoryId ?? ""} className="input"><option value="">—</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
-          <label className="flex flex-col gap-1 text-sm"><span className="text-slate-600">نوع محصول</span><select name="authenticity" defaultValue={initial.authenticity ?? "Aftermarket"} className="input"><option value="Original">ارگانیک گواهی‌شده</option><option value="OEM">طبیعی و بدون افزودنی</option><option value="Aftermarket">محلی و سنتی</option></select></label>
+          <label className="flex flex-col gap-1 text-sm"><span className="text-slate-600">نوع محصول (اختیاری)</span><select name="productType" value={productType} onChange={(e) => setProductType(e.target.value)} className="input"><option value="">بدون نوع</option>{productTypes.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}</select></label>
+          {mode === "admin" && <label className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm"><input type="checkbox" name="certifiedOrganic" defaultChecked={initial.certifiedOrganic ?? false} className="size-4 accent-emerald-600" /><span><b className="block text-emerald-900">گواهی اصالت ارگانیک تأیید شده</b><span className="text-xs text-emerald-800">فقط با فعال‌بودن این گزینه نشان گواهی در صفحه محصول نمایش داده می‌شود.</span></span></label>}
           <F name="barcode" label="بارکد" dv={initial.barcode} ltr /><F name="weight" label="وزن (گرم)" dv={initial.weight} type="number" />
           {mode === "admin" && !isEdit && <label className="flex flex-col gap-1 text-sm"><span className="text-slate-600">وضعیت اولیه</span><select name="status" className="input"><option value="draft">پیش‌نویس</option><option value="active">فعال</option></select></label>}
         </div>
@@ -85,6 +88,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
         </div>
         <div className={tab === "specs" ? "grid gap-6 lg:grid-cols-2" : "hidden"}>
           <div className="space-y-2"><b className="text-sm">مشخصات و ارزش غذایی داینامیک</b>
+            {selectedType?.parameters?.length ? <div className="flex flex-wrap items-center gap-2 rounded-lg bg-emerald-50 p-2 text-xs"><b>پارامترهای نوع «{selectedType.name}»</b>{selectedType.parameters.map((name) => <button key={name} type="button" className="rounded bg-white px-2 py-1 ring-1 ring-emerald-200" onClick={() => !specs.some((s) => s.k === name) && setSpecs([...specs, { k: name, v: "", group: selectedType.name, order: specs.length }])}>+ {name}</button>)}</div> : null}
             {specs.map((s, i) => <div key={i} className="grid grid-cols-2 gap-2 rounded-xl border border-slate-100 p-2 sm:grid-cols-[1fr_1fr_1fr_72px_auto_auto]"><input value={s.group ?? ""} placeholder="گروه مشخصات" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, group: e.target.value } : x)))} className="input" /><input value={s.k} placeholder="عنوان" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, k: e.target.value } : x)))} className="input" /><input value={s.v} placeholder="مقدار" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, v: e.target.value } : x)))} className="input" /><input type="number" value={s.order ?? i} title="ترتیب نمایش" aria-label="ترتیب نمایش" onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, order: Number(e.target.value) } : x)))} className="input" /><label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={s.hidden === true} onChange={(e) => setSpecs(specs.map((x, j) => (j === i ? { ...x, hidden: e.target.checked } : x)))} />مخفی</label><button type="button" onClick={() => setSpecs(specs.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4 text-rose-500" /></button></div>)}
             <button type="button" className="btn-sm" onClick={() => setSpecs([...specs, { k: "", v: "", group: "", order: specs.length }])}><Plus className="h-3 w-3" />افزودن مشخصه</button>
           </div>

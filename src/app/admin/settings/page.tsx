@@ -61,6 +61,12 @@ export default async function SettingsPage() {
           { name: "marketplaceRules", label: "قوانین مارکت‌پلیس", type: "textarea", defaultValue: s.marketplaceRules },
         ]} />
       </Card>
+      <Card title="کدهای جاوااسکریپت فوتر" className="mt-6">
+        <p className="mb-4 text-sm leading-7 text-slate-600">کد نماد اعتماد، گفتینو یا ابزارهای پشتیبانی را اینجا وارد کنید. کد فقط در فوتر صفحات عمومی سایت اجرا می‌شود و در پنل مدیریت نمایش داده نخواهد شد. این بخش محتوای واردشده را به‌عنوان کد اجرایی در نظر می‌گیرد؛ فقط کد سرویس‌های مورداعتماد را وارد کنید.</p>
+        <JsonForm url="/api/admin/settings" submit="ذخیره کد فوتر" resetOnDone={false} fields={[
+          { name: "footerScripts", label: "کد جاوااسکریپت / کد جایگذاری سرویس", type: "textarea", defaultValue: s.footerScripts },
+        ]} />
+      </Card>
     </>
   );
 }

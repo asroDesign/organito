@@ -54,6 +54,7 @@ export const DEFAULT_SETTINGS = {
   supportPhone: "021-91000000",
   supportEmail: "info@example.com",
   supportHours: "همه روزه ۱۰ تا ۲۱",
+  footerScripts: "",
   returnDays: 10,
   freeShippingOver: 2000000,
   reviewAutoApprove: 0,
@@ -69,6 +70,16 @@ export const DEFAULT_SETTINGS = {
   labelShowOrderBarcode: 1,
   labelBorderStyle: "solid",
   invoiceFooter: "کالای فروخته‌شده تا ۷ روز با حفظ شرایط اولیه قابل مرجوع است.",
+  productTypes: [] as { name: string; parameters: string[] }[],
+  invoiceWidth: 210,
+  invoiceFontSize: 13,
+  invoiceHeaderTemplate: "{siteName}\nصورتحساب فروش کالا\nشماره: {invoiceNumber}  |  تاریخ: {date}",
+  invoiceBorderStyle: "solid",
+  barcodeLabelWidth: 50,
+  barcodeLabelHeight: 30,
+  barcodeFontSize: 10,
+  barcodeShowProductName: 1,
+  barcodeShowSku: 1,
   labelWidth: 100,
   labelHeight: 150,
   labelFontSize: 12,
@@ -84,7 +95,7 @@ export async function getSettings(tx: DB = db): Promise<SettingsShape> {
   const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
   for (const r of rows) out[r.key] = r.value;
   const siteName = String(out.siteName || DEFAULT_SETTINGS.siteName);
-  for (const [key, value] of Object.entries(out)) if (typeof value === "string" && key !== "siteName") out[key] = siteBrandText(value, siteName);
+  for (const [key, value] of Object.entries(out)) if (typeof value === "string" && key !== "siteName" && key !== "footerScripts") out[key] = siteBrandText(value, siteName);
   setCurrencyUnit(String(out.currency ?? DEFAULT_SETTINGS.currency));
   return out as SettingsShape;
 }
