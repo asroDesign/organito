@@ -29,7 +29,7 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
   const variantProductIds = new Set(variants.map(({ p }) => p.id));
   const choices = [
     ...variants.filter(({ v }) => !v.deletedAt || v.onHand !== 0 || v.reserved !== 0).map(({ v, p }) => ({ productId: p.id, variantId: v.id, name: p.nameFa, variant: v.title, sku: v.sku, unit: v.inventoryUnit, baseUnit: p.inventoryBaseUnit, baseUnitAmount: v.baseUnitAmount, onHand: v.onHand, reserved: v.reserved, unitCost: v.costPrice ?? p.avgCost, lowStockThreshold: p.lowStockThreshold, deleted: !!v.deletedAt, consignmentOwners: consignmentByStock.get(`v:${v.id}`) ?? [] })),
-    ...list.filter((p) => !variantProductIds.has(p.id)).map((p) => ({ productId: p.id, variantId: null, name: p.nameFa, variant: null, sku: p.sku, unit: p.inventoryBaseUnit, baseUnit: p.inventoryBaseUnit, baseUnitAmount: 1, onHand: p.onHand, reserved: p.reserved, unitCost: p.avgCost, lowStockThreshold: p.lowStockThreshold, consignmentOwners: consignmentByStock.get(`p:${p.id}`) ?? [] })),
+    ...list.filter((p) => !variantProductIds.has(p.id)).map((p) => ({ productId: p.id, variantId: null, name: p.nameFa, variant: null, sku: p.sku, unit: p.inventoryBaseUnit, baseUnit: p.inventoryBaseUnit, baseUnitAmount: 1, onHand: p.onHand, reserved: p.reserved, unitCost: p.avgCost, lowStockThreshold: p.lowStockThreshold, deleted: false, consignmentOwners: consignmentByStock.get(`p:${p.id}`) ?? [] })),
   ];
   const { pageSize } = paginationParams(sp);
   const page = Math.min(paginationParams(sp).page, Math.max(1, Math.ceil(choices.length / pageSize)));
