@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, Save, Send, Tag, X } from "lucide-react";
 import { api, ImageUploader, toast } from "./client";
 import { RichEditor } from "./RichEditor";
+import { ShortcodeInsert } from "./ShortcodeInsert";
 
 export type BlogPostInput = {
   id?: number; title: string; slug: string; excerpt: string | null; content: string; coverImageId: number | null; category: string; tags: string[];
@@ -40,7 +41,7 @@ export function BlogPostForm({ initial, categories = [], availableTags = [] }: {
     <div className="min-w-0 space-y-5 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-5">
       <div><label className="mb-1 block text-sm text-slate-600">عنوان مقاله</label><input className="input text-lg font-bold" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="عنوان روشن و جذاب مقاله" /></div>
       <div><label className="mb-1 block text-sm text-slate-600">خلاصه مقاله</label><textarea className="input min-h-24" value={form.excerpt ?? ""} onChange={(e) => setForm({ ...form, excerpt: e.target.value })} placeholder="خلاصه‌ای کوتاه برای کارت مقاله و نتایج جست‌وجو" /></div>
-      <div className="min-w-0"><label className="mb-1 block text-sm text-slate-600">محتوای مقاله</label><RichEditor value={form.content} onChange={(content) => setForm({ ...form, content })} placeholder="محتوای کامل، تیترها، تصاویر و جدول‌ها…" minHeight={420} /></div>
+      <div className="min-w-0"><label className="mb-1 block text-sm text-slate-600">محتوای مقاله</label><ShortcodeInsert onInsert={(token) => setForm({ ...form, content: `${form.content}<p>${token}</p>` })} /><RichEditor value={form.content} onChange={(content) => setForm({ ...form, content })} placeholder="محتوای کامل، تیترها، تصاویر و جدول‌ها…" minHeight={420} /><p className="mt-1 text-xs text-slate-400">می‌توانید فهرست محصولات، ویدیو و کاروسل مقاله را در متن درج کنید.</p></div>
     </div>
     <aside className="order-first min-w-0 space-y-4 2xl:order-last 2xl:space-y-5">
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><b className="mb-4 block">انتشار</b><div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-1"><button type="button" disabled={busy} onClick={() => save("draft")} className="btn-ghost w-full">{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}ذخیره پیش‌نویس</button><button type="button" disabled={busy} onClick={() => save("published")} className="btn-primary w-full"><Send className="h-4 w-4" />انتشار</button></div><p className="mt-3 text-xs text-slate-500">وضعیت فعلی: {form.status === "published" ? "منتشرشده" : "پیش‌نویس"}</p></div>

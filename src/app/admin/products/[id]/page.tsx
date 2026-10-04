@@ -72,7 +72,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
         ))}
       </Table>
       <div className="mt-8 grid gap-6 lg:grid-cols-3">
-        <Card title="تنوع‌ها">{vars.length ? vars.map((v) => <KV key={v.id} k={`${v.title} (${v.sku})`} v={`${toman(v.price)} · موجودی ${faNum(v.onHand - v.reserved)} ${v.inventoryUnit} · هر واحد ${faNum(v.baseUnitAmount)} ${p.inventoryBaseUnit} · ${v.isSellable ? "قابل فروش" : "فقط انبار / بسته‌بندی"}${consignments.filter((x) => x.lot.variantId === v.id).map((x) => ` · امانی ${faNum(x.lot.remainingQty)} به نام ${x.party}`).join("")}${v.isActive ? "" : " · غیرفعال"}`} />) : <p className="text-sm text-slate-500">بدون تنوع</p>}</Card>
+        <Card title="تنوع‌ها">{vars.length ? vars.map((v) => <KV key={v.id} k={`${v.title} (${v.sku})`} v={`${toman(v.price)} · موجودی ${faNum(v.onHand - v.reserved)} ${v.inventoryUnit} · هر واحد ${faNum(v.baseUnitAmount)} ${p.inventoryBaseUnit} · ${v.isSellable ? "قابل فروش" : "فقط انبار / بسته‌بندی"}${consignments.filter((x) => x.lot.variantId === v.id).map((x) => ` · امانی ${faNum(x.lot.remainingQty)} به نام ${x.party}`).join("")}${v.deletedAt ? " · حذف نرم‌شده" : v.isActive ? "" : " · غیرفعال"}`} />) : <p className="text-sm text-slate-500">بدون تنوع</p>}</Card>
         <Card title="گردش موجودی">{moves.map((m) => <KV key={m.id} k={`${m.type} ${m.note ?? ""}`} v={`${faNum(m.qty)} · ${jdate(m.createdAt)}`} />)}{!moves.length && <p className="text-sm text-slate-500">—</p>}</Card>
         <Card title="تاریخچه تغییرات (Audit)">{logs.map((l) => <KV key={l.id} k={l.action} v={jdate(l.createdAt, true)} />)}{!logs.length && <p className="text-sm text-slate-500">—</p>}</Card>
       </div>

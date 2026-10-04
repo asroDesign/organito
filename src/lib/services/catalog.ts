@@ -51,19 +51,34 @@ export function parseProductInput(b: Record<string, unknown>) {
   const seoKeywords = Array.isArray(b.seoKeywords) ? Array.from(new Set(b.seoKeywords.map((x) => str(x, 60)).filter(Boolean))).slice(0, 30) : str(b.seoKeywords, 1200).split(/[,،\n]/).map((x) => str(x, 60)).filter(Boolean).slice(0, 30);
   const deliveryMinDays = int(b.deliveryMinDays ?? 2, 0, 365), deliveryMaxDays = int(b.deliveryMaxDays ?? 5, 0, 365);
   if (deliveryMaxDays < deliveryMinDays) throw new HttpError(400, "حداکثر زمان تحویل نمی‌تواند کمتر از حداقل باشد");
-  const variants = Array.isArray(b.variants) ? (b.variants as Record<string, unknown>[]).map((v) => {
+  const deletedVariantIds = new Set<number>();
+  const variants = Array.isArray(b.variants) ? (b.variants as Record<string, unknown>[]).flatMap((v) => {
+    const id = v.id ? int(v.id, 1) : undefined;
     const rawAttrs = (v.attrs && typeof v.attrs === "object" ? v.attrs : {}) as Record<string, unknown>;
     const attrs: Record<string, string> = {};
+    const hasStaleAttributes = id && (options.length === 0 ? Object.keys(rawAttrs).length > 0 : Object.keys(rawAttrs).some((key) => !options.some((option) => option.name === key)));
+    if (hasStaleAttributes) { deletedVariantIds.add(id); return []; }
+    let invalidOptionValue = false;
     for (const o of options) {
       const val = str(rawAttrs[o.name], 40);
-      if (!o.values.includes(val)) throw new HttpError(400, `مقدار «${o.name}» در یکی از تنوع‌ها نامعتبر است`);
+      if (!o.values.includes(val)) { invalidOptionValue = true; break; }
       attrs[o.name] = val;
     }
+    if (invalidOptionValue) {
+      if (id) { deletedVariantIds.add(id); return []; }
+      throw new HttpError(400, "مقدار انتخاب‌شده برای یکی از تنوع‌های جدید معتبر نیست");
+    }
     const title = options.length ? options.map((o) => attrs[o.name]).join(" / ") : str(v.title, 80);
-    return { id: v.id ? int(v.id, 1) : undefined, title, attrs, sku: str(v.sku, 60), price: int(v.price ?? 0), rewardPoints: int(v.rewardPoints ?? 0, 0, 1000000), onHand: int(v.onHand ?? 0, 0, 100000), inventoryUnit: str(v.inventoryUnit, 30) || "عدد", baseUnitAmount: int(v.baseUnitAmount ?? 1, 1, 1_000_000_000), isActive: v.isActive !== false, isSellable: v.isSellable !== false };
+    return [{ id, title, attrs, sku: str(v.sku, 60), price: int(v.price ?? 0), rewardPoints: int(v.rewardPoints ?? 0, 0, 1000000), onHand: int(v.onHand ?? 0, 0, 100000), inventoryUnit: str(v.inventoryUnit, 30) || "عدد", baseUnitAmount: int(v.baseUnitAmount ?? 1, 1, 1_000_000_000), isActive: v.isActive !== false, isSellable: v.isSellable !== false }];
   }).filter((v) => v.title).slice(0, 60) : [];
-  const combos = new Set(variants.map((v) => JSON.stringify(v.attrs)));
+  const variantKey = (attrs: Record<string, string>) => JSON.stringify(options.map((option) => attrs[option.name] ?? ""));
+  const combos = new Set(variants.map((v) => variantKey(v.attrs)));
   if (options.length && combos.size !== variants.length) throw new HttpError(400, "ترکیب تکراری در تنوع‌ها وجود دارد");
+  if (options.length) {
+    let expected: Record<string, string>[] = [{}];
+    for (const option of options) expected = expected.flatMap((attrs) => option.values.map((value) => ({ ...attrs, [option.name]: value })));
+    if (expected.length > 60) throw new HttpError(400, "حداکثر ۶۰ ترکیب تنوع قابل تعریف است؛ تعداد مقادیر پارامترها را کمتر کنید");
+  }
   return {
     data: {
       nameFa, nameEn: str(b.nameEn, 200) || null, sku, partNumber, normalizedPn: normalizePn(partNumber), oemNumber: str(b.oemNumber, 80) || null,
@@ -82,7 +97,7 @@ export function parseProductInput(b: Record<string, unknown>) {
       organicInfo: parseOrganic(b.organicInfo),
       videoMediaId: b.videoMediaId ? int(b.videoMediaId, 1) : null,
     },
-    imageIds, variants,
+    imageIds, variants, deletedVariantIds: [...deletedVariantIds],
     offer: b.offerPrice ? { price: int(b.offerPrice, 1), costPrice: b.offerCostPrice ? int(b.offerCostPrice, 1) : int(b.offerPrice, 1), stock: int(b.offerStock ?? 0, 0, 100000), shippingCost: int(b.offerShipping ?? 0), prepDays: int(b.offerPrepDays ?? 1, 0, 60), warranty: str(b.offerWarranty, 200) || null } : null,
   };
 }
@@ -152,9 +167,13 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
     if (input.imageIds.length) await tx.insert(productImages).values(input.imageIds.map((m, i) => ({ productId, mediaId: m, sortOrder: i })));
     if (!isSeller) {
       const existing = await tx.select().from(productVariants).where(eq(productVariants.productId, productId)).for("update");
+      const availableForEdit = existing.filter((variant) => !variant.deletedAt);
+      const removedIds = new Set(input.deletedVariantIds);
+      if ([...removedIds].some((variantId) => !availableForEdit.some((variant) => variant.id === variantId))) throw new HttpError(400, "شناسه یکی از تنوع‌های حذف‌شده معتبر نیست");
       const keep = new Set<number>();
       for (const v of input.variants) {
-        const current = v.id ? existing.find((e) => e.id === v.id) : undefined;
+        const current = v.id ? availableForEdit.find((e) => e.id === v.id) : undefined;
+        if (v.id && !current) throw new HttpError(400, "تنوع انتخاب‌شده برای ویرایش معتبر نیست");
         if (current) {
           if ((current.onHand || current.reserved) && (v.inventoryUnit !== current.inventoryUnit || v.baseUnitAmount !== current.baseUnitAmount)) throw new HttpError(400, `واحد یا ضریب تبدیل تنوع «${current.title}» تا زمان صفرشدن موجودی آن قابل تغییر نیست`);
           keep.add(current.id);
@@ -164,7 +183,7 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
           if (v.onHand > 0) await tx.insert(stockMovements).values({ productId, variantId: nv.id, type: "initial", qty: v.onHand, userId: ctx.userId, note: "موجودی اولیه تنوع" });
         }
       }
-      for (const e of existing) if (!keep.has(e.id) && e.reserved === 0) await tx.update(productVariants).set({ isActive: false }).where(eq(productVariants.id, e.id));
+      for (const e of availableForEdit) if (removedIds.has(e.id) || !keep.has(e.id)) await tx.update(productVariants).set({ isActive: false, deletedAt: new Date() }).where(eq(productVariants.id, e.id));
     }
     if (isSeller && input.offer && u.sellerId) {
       const [ex] = await tx.select().from(sellerOffers).where(and(eq(sellerOffers.productId, productId), eq(sellerOffers.sellerId, u.sellerId)));
@@ -272,6 +291,8 @@ export async function receiveStock(ctx: Ctx & { userId: number }, productId: num
     if (variants.length && !variantId) throw new HttpError(400, "برای این محصول باید تنوع دقیق انبار را انتخاب کنید");
     const stockVariant = variantId ? variants.find((variant) => variant.id === variantId) : undefined;
     if (variantId && !stockVariant) throw new HttpError(404, "تنوع این محصول یافت نشد");
+    if (stockVariant?.deletedAt && (qty > 0 || receipt)) throw new HttpError(400, "تنوع حذف‌شده فقط برای تعدیل خروج موجودی باقی‌مانده قابل استفاده است");
+    if (receipt && qty < 0) throw new HttpError(400, "رسید خرید یا امانی باید با مقدار مثبت ثبت شود");
     if (qty > 0) {
       const landed = unitCost * qty + freight + customs;
       let receiptId: number | null = null;
@@ -375,7 +396,7 @@ export async function repackStock(ctx: Ctx & { userId: number }, input: { produc
     const pair = await tx.select().from(productVariants).where(inArray(productVariants.id, [input.sourceVariantId, input.targetVariantId])).orderBy(productVariants.id).for("update");
     const source = pair.find((v) => v.id === input.sourceVariantId);
     const target = pair.find((v) => v.id === input.targetVariantId);
-    if (!source || !target || source.productId !== p.id || target.productId !== p.id || !source.isActive || !target.isActive) throw new HttpError(400, "تنوع مبدأ یا مقصد معتبر نیست");
+    if (!source || !target || source.productId !== p.id || target.productId !== p.id || !target.isActive || target.deletedAt) throw new HttpError(400, "تنوع مبدأ یا مقصد معتبر نیست");
     const { inputQty, outputQty } = input;
     if (!Number.isInteger(inputQty) || !Number.isInteger(outputQty) || inputQty < 1 || outputQty < 1 || inputQty > 100000 || outputQty > 100000) throw new HttpError(400, "مقدار مصرف و تولید باید عدد صحیح مثبت باشد");
     if (source.onHand - source.reserved < inputQty) throw new HttpError(400, `موجودی آزاد تنوع مبدأ ${source.onHand - source.reserved} ${source.inventoryUnit} است`);

@@ -26,7 +26,7 @@ export function BuyBox({ product, variants, offers, options = [], purchaseOption
   // All purchasable choices. In single-vendor mode only one "store" option is exposed (central/variant, else buy-box offer).
   const all = useMemo<Choice[]>(() => {
     const list: Choice[] = [];
-    if (product.source === "central" && variants.length === 0) list.push({ key: "central", kind: "central", id: null, seller: siteName, price: product.basePrice, available: product.available, ship: null, prep: 1, warranty: "ضمانت اصالت و تازگی", city: "انبار مرکزی" });
+    if (product.source === "central" && variants.length === 0 && options.length === 0) list.push({ key: "central", kind: "central", id: null, seller: siteName, price: product.basePrice, available: product.available, ship: null, prep: 1, warranty: "ضمانت اصالت و تازگی", city: "انبار مرکزی" });
     for (const v of variants) if (v.isSellable) list.push({ key: `v:${v.id}`, kind: "variant", id: v.id, seller: siteName, price: v.price, available: v.available, ship: null, prep: 1, warranty: "ضمانت اصالت و تازگی", city: "انبار مرکزی", variant: v });
     for (const o of offers) list.push({ key: `o:${o.id}`, kind: "offer", id: o.id, seller: multiVendor ? o.shopName : siteName, price: o.price, available: o.available, ship: o.shippingCost, prep: o.prepDays, warranty: o.warranty, rating: o.rating, buyBox: o.isBuyBox, city: o.city });
     if (multiVendor) return list;

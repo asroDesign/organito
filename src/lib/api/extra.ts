@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, categories, detailAccounts, discountCodes, incompleteCarts, journalLines, media, products, productVariants, sellers, smsTemplates, ticketDepartments, tickets, users, centralLoyaltyMembers } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword, verifyPassword } from "../auth";
@@ -35,7 +35,7 @@ export const extraRoutes: Route[] = [
     const [product] = await db.select().from(products).where(eq(products.id, productId));
     if (!product) throw new HttpError(404, "محصول پیدا نشد");
     if (variantId) {
-      const [variant] = await db.select().from(productVariants).where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId)));
+      const [variant] = await db.select().from(productVariants).where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId), isNull(productVariants.deletedAt)));
       if (!variant) throw new HttpError(404, "تنوع محصول پیدا نشد");
       await db.update(productVariants).set({ costPrice: cost, price, compareAtPrice: sale }).where(eq(productVariants.id, variantId));
     } else await db.update(products).set({ basePrice: price, avgCost: cost, compareAtPrice: sale, updatedAt: new Date() }).where(eq(products.id, productId));

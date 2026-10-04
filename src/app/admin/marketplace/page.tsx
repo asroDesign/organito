@@ -86,7 +86,7 @@ async function WithdrawalsTab({ canManage }: { canManage: boolean }) {
   const list = await db.select({ w: withdrawals, s: sellers, wal: wallets }).from(withdrawals).innerJoin(sellers, eq(sellers.id, withdrawals.sellerId)).leftJoin(wallets, eq(wallets.sellerId, sellers.id)).orderBy(desc(withdrawals.createdAt));
   return (
     <Table head={["فروشنده", "مبلغ", "شبا", "تاریخ", "وضعیت", "پیگیری", ""]} empty={!list.length}>
-      {list.map(({ w, s }) => <tr key={w.id}><Td>{s.shopName}</Td><Td><b>{toman(w.amount)}</b></Td><Td><span dir="ltr">{maskIban(w.iban)}</span></Td><Td>{jdate(w.createdAt, true)}</Td><Td><StatusBadge status={w.status} map={WITHDRAW_STATUS} /></Td><Td>{w.trackingCode ?? "—"}</Td>
+      {list.map(({ w, s }) => <tr id={`withdrawal-${w.id}`} key={w.id} className="scroll-mt-24"><Td>{s.shopName}</Td><Td><b>{toman(w.amount)}</b></Td><Td><span dir="ltr">{maskIban(w.iban)}</span></Td><Td>{jdate(w.createdAt, true)}</Td><Td><StatusBadge status={w.status} map={WITHDRAW_STATUS} /></Td><Td>{w.trackingCode ?? "—"}</Td>
         <Td>{canManage && <div className="flex gap-1">
           {w.status === "pending" && <><ActionButton url={`/api/admin/withdrawals/${w.id}`} data={{ action: "approve" }} className="btn-success">تأیید</ActionButton><ActionButton url={`/api/admin/withdrawals/${w.id}`} data={{ action: "reject" }} prompt="دلیل رد:" className="btn-danger">رد</ActionButton></>}
           {w.status === "approved" && <ActionButton url={`/api/admin/withdrawals/${w.id}`} data={{ action: "process" }} className="btn-sm">در حال پرداخت</ActionButton>}

@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, Menu, X, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage, Heart, AlertTriangle, ChevronDown,
 } from "lucide-react";
@@ -14,6 +15,14 @@ export function SideNav({ items, groups, mobile, title }: { items: NavItem[]; gr
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", closeOnEscape); };
+  }, [open]);
   const allItems = [...items, ...(groups ?? []).flatMap((group) => group.items)];
   const isActive = (h: string) => path === h || (h.split("/").length > 2 && path.startsWith(h + "/")) || (path.startsWith(h + "/") && !allItems.some((i) => i.href !== h && path.startsWith(i.href)));
   const list = (
@@ -47,15 +56,15 @@ export function SideNav({ items, groups, mobile, title }: { items: NavItem[]; gr
   if (!mobile) return list;
   return (
     <>
-      <button className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="منو"><Menu className="h-5 w-5" /></button>
-      {open && (
-        <div className="fixed inset-0 z-50 lg:hidden">
+      <button type="button" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="بازکردن منوی پنل" aria-expanded={open}><Menu className="h-5 w-5" /></button>
+      {open && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] lg:hidden" dir="rtl">
           <div className="absolute inset-0 bg-slate-900/40" onClick={() => setOpen(false)} />
-          <div className="absolute inset-y-0 right-0 flex w-72 flex-col bg-white shadow-xl">
-            <div className="flex items-center justify-between border-b p-4"><b>{title}</b><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
+          <div role="dialog" aria-modal="true" aria-label={title ?? "منوی پنل"} className="absolute inset-y-0 right-0 flex w-[min(21rem,88vw)] flex-col bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-4"><b>{title}</b><button type="button" className="rounded-lg p-2 hover:bg-slate-100" aria-label="بستن منو" onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             {list}
           </div>
-        </div>
+        </div>, document.body
       )}
     </>
   );

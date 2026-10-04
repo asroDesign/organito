@@ -5,9 +5,9 @@ import { api, toast } from "./client";
 import { InventoryPartyForm } from "./InventoryPartyForm";
 
 type PartyOption = { id: number; name: string };
-export function InventoryReceiptForm({ productId, variantId, unit, parties }: { productId: number; variantId: number | null; unit: string; parties: PartyOption[] }) {
+export function InventoryReceiptForm({ productId, variantId, unit, parties, archived = false }: { productId: number; variantId: number | null; unit: string; parties: PartyOption[]; archived?: boolean }) {
   const router = useRouter();
-  const [type, setType] = useState<"purchase" | "consignment" | "adjust">("purchase");
+  const [type, setType] = useState<"purchase" | "consignment" | "adjust">(archived ? "adjust" : "purchase");
   const [busy, setBusy] = useState(false);
   const [partyModalOpen, setPartyModalOpen] = useState(false);
   const [values, setValues] = useState({ qty: "", unitCost: "", freight: "0", customs: "0", partyId: "", invoiceNumber: "", paymentLocation: "", paymentTrackingNumber: "", paidAmount: "0", note: "" });
@@ -32,7 +32,7 @@ export function InventoryReceiptForm({ productId, variantId, unit, parties }: { 
     } catch (error) { toast((error as Error).message, false); }
     finally { setBusy(false); }
   }}>
-    <label className="col-span-2 flex flex-col gap-1 text-sm"><span className="text-slate-600">نوع عملیات</span><select className="input" value={type} onChange={(event) => setType(event.target.value as typeof type)}><option value="purchase">خرید و رسید فاکتوردار</option><option value="consignment">دریافت امانی از تولیدکننده</option><option value="adjust">تعدیل ورود / خروج</option></select></label>
+    <label className="col-span-2 flex flex-col gap-1 text-sm"><span className="text-slate-600">نوع عملیات</span><select className="input" value={type} onChange={(event) => setType(event.target.value as typeof type)}>{!archived && <><option value="purchase">خرید و رسید فاکتوردار</option><option value="consignment">دریافت امانی از تولیدکننده</option></>}<option value="adjust">تعدیل ورود / خروج</option></select></label>
     {isReceipt && <label className="col-span-2 flex flex-col gap-1 text-sm"><span className="flex items-center justify-between gap-2"><span className="text-slate-600">تولیدکننده / صاحب کالا *</span><button type="button" className="btn-ghost whitespace-nowrap px-2 py-1 text-xs" onClick={() => setPartyModalOpen(true)}>+ ثبت تولیدکننده</button></span><select className="input" required value={values.partyId} onChange={(event) => patch("partyId", event.target.value)}><option value="">انتخاب کنید</option>{parties.map((party) => <option key={party.id} value={party.id}>{party.name}</option>)}</select></label>}
     <label className="col-span-2 flex flex-col gap-1 text-sm"><span className="text-slate-600">{isReceipt ? `مقدار ورود (${unit})` : `مقدار تعدیل (${unit}؛ منفی برای خروج)`}</span><input className="input" type="number" step="1" required value={values.qty} onChange={(event) => patch("qty", event.target.value)} placeholder={isReceipt ? `مثلاً ۱۲ ${unit}` : `مثلاً ۵ برای ورود یا ۳- برای خروج`} /></label>
     {type !== "consignment" && <label className="flex flex-col gap-1 text-sm"><span className="text-slate-600">بهای خرید هر واحد</span><input className="input" type="number" min="0" step="1" value={values.unitCost} onChange={(event) => patch("unitCost", event.target.value)} /></label>}

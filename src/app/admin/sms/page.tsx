@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { smsLogs, smsTemplates } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
@@ -10,9 +10,12 @@ import { SmsTemplateEditor, SmsSender } from "@/components/SmsPanel";
 import { jdate, maskPhone } from "@/lib/util";
 import { JsonForm } from "@/components/client";
 
-export default async function SmsPage() {
+export default async function SmsPage({ searchParams }: { searchParams: Promise<{ log?: string }> }) {
+  const selectedValue = (await searchParams).log;
+  const selectedLog = selectedValue && /^\d+$/.test(selectedValue) ? selectedValue : undefined;
   await requirePage({ perm: "SMS_MANAGE" });
-  const [tpls, logs, s] = await Promise.all([db.select().from(smsTemplates).orderBy(smsTemplates.event, smsTemplates.id), db.select().from(smsLogs).orderBy(desc(smsLogs.createdAt)).limit(40), getSettings()]);
+  const [tpls, recentLogs, selectedRows, s] = await Promise.all([db.select().from(smsTemplates).orderBy(smsTemplates.event, smsTemplates.id), db.select().from(smsLogs).orderBy(desc(smsLogs.createdAt)).limit(40), selectedLog ? db.select().from(smsLogs).where(eq(smsLogs.id, Number(selectedLog))).limit(1) : Promise.resolve([]), getSettings()]);
+  const logs = [...new Map([...selectedRows, ...recentLogs].map((row) => [row.id, row])).values()].sort((a,b)=>b.createdAt.getTime()-a.createdAt.getTime());
   const keyOk = !!s.smsApiKey || (s.smsProvider === "kavenegar" ? !!process.env.KAVENEGAR_API_KEY : !!process.env.SMSIR_API_KEY);
   const events: [string, string, string[]][] = [...Object.entries(SMS_EVENTS).map(([k, v]) => [k, v.title, v.vars] as [string, string, string[]]), ["manual", "ارسال دستی / کمپین", []]];
   const stats = { sent: logs.filter((l) => l.status === "sent" || l.status === "simulated").length, failed: logs.filter((l) => l.status === "failed").length };
@@ -62,7 +65,7 @@ export default async function SmsPage() {
           <Card title="گزارش ارسال">
             <Table head={["رویداد", "گیرنده", "وضعیت", "زمان", ""]}>
               {logs.map((l) => (
-                <tr key={l.id} title={`${l.body}\n\n${l.response ?? ""}`}>
+                <tr id={`sms-log-${l.id}`} key={l.id} className={selectedLog === String(l.id) ? "bg-amber-50" : ""} title={`${l.body}\n\n${l.response ?? ""}`}>
                   <Td className="text-[11px]">{l.event}</Td><Td className="text-xs"><span dir="ltr">{maskPhone(l.phone)}</span></Td>
                   <Td><StatusBadge status={l.status} /><div className="text-[10px] text-slate-400">{l.attempts.toLocaleString("fa-IR")} تلاش</div></Td><Td className="text-[11px]">{jdate(l.createdAt, true)}</Td>
                   <Td>{l.status === "failed" && <ActionButton url={`/api/admin/sms/logs/${l.id}/retry`} className="btn-sm">ارسال مجدد</ActionButton>}</Td>

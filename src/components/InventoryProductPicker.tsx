@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Check, ChevronDown, PackageSearch, Search, X } from "lucide-react";
 import { InvClient } from "./InvClient";
 
-export type InventoryChoice = { productId: number; variantId: number | null; name: string; variant: string | null; sku: string; unit: string; baseUnit: string; baseUnitAmount: number; onHand: number; reserved: number; unitCost: number; lowStockThreshold: number; consignmentOwners: { name: string; quantity: number }[] };
+export type InventoryChoice = { productId: number; variantId: number | null; name: string; variant: string | null; sku: string; unit: string; baseUnit: string; baseUnitAmount: number; onHand: number; reserved: number; unitCost: number; lowStockThreshold: number; deleted?: boolean; consignmentOwners: { name: string; quantity: number }[] };
 type InventoryParty = { id: number; name: string };
 
 const normalize = (value: string) => value

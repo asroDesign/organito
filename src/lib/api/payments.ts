@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getSettings } from "../settings";
 import { db } from "@/db";
 import { categories, media, productImages, products, productVariants, sellerOffers, sellers } from "@/db/schema";
@@ -61,7 +61,7 @@ export const paymentRoutes: Route[] = [
     const pr = row.p;
     const [images, variants, offers, fests] = await Promise.all([
       db.select({ mediaId: productImages.mediaId }).from(productImages).where(eq(productImages.productId, id)).orderBy(productImages.sortOrder),
-      db.select().from(productVariants).where(and(eq(productVariants.productId, id), eq(productVariants.isActive, true))),
+      db.select().from(productVariants).where(and(eq(productVariants.productId, id), eq(productVariants.isActive, true), isNull(productVariants.deletedAt))),
       db.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId)).where(and(eq(sellerOffers.productId, id), eq(sellerOffers.status, "approved"), eq(sellers.status, "approved"), eq(sellers.restricted, false))),
       activeFestivals(),
     ]);

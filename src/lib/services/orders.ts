@@ -1,5 +1,5 @@
 import { quoteCredit,reserveCredit,restoreCredit } from "../credit";
-import { and, eq, inArray, sql, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, ne } from "drizzle-orm";
 import { db } from "@/db";
 import {
   orders, orderItems, sellerShipments, orderHistory, payments, products, productVariants, sellerOffers, sellers,
@@ -120,7 +120,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
       lines.push({ ...base, allowBackorder: false, title: `${p.nameFa}`, variantTitle: option.title, sellerId: row.s.id, sellerName: row.s.shopName, warranty: row.o.warranty, maxQty: Math.min(100, Math.max(0, available)), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error, unitCost: price,
         error: option.error ?? (ok ? undefined : "موجودی فروشنده کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     } else if (it.variantId) {
-      const vq = tx.select().from(productVariants).where(and(eq(productVariants.id, it.variantId), eq(productVariants.productId, p.id)));
+      const vq = tx.select().from(productVariants).where(and(eq(productVariants.id, it.variantId), eq(productVariants.productId, p.id), isNull(productVariants.deletedAt)));
       const [v] = lock ? await vq.for("update") : await vq;
       if (!v || !v.isActive || !v.isSellable) { lines.push({ ...base, error: "این تنوع برای فروش مستقیم فعال نیست" }); continue; }
       const available = v.onHand - v.reserved;
@@ -130,8 +130,8 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
         error: option.error ?? (ok ? undefined : "موجودی انبار مرکزی کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     } else {
       if (p.source !== "central") { lines.push({ ...base, error: "برای این محصول فروشنده را انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
-      const hasVariants = await tx.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true))).limit(1);
-      if (hasVariants.length) { lines.push({ ...base, error: "برای این محصول باید تنوع (مشخصات) را از صفحه محصول انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
+      const hasVariants = await tx.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true), isNull(productVariants.deletedAt))).limit(1);
+      if ((p.options?.length ?? 0) > 0 || hasVariants.length) { lines.push({ ...base, error: "برای این محصول باید تنوع (مشخصات) را از صفحه محصول انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
       const available = p.onHand - p.reserved;
       const ok = available >= it.qty || p.allowBackorder;
       const option = addPurchaseOptions(p, it, p.basePrice);

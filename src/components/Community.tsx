@@ -20,7 +20,7 @@ function ListInput({ label, tone, items, setItems }: { label: string; tone: "pro
     <div>
       <b className={`mb-1.5 flex items-center gap-1 text-xs ${color}`}>{tone === "pro" ? <Plus className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}{label}</b>
       <div className="flex gap-2"><input value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addIt(); } }} placeholder={tone === "pro" ? "مثلاً: طعم عالی" : "مثلاً: بسته‌بندی ضعیف"} className="input" /><button type="button" onClick={addIt} className="btn-sm">افزودن</button></div>
-      <ul className="mt-2 space-y-1">{items.map((it, i) => <li key={i} className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1 text-xs"><span className={color}>{tone === "pro" ? "+" : "−"} <span className="text-slate-700">{it}</span></span><button type="button" onClick={() => setItems(items.filter((_, j) => j !== i))}><X className="h-3 w-3 text-slate-400" /></button></li>)}</ul>
+      <ul className="mt-2 space-y-1">{items.map((it, i) => <li key={i} className="flex items-center justify-between rounded-lg bg-slate-50 px-2.5 py-1 text-xs"><span className={color}>{tone === "pro" ? "+" : "−"} <span>{it}</span></span><button type="button" onClick={() => setItems(items.filter((_, j) => j !== i))}><X className="h-3 w-3 text-slate-400" /></button></li>)}</ul>
     </div>
   );
 }

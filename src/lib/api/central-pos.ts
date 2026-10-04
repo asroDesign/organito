@@ -1,7 +1,7 @@
 import { issueReward } from "../crm";
 import { getSettings } from "../settings";
 import { isJalaliBirthday } from "../commerce-common";
-import { and, desc, eq, inArray, isNotNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { centralBirthdaySms, centralLoyaltyMembers, settings, centralPosItems, centralPosSales, posTerminals, products, productVariants, stockMovements, carriers } from "@/db/schema";
 import { requireApi, rateLimit } from "../auth";
@@ -32,7 +32,7 @@ export const centralPosRoutes: Route[] = [
  { method:"DELETE", pattern:"admin/settings/pos-terminals/:id", handler:async(_req,p,meta)=>{const user=await requireApi("SETTINGS_MANAGE"),id=int(p.id,1);const [row]=await db.delete(posTerminals).where(and(eq(posTerminals.id,id),sql`${posTerminals.sellerId} is null`)).returning();if(!row)throw new HttpError(404,"کارتخوان یافت نشد");await audit(db,{userId:user.id,...meta},"pos_terminal.delete","pos_terminal",id,row,null);return{ok:true}}},
  { method:"GET", pattern:"admin/pos/products", handler:async()=>{
    await requireApi("INVENTORY_MANAGE");
-   const rows=await db.select({variant:productVariants,product:products,lastCost:sql<number>`coalesce(${productVariants.costPrice},(select sm.unit_cost from stock_movements sm where sm.variant_id=${productVariants.id} and sm.type in ('purchase_in','repack_in') order by sm.created_at desc, sm.id desc limit 1),${products.avgCost},0)`}).from(productVariants).innerJoin(products,eq(products.id,productVariants.productId)).where(and(eq(productVariants.isActive,true),eq(productVariants.isSellable,true),eq(products.source,"central"),eq(products.status,"active"))).orderBy(products.nameFa);
+   const rows=await db.select({variant:productVariants,product:products,lastCost:sql<number>`coalesce(${productVariants.costPrice},(select sm.unit_cost from stock_movements sm where sm.variant_id=${productVariants.id} and sm.type in ('purchase_in','repack_in') order by sm.created_at desc, sm.id desc limit 1),${products.avgCost},0)`}).from(productVariants).innerJoin(products,eq(products.id,productVariants.productId)).where(and(eq(productVariants.isActive,true),eq(productVariants.isSellable,true),isNull(productVariants.deletedAt),eq(products.source,"central"),eq(products.status,"active"))).orderBy(products.nameFa);
    return rows.filter(x=>x.variant.onHand>x.variant.reserved && (x.variant.price??x.product.basePrice)>0).map(({variant,product,lastCost})=>({offerId:variant.id,productId:product.id,name:product.nameFa,brand:product.brand,sku:variant.sku,price:variant.price??product.basePrice,cost:Number(lastCost),stock:variant.onHand-variant.reserved,weight:product.weight??0}));
  }},
  { method:"POST", pattern:"admin/pos/shipping-options", handler:async(req)=>{
@@ -73,7 +73,7 @@ export const centralPosRoutes: Route[] = [
    const percent=int(b.discountPercent??0,0,90),cash=int((b.settlement as Record<string,unknown>|undefined)?.cash??0),card=int((b.settlement as Record<string,unknown>|undefined)?.card??0),method=str(b.paymentMethod,10),terminalId=card>0?int(b.terminalId,1):null;const ids=[...items.keys()];
    const sale=await db.transaction(async tx=>{
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${key}))`);const [duplicate]=await tx.select().from(centralPosSales).where(eq(centralPosSales.idempotencyKey,key));if(duplicate){if(duplicate.createdBy!==user.id)throw new HttpError(409,"شناسه تکراری");return {...duplicate,repeated:true};}
-    const rows=await tx.select({variant:productVariants,product:products,lastCost:sql<number>`coalesce(${productVariants.costPrice},(select sm.unit_cost from stock_movements sm where sm.variant_id=${productVariants.id} and sm.type in ('purchase_in','repack_in') order by sm.created_at desc, sm.id desc limit 1),${products.avgCost},0)`}).from(productVariants).innerJoin(products,eq(products.id,productVariants.productId)).where(and(inArray(productVariants.id,ids),eq(productVariants.isActive,true),eq(productVariants.isSellable,true),eq(products.source,"central"),eq(products.status,"active"))).for("update");
+    const rows=await tx.select({variant:productVariants,product:products,lastCost:sql<number>`coalesce(${productVariants.costPrice},(select sm.unit_cost from stock_movements sm where sm.variant_id=${productVariants.id} and sm.type in ('purchase_in','repack_in') order by sm.created_at desc, sm.id desc limit 1),${products.avgCost},0)`}).from(productVariants).innerJoin(products,eq(products.id,productVariants.productId)).where(and(inArray(productVariants.id,ids),eq(productVariants.isActive,true),eq(productVariants.isSellable,true),isNull(productVariants.deletedAt),eq(products.source,"central"),eq(products.status,"active"))).for("update");
     if(rows.length!==ids.length)throw new HttpError(400,"یکی از کالاها دیگر برای فروش فعال نیست");const norm=rows.map(({variant,product,lastCost})=>({variant,product,lastCost:Number(lastCost),qty:items.get(variant.id)!}));
     for(const x of norm)if(x.variant.onHand-x.variant.reserved<x.qty)throw new HttpError(409,`موجودی «${x.product.nameFa}» کافی نیست`);
     const subtotal=norm.reduce((s,x)=>s+(x.variant.price??x.product.basePrice)*x.qty,0);if(!Number.isSafeInteger(subtotal))throw new HttpError(400,"مبلغ فاکتور بیش از حد مجاز است");

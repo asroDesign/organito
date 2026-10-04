@@ -18,11 +18,11 @@ export default async function ProductPrices({ searchParams }: { searchParams: Pr
   const rowsSql = sql`(
     SELECT p.id AS product_id, NULL::int AS variant_id, p.name_fa, p.sku, NULL::text AS variant_title,
       p.avg_cost AS cost_price, p.base_price AS price, p.compare_at_price AS sale_price, p.main_image_id AS image_id
-    FROM products p WHERE p.status <> 'deleted' AND NOT EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id=p.id AND v.is_active)
+    FROM products p WHERE p.status <> 'deleted' AND NOT EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id=p.id AND v.is_active AND v.deleted_at IS NULL)
     UNION ALL
     SELECT p.id AS product_id, v.id AS variant_id, p.name_fa, v.sku, v.title AS variant_title,
       v.cost_price, v.price, v.compare_at_price AS sale_price, p.main_image_id AS image_id
-    FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active WHERE p.status <> 'deleted'
+    FROM products p JOIN product_variants v ON v.product_id=p.id AND v.is_active AND v.deleted_at IS NULL WHERE p.status <> 'deleted'
   ) prices`;
   const filter = q ? sql`WHERE name_fa ILIKE ${needle} OR sku ILIKE ${needle} OR coalesce(variant_title,'') ILIKE ${needle}` : sql``;
   const [{ total = 0 } = {}] = (await db.execute(sql`SELECT count(*)::int AS total FROM ${rowsSql} ${filter}`)).rows as { total: number }[];

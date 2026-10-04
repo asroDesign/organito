@@ -139,7 +139,7 @@ export const publicRoutes: Route[] = [
     const [prod] = await db.select().from(products).where(and(eq(products.id, id), inArray(products.status, ["active", "out_of_stock"])));
     if (!prod) throw new HttpError(404, "محصول یافت نشد");
     const images = await db.select({ mediaId: productImages.mediaId }).from(productImages).where(eq(productImages.productId, id)).orderBy(productImages.sortOrder);
-    const variants = await db.select().from(productVariants).where(and(eq(productVariants.productId, id), eq(productVariants.isActive, true)));
+    const variants = await db.select().from(productVariants).where(and(eq(productVariants.productId, id), eq(productVariants.isActive, true), isNull(productVariants.deletedAt)));
     const offers = await db.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId))
       .where(and(eq(sellerOffers.productId, id), eq(sellerOffers.status, "approved"), eq(sellers.status, "approved"), eq(sellers.restricted, false)));
     return {

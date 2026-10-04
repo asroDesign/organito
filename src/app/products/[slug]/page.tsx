@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { MapPin, CalendarDays, Sprout, BadgeCheck, FlaskConical, Package, Thermometer, Hourglass, FileText, Microscope, ListChecks, MessageSquareText, MessageCircleQuestion, Store, Leaf, Star, Plus, Minus, CheckCircle2 } from "lucide-react";
 import { db } from "@/db";
 import { categories, productAnswers, productImages, productQuestions, products, productVariants, reviews, sellerOffers, sellers, users } from "@/db/schema";
@@ -10,6 +10,7 @@ import { getSettings } from "@/lib/settings";
 import { activeFestivals, festivalFor } from "@/lib/marketing";
 import { listShopProducts } from "@/lib/queries";
 import { stripHtml, toSafeHtml } from "@/lib/html";
+import { RichContent } from "@/components/RichContent";
 import { AUTH_LABEL, faNum, jdate, toman } from "@/lib/util";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -43,7 +44,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const u = await getUser();
   const [imgs, variants, offers, fests, related, s, revs, qs] = await Promise.all([
     db.select().from(productImages).where(eq(productImages.productId, p.id)).orderBy(productImages.sortOrder),
-    db.select().from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true))),
+    db.select().from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true), isNull(productVariants.deletedAt))),
     db.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId))
       .where(and(eq(sellerOffers.productId, p.id), eq(sellerOffers.status, "approved"), eq(sellers.status, "approved"), eq(sellers.restricted, false))),
     activeFestivals(),
@@ -122,7 +123,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         </div>
 
         <div className="space-y-8">
-          <section id="desc" className="scroll-mt-44 rounded-[2rem] bg-white p-6 ring-1 ring-emerald-900/5 md:p-8"><h2 className="mb-4 flex items-center gap-2 text-xl font-black text-emerald-950"><FileText className="h-5 w-5 text-lime-500" />معرفی محصول</h2><div className="prose-rich" dangerouslySetInnerHTML={{ __html: toSafeHtml(p.description || p.shortDesc) }} /></section>
+          <section id="desc" className="scroll-mt-44 rounded-[2rem] bg-white p-6 ring-1 ring-emerald-900/5 md:p-8"><h2 className="mb-4 flex items-center gap-2 text-xl font-black text-emerald-950"><FileText className="h-5 w-5 text-lime-500" />معرفی محصول</h2><div className="prose-rich"><RichContent content={p.description || p.shortDesc}/></div></section>
           {p.technicalReview && <section id="review" className="scroll-mt-44 rounded-[2rem] bg-gradient-to-l from-lime-50 to-white p-6 ring-1 ring-lime-200 md:p-8"><h2 className="mb-4 flex items-center gap-2 text-xl font-black text-emerald-950"><Microscope className="h-5 w-5 text-lime-600" />بررسی تخصصی و ارزش غذایی</h2><div className="prose-rich" dangerouslySetInnerHTML={{ __html: toSafeHtml(p.technicalReview) }} /></section>}
           <section id="specs" className="scroll-mt-44 grid gap-6 lg:grid-cols-2">
             <div className="rounded-[2rem] bg-white p-6 ring-1 ring-emerald-900/5">

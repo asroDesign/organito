@@ -314,6 +314,7 @@ export const productVariants = pgTable("product_variants", {
   reserved: integer("reserved").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   isSellable: boolean("is_sellable").notNull().default(true),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
 });
 
 export const sellerOffers = pgTable("seller_offers", {
@@ -1135,6 +1136,6 @@ export const returnRequests = pgTable("return_requests", {
   id: serial("id").primaryKey(), kind: text("kind").notNull(), saleId: integer("sale_id").notNull(), number: text("number").notNull(),
   customerPhone: text("customer_phone").notNull(), customerName: text("customer_name").notNull(), sellerId: integer("seller_id"),
   reason: text("reason").notNull(), status: text("status").notNull().default("pending"), amount: money("amount"),
-  adminNote: text("admin_note"), refundReference: text("refund_reference"), createdBy: integer("created_by").notNull(), processedBy: integer("processed_by"),
+  adminNote: text("admin_note"), refundReference: text("refund_reference"), refundMethod: text("refund_method"), createdBy: integer("created_by").notNull(), processedBy: integer("processed_by"),
   createdAt: created(), processedAt: timestamp("processed_at",{withTimezone:true}),
 },t=>[uniqueIndex("return_sale_unique").on(t.kind,t.saleId)]);

@@ -10,7 +10,7 @@ import { paginationParams } from '@/lib/pagination';
 
 type Sale = { id: number; kind: string; number: string; name: string; phone: string; shop: string; createdAt: Date; total: number; status: string; paymentStatus: string; method: string };
 
-export default async function AdminOrders({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; pay?: string; channel?: string; page?: string; pageSize?: string }> }) {
+export default async function AdminOrders({ searchParams }: { searchParams: Promise<{ q?: string; status?: string; pay?: string; channel?: string; order?: string; page?: string; pageSize?: string }> }) {
   await requirePage({ perm: 'ORDERS_VIEW' });
   const sp = await searchParams;
   const filter = [sql`true`];
@@ -18,6 +18,7 @@ export default async function AdminOrders({ searchParams }: { searchParams: Prom
   if (sp.status) filter.push(sql`status=${sp.status}`);
   if (sp.pay) filter.push(sql`"paymentStatus"=${sp.pay}`);
   if (sp.channel) filter.push(sql`kind=${sp.channel}`);
+  if (sp.order && /^\d+$/.test(sp.order)) filter.push(sql`kind='online' and id=${Number(sp.order)}`);
   const sales = sql`select * from (
     select o.id,'online'::text kind,o.number,u.name,u.phone,'سفارش آنلاین'::text shop,o.created_at "createdAt",(o.total+o.credit_amount)::float8 total,o.status,o.payment_status "paymentStatus",'online'::text method from orders o join users u on u.id=o.customer_id
     union all select p.id,'central',p.number,p.customer_name,p.customer_phone,'انبار مرکزی',p.created_at,p.total::float8,p.status,case when p.status='returned' then 'refunded' else 'paid' end,p.payment_method from central_pos_sales p
@@ -32,7 +33,7 @@ export default async function AdminOrders({ searchParams }: { searchParams: Prom
   const list = result.rows as Sale[];
   const statuses = { ...ORDER_STATUS, returned: 'مرجوع‌شده' };
   const exportParams = new URLSearchParams();
-  for (const key of ['q', 'status', 'pay', 'channel'] as const) if (sp[key]) exportParams.set(key, sp[key]!);
+  for (const key of ['q', 'status', 'pay', 'channel', 'order'] as const) if (sp[key]) exportParams.set(key, sp[key]!);
   const exportHref = `/admin/orders/export${exportParams.size ? `?${exportParams.toString()}` : ''}`;
   return <>
     <PageHeader title="سفارش‌ها و فاکتورها" subtitle="فروش آنلاین و حضوری مرکزی و تأمین‌کنندگان، به ترتیب تاریخ" actions={<Link href={exportHref} className="btn-primary">دریافت خروجی اکسل</Link>} />

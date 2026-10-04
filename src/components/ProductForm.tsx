@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { api, toast, ImageUploader } from "./client";
 import { RichEditor } from "./RichEditor";
+import { ShortcodeInsert } from "./ShortcodeInsert";
 import { VideoUploader } from "./VideoUploader";
 
 const ORGANIC_FIELDS: [string, string, string][] = [
@@ -79,7 +80,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
         </div>
         <div className={tab === "content" ? "space-y-3" : "hidden"}>
           <label className="block text-sm">توضیح کوتاه<textarea name="shortDesc" defaultValue={initial.shortDesc ?? ""} className="input mt-1 min-h-16" /></label>
-          <div className="text-sm"><b className="mb-1.5 block">توضیحات کامل</b><RichEditor value={desc} onChange={setDesc} placeholder="معرفی کامل محصول، روش تولید، نحوه مصرف…" /></div>
+          <div className="text-sm"><b className="mb-1.5 block">توضیحات کامل</b><ShortcodeInsert onInsert={(token) => setDesc(`${desc}<p>${token}</p>`)} /><RichEditor value={desc} onChange={setDesc} placeholder="معرفی کامل محصول، روش تولید، نحوه مصرف…" /><p className="mt-1 text-xs text-slate-400">دسته محصول را با شناسه یا slug وارد کنید. شورت‌کدهای پشتیبانی‌شده: محصولات، ویدیو و کاروسل مقاله.</p></div>
           <div className="text-sm"><b className="mb-1.5 block">بررسی تخصصی و ارزش غذایی</b><RichEditor value={review} onChange={setReview} placeholder="بررسی کارشناسی، جدول ارزش غذایی، نتایج آزمایشگاه…" minHeight={200} /></div>
         </div>
         <div className={tab === "specs" ? "grid gap-6 lg:grid-cols-2" : "hidden"}>
@@ -161,13 +162,12 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
   const generate = () => {
     const valid = opts.filter((o) => o.name && o.values.length);
     if (!valid.length) { toast("ابتدا حداقل یک پارامتر با مقادیر تعریف کنید", false); return; }
-    const key = (a: Record<string, string>) => valid.map((o) => a[o.name]).join("|");
+    const key = (a: Record<string, string>) => JSON.stringify(valid.map((o) => a[o.name] ?? ""));
     const old = new Map(variants.map((v) => [key(v.attrs), v]));
     const next = combos(valid).map((a, i) => old.get(key(a)) ?? { title: valid.map((o) => a[o.name]).join(" / "), attrs: a, sku: `${baseSku || "SKU"}-${i + 1}`, price: basePrice, rewardPoints: 0, onHand: 0, inventoryUnit: baseUnit, baseUnitAmount: 1, isActive: true, isSellable: true });
-    // keep removed-but-existing variants as inactive (they may have reservations)
-    const removed = variants.filter((v) => v.id && !next.includes(v)).map((v) => ({ ...v, isActive: false }));
     setOpts(valid);
-    setVariants([...next, ...removed.filter((r) => !next.some((n) => key(n.attrs) === key(r.attrs)))]);
+    // Removed combinations are omitted from the submitted list and soft-deleted by the server.
+    setVariants(next);
   };
   const upd = (i: number, p: Partial<Variant>) => setVariants(variants.map((x, j) => (j === i ? { ...x, ...p } : x)));
   return (
@@ -191,7 +191,7 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
       {variants.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-sm">
-            <thead className="text-xs text-slate-500"><tr><th className="p-2 text-right">ترکیب</th><th className="p-2 text-right">SKU</th><th className="p-2 text-right">واحد شمارش</th><th className="p-2 text-right">هر واحد چند {baseUnit} است؟</th><th className="p-2 text-right">قیمت (تومان)</th><th className="p-2 text-right">امتیاز خرید</th><th className="p-2 text-right">موجودی اولیه</th><th className="p-2">قابل فروش</th><th className="p-2">فعال</th></tr></thead>
+            <thead className="text-xs text-slate-500"><tr><th className="p-2 text-right">ترکیب</th><th className="p-2 text-right">SKU</th><th className="p-2 text-right">واحد شمارش</th><th className="p-2 text-right">هر واحد چند {baseUnit} است؟</th><th className="p-2 text-right">قیمت (تومان)</th><th className="p-2 text-right">امتیاز خرید</th><th className="p-2 text-right">موجودی اولیه</th><th className="p-2">قابل فروش</th><th className="p-2">فعال</th><th className="p-2">حذف</th></tr></thead>
             <tbody className="divide-y">
               {variants.map((v, i) => (
                 <tr key={i} className={v.isActive ? "" : "opacity-50"}>
@@ -204,6 +204,7 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
                   <td className="p-2"><input type="number" value={v.onHand} disabled={!!v.id} title={v.id ? "موجودی از بخش انبار تغییر می‌کند" : ""} onChange={(e) => upd(i, { onHand: Number(e.target.value) })} className="input" /></td>
                   <td className="p-2 text-center"><input type="checkbox" checked={v.isSellable !== false} title={v.isSellable ? "در فروشگاه و فروش حضوری قابل عرضه است" : "فقط برای مدیریت انبار و بسته‌بندی"} onChange={(e) => upd(i, { isSellable: e.target.checked })} /></td>
                   <td className="p-2 text-center"><input type="checkbox" checked={v.isActive} onChange={(e) => upd(i, { isActive: e.target.checked })} /></td>
+                  <td className="p-2 text-center"><button type="button" title="حذف نرم تنوع؛ سوابق و ارجاعات انبار حفظ می‌شوند" aria-label={`حذف تنوع ${v.title}`} onClick={() => setVariants(variants.filter((_, j) => j !== i))}><Trash2 className="mx-auto size-4 text-rose-600" /></button></td>
                 </tr>
               ))}
             </tbody>
