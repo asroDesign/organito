@@ -23,6 +23,7 @@ export const marketingRoutes: Route[] = [
     const data = {
       name: str(b.name, 80), code: str(b.code, 30).toLowerCase().replace(/[^a-z0-9_-]/g, "") || `c${Date.now().toString(36)}`,
       trackingUrl: str(b.trackingUrl, 300) || null, baseCost: int(b.baseCost ?? 0), perKgCost: int(b.perKgCost ?? 0), freeThreshold: int(b.freeThreshold ?? 0),
+      supportsFreightCollect: b.supportsFreightCollect === true,
       minDays: int(b.minDays ?? 1, 0, 60), maxDays: int(b.maxDays ?? 3, 0, 90), sortOrder: int(b.sortOrder ?? 0, 0, 1000), isActive: b.isActive !== false,
     };
     if (!data.name) throw new HttpError(400, "نام شرکت پستی الزامی است");
@@ -43,6 +44,7 @@ export const marketingRoutes: Route[] = [
       name: str(b.name, 80) || old.name, trackingUrl,
       baseCost: b.baseCost !== undefined ? int(b.baseCost) : old.baseCost, perKgCost: b.perKgCost !== undefined ? int(b.perKgCost) : old.perKgCost,
       freeThreshold: b.freeThreshold !== undefined ? int(b.freeThreshold) : old.freeThreshold, minDays: b.minDays !== undefined ? int(b.minDays, 0, 60) : old.minDays,
+      supportsFreightCollect: b.supportsFreightCollect !== undefined ? b.supportsFreightCollect === true : old.supportsFreightCollect,
       maxDays: b.maxDays !== undefined ? int(b.maxDays, 0, 90) : old.maxDays, sortOrder: b.sortOrder !== undefined ? int(b.sortOrder, 0, 1000) : old.sortOrder,
       isActive: b.isActive !== undefined ? b.isActive === true : old.isActive,
     };

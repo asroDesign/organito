@@ -154,7 +154,7 @@ export const publicRoutes: Route[] = [
     const b = await body(req);
     const items = sanitizeCart(b.items);
     const u = await getUser();
-    return db.transaction((tx) => quoteCart(tx, items, false, { userId: u?.id ?? null, code: str(b.code, 30), city: str(b.city, 60), carrierId: b.carrierId ? int(b.carrierId, 1) : null }));
+    return db.transaction((tx) => quoteCart(tx, items, false, { userId: u?.id ?? null, code: str(b.code, 30), city: str(b.city, 60), carrierId: b.carrierId ? int(b.carrierId, 1) : null, freightCollect: b.freightCollect === true }));
   } },
 
   { method: "GET", pattern: "media/library", handler: async (req) => {
@@ -249,7 +249,7 @@ export const publicRoutes: Route[] = [
         invoiceDetails={companyName:identity.companyName,companyNationalId:identity.companyNationalId,managerName:identity.companyManager};
       } else throw new HttpError(400,"نوع فاکتور رسمی را انتخاب کنید");
     }
-    const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null, recoveryKey, officialInvoiceType:invoiceType, officialInvoiceDetails:invoiceDetails, attribution: readAttribution(req) });
+    const order = await placeOrder({ userId: u.id, ...m }, items, address, `${u.id}:${key}`, { code: str(b.code, 30), carrierId: b.carrierId ? int(b.carrierId, 1) : null, freightCollect: b.freightCollect === true, recoveryKey, officialInvoiceType:invoiceType, officialInvoiceDetails:invoiceDetails, attribution: readAttribution(req) });
     return { id: order.id, number: order.number, paid:order.paymentStatus==="paid" };
   } },
   { method: "POST", pattern: "orders/:id/confirm", handler: async (_r, p, m) => {

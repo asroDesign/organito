@@ -3,7 +3,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { JsonForm } from "./client";
 
-type C = { id: number; name: string; trackingUrl: string; baseCost: number; perKgCost: number; freeThreshold: number; minDays: number; maxDays: number; sortOrder: number };
+type C = { id: number; name: string; trackingUrl: string; baseCost: number; perKgCost: number; freeThreshold: number; minDays: number; maxDays: number; sortOrder: number; supportsFreightCollect: boolean };
 export function CarrierEditor({ c }: { c: C }) {
   const [open, setOpen] = useState(false);
   return (
@@ -15,6 +15,7 @@ export function CarrierEditor({ c }: { c: C }) {
             <div className="mb-3 flex justify-between"><b>ویرایش {c.name}</b><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             <JsonForm url={`/api/admin/carriers/${c.id}`} submit="ذخیره" resetOnDone={false} onDone={() => setOpen(false)} fields={[
               { name: "name", label: "نام", required: true, defaultValue: c.name }, { name: "trackingUrl", label: "آدرس رهگیری", defaultValue: c.trackingUrl },
+              { name: "supportsFreightCollect", label: "امکان ارسال پس‌کرایه", type: "checkbox", defaultValue: c.supportsFreightCollect },
               { name: "baseCost", label: "هزینه پایه", type: "number", half: true, defaultValue: c.baseCost }, { name: "perKgCost", label: "هر کیلو اضافه", type: "number", half: true, defaultValue: c.perKgCost },
               { name: "freeThreshold", label: "ارسال رایگان از", type: "number", half: true, defaultValue: c.freeThreshold }, { name: "sortOrder", label: "ترتیب", type: "number", half: true, defaultValue: c.sortOrder },
               { name: "minDays", label: "حداقل روز", type: "number", half: true, defaultValue: c.minDays }, { name: "maxDays", label: "حداکثر روز", type: "number", half: true, defaultValue: c.maxDays },

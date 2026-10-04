@@ -40,6 +40,7 @@ export default async function CentralPosLabel({ params }: { params: Promise<{ id
     date: jdate(sale.createdAt),
     total: toman(sale.total),
     payment: "پرداخت‌شده در محل",
+    shippingCharge: sale.shippingFreightCollect ? "پس‌کرایه؛ هزینه ارسال هنگام تحویل به شرکت پستی پرداخت می‌شود" : "",
     barcode: sale.shippingTrackingNumber && /^[A-Za-z0-9\-. ]+$/.test(sale.shippingTrackingNumber) ? sale.shippingTrackingNumber : /^[A-Za-z0-9\-. ]+$/.test(sale.number) ? sale.number : `POS-${sale.id}`,
   };
   return <main><div className="no-print mx-auto mb-4 flex max-w-md justify-between px-2"><Link href={`/admin/pos/invoice/${sale.id}`} className="btn-ghost">بازگشت به فاکتور</Link><PrintButton label="چاپ لیبل" /></div><LabelView cfg={settings} data={data} items={items.map((item) => `${item.title} × ${faNum(item.quantity)}`)} /><style>{`@page { size: ${settings.labelWidth}mm ${settings.labelHeight}mm; margin: 0; }`}</style></main>;

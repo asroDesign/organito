@@ -24,14 +24,14 @@ export type QuoteLine = {
   alternatives: { offerId: number; sellerId: number; shopName: string; price: number; available: number; prepDays: number; shippingCost: number; isBuyBox: boolean }[];
 };
 export type QuoteGroup = { key: string; sellerId: number | null; name: string; lines: QuoteLine[]; itemsTotal: number; shippingCost: number; prepDays: number; packages: number; weight: number };
-export type CarrierOption = { id: number; name: string; cost: number; minDays: number; maxDays: number };
+export type CarrierOption = { id: number; name: string; cost: number; minDays: number; maxDays: number; supportsFreightCollect: boolean };
 export type Quote = {
   creditAmount:number; giftCardId:number|null;
   lines: QuoteLine[]; groups: QuoteGroup[]; itemsSubtotal: number; sellerShippingTotal: number; centralShipping: number; discount: number; tax: number; finalTotal: number; valid: boolean;
   festivalDiscount: number; codeDiscount: number; code: { ok: boolean; error?: string; code?: string; title?: string; codeId?: number } | null;
-  carriers: CarrierOption[]; carrierId: number | null; city: string;
+  carriers: CarrierOption[]; carrierId: number | null; freightCollect: boolean; city: string;
 };
-export type QuoteOpts = { userId?: number | null; code?: string; city?: string; carrierId?: number | null; lockCode?: boolean };
+export type QuoteOpts = { userId?: number | null; code?: string; city?: string; carrierId?: number | null; freightCollect?: boolean; lockCode?: boolean };
 
 export function sanitizeCart(raw: unknown): CartInput[] {
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > 50) throw new HttpError(400, "سبد خرید نامعتبر است");
@@ -169,13 +169,14 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   for (const c of active) {
     let cost = 0;
     for (const group of groups) cost += await carrierCost(tx, c, city, group.weight, group.itemsTotal);
-    carrierOpts.push({ id: c.id, name: c.name, minDays: c.minDays, maxDays: c.maxDays, cost });
+    carrierOpts.push({ id: c.id, name: c.name, minDays: c.minDays, maxDays: c.maxDays, cost, supportsFreightCollect: c.supportsFreightCollect });
   }
   const chosen = carrierOpts.find((c) => c.id === opts.carrierId) ?? carrierOpts.slice().sort((a, b) => a.cost - b.cost)[0];
+  const freightCollect = !!opts.freightCollect && !!chosen?.supportsFreightCollect;
   if (chosen) {
     const carrier = active.find((c) => c.id === chosen.id)!;
     carrierId = carrier.id;
-    for (const group of groups) group.shippingCost = await carrierCost(tx, carrier, city, group.weight, group.itemsTotal);
+    for (const group of groups) group.shippingCost = freightCollect ? 0 : await carrierCost(tx, carrier, city, group.weight, group.itemsTotal);
     if (central) central.name = `${s.senderName} — ${carrier.name}`;
   }
   const sellerShippingTotal = groups.filter((g) => g.sellerId).reduce((a, g) => a + g.shippingCost, 0);
@@ -206,11 +207,11 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
     creditAmount,giftCardId,
     lines, groups: [...groupsMap.values()], itemsSubtotal, sellerShippingTotal, centralShipping, discount, tax,
     finalTotal: gross-creditAmount,
-    valid: lines.length > 0 && lines.every((l) => l.ok), festivalDiscount, codeDiscount, code, carriers: carrierOpts, carrierId, city,
+    valid: lines.length > 0 && lines.every((l) => l.ok), festivalDiscount, codeDiscount, code, carriers: carrierOpts, carrierId, freightCollect, city,
   };
 }
 
-export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; recoveryKey?: string; officialInvoiceType?: string | null; officialInvoiceDetails?: Record<string,string> | null; attribution?: { source: string; referrerHost?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; landingPath?: string } | null } = {}) {
+export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; freightCollect?: boolean; recoveryKey?: string; officialInvoiceType?: string | null; officialInvoiceDetails?: Record<string,string> | null; attribution?: { source: string; referrerHost?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; landingPath?: string } | null } = {}) {
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idemKey}))`);
     const [existing] = await tx.select().from(orders).where(eq(orders.idempotencyKey, idemKey));
@@ -218,10 +219,11 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
       if (existing.customerId !== ctx.userId) throw new HttpError(409, "کلید تکراری");
       return { order: existing, fresh: false };
     }
-    const q = await quoteCart(tx, items, true, { userId: ctx.userId, code: extra.code, city: address.city, carrierId: extra.carrierId, lockCode: true });
+    const q = await quoteCart(tx, items, true, { userId: ctx.userId, code: extra.code, city: address.city, carrierId: extra.carrierId, freightCollect: extra.freightCollect, lockCode: true });
     if (!q.valid) throw new HttpError(409, q.lines.find((l) => !l.ok)?.error ?? "سبد نامعتبر");
     if (q.code && !q.code.ok) throw new HttpError(409, q.code.error ?? "کد تخفیف نامعتبر");
     if (q.lines.some((line) => line.ok) && (!q.carriers.length || !extra.carrierId || !q.carriers.some((carrier) => carrier.id === extra.carrierId))) throw new HttpError(409, "برای ثبت سفارش باید یک شرکت پستی فعال انتخاب کنید");
+    if (extra.freightCollect && !q.carriers.some((carrier) => carrier.id === extra.carrierId && carrier.supportsFreightCollect)) throw new HttpError(409, "این شرکت پستی ارسال پس‌کرایه ندارد");
     const carrierName = q.carriers.find((c) => c.id === q.carrierId)?.name ?? null;
     const [buyer] = await tx.select({ name: users.name, phone: users.phone }).from(users).where(eq(users.id, ctx.userId));
     const cartKey = `user-${ctx.userId}-${extra.recoveryKey || idemKey.replace(/[^\w-]/g, "-")}`;
@@ -244,7 +246,7 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
     for (const g of q.groups) {
       const [sh] = await tx.insert(sellerShipments).values({
         orderId: order.id, sellerId: g.sellerId, itemsTotal: g.itemsTotal, shippingCost: g.shippingCost, prepDays: g.prepDays, packageCount: g.packages, weight: g.weight,
-        carrierId: q.carrierId, carrier: carrierName,
+        carrierId: q.carrierId, carrier: carrierName, freightCollect: q.freightCollect,
       }).returning();
       for (const l of g.lines) {
         await tx.insert(orderItems).values({

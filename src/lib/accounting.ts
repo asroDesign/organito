@@ -65,7 +65,7 @@ export async function postJournal(tx: DB, description: string, lines: Line[], re
   return entry;
 }
 
-export async function reverseJournal(tx: DB, entryId: number, reason: string, userId?: number | null) {
+export async function reverseJournal(tx: DB, entryId: number, reason: string, userId?: number | null, reference?: { type: string; id: number }) {
   const [entry] = await tx.select().from(journalEntries).where(eq(journalEntries.id, entryId)).for("update");
   if (!entry) throw new HttpError(404, "سند یافت نشد");
   if (entry.status === "reversed") throw new HttpError(400, "سند قبلاً برگشت خورده است");
@@ -73,7 +73,7 @@ export async function reverseJournal(tx: DB, entryId: number, reason: string, us
     .innerJoin(accounts, eq(accounts.id, journalLines.accountId)).where(eq(journalLines.entryId, entryId));
   const rev = await postJournal(tx, `برگشت سند ${entry.number}: ${reason}`,
     lines.map(({ l, code }) => ({ code, debit: l.credit, credit: l.debit, detail1: l.detail1 ?? undefined, detail1Id: l.detail1Id, detail2Id: l.detail2Id, detail3Id: l.detail3Id })),
-    { type: "reversal", id: entry.id }, userId);
+    reference ?? { type: "reversal", id: entry.id }, userId);
   if (rev) await tx.update(journalEntries).set({ reversalOf: entry.id }).where(eq(journalEntries.id, rev.id));
   await tx.update(journalEntries).set({ status: "reversed" }).where(eq(journalEntries.id, entryId));
   return rev;

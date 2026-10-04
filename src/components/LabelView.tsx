@@ -61,6 +61,7 @@ export function LabelView({ cfg, data, items = [] }: { cfg: LabelConfig; data: L
           return <div key={i}>{l}</div>;
         })}
       </div>
+      {data.shippingCharge ? <div className="my-1 border-2 border-black px-2 py-1 text-center font-bold">{data.shippingCharge}</div> : null}
       {cfg.labelShowItems && items.length ? <div className="border-t border-dashed border-black pt-1" style={{ fontSize: fs - 2 }}>{items.map((x, i) => <div key={i}>• {x}</div>)}</div> : null}
       <div className="mt-2 grid gap-2" style={{ gridTemplateColumns: cfg.labelShowBarcode && cfg.labelShowOrderBarcode ? "1fr 1fr" : "1fr" }}>
         {cfg.labelShowBarcode ? <Barcode value={data.barcode} /> : null}

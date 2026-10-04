@@ -344,7 +344,7 @@ export const posTerminals = pgTable("pos_terminals", {
 export const centralPosSales = pgTable("central_pos_sales", {
   status: text("status").notNull().default("completed"),
   rewardCode: text("reward_code"),
-  id: serial("id").primaryKey(), number: text("number").notNull().unique(), idempotencyKey: text("idempotency_key").notNull().unique(), terminalId: integer("terminal_id"), createdBy: integer("created_by").notNull(), customerName: text("customer_name").notNull(), customerPhone: text("customer_phone").notNull(), shippingCity: text("shipping_city"), shippingAddress: text("shipping_address"), shippingPostalCode: text("shipping_postal_code"), shippingCarrierId: integer("shipping_carrier_id"), shippingCarrierName: text("shipping_carrier_name"), shippingCost: money("shipping_cost").notNull().default(0), shippingStatus: text("shipping_status").notNull().default("pending"), shippingTrackingNumber: text("shipping_tracking_number"), shippingShippedAt: timestamp("shipping_shipped_at", { withTimezone: true }), shippingNotes: text("shipping_notes"), subtotal: money("subtotal"), discount: money("discount"), total: money("total"), paymentMethod: text("payment_method").notNull(), settlement: jsonb("settlement").$type<{ cash: number; card: number }>().notNull().default({ cash: 0, card: 0 }), createdAt: created(),
+  id: serial("id").primaryKey(), number: text("number").notNull().unique(), idempotencyKey: text("idempotency_key").notNull().unique(), terminalId: integer("terminal_id"), createdBy: integer("created_by").notNull(), customerName: text("customer_name").notNull(), customerPhone: text("customer_phone").notNull(), shippingCity: text("shipping_city"), shippingAddress: text("shipping_address"), shippingPostalCode: text("shipping_postal_code"), shippingCarrierId: integer("shipping_carrier_id"), shippingCarrierName: text("shipping_carrier_name"), shippingFreightCollect: boolean("shipping_freight_collect").notNull().default(false), shippingCost: money("shipping_cost").notNull().default(0), shippingStatus: text("shipping_status").notNull().default("pending"), shippingTrackingNumber: text("shipping_tracking_number"), shippingShippedAt: timestamp("shipping_shipped_at", { withTimezone: true }), shippingNotes: text("shipping_notes"), subtotal: money("subtotal"), discount: money("discount"), total: money("total"), paymentMethod: text("payment_method").notNull(), settlement: jsonb("settlement").$type<{ cash: number; card: number }>().notNull().default({ cash: 0, card: 0 }), createdAt: created(),
 }, (t) => [index("central_pos_created").on(t.createdAt)]);
 
 export const centralPosItems = pgTable("central_pos_items", {
@@ -544,6 +544,7 @@ export const sellerShipments = pgTable("seller_shipments", {
   deductions: money("deductions"),
   carrier: text("carrier"),
   carrierId: integer("carrier_id"),
+  freightCollect: boolean("freight_collect").notNull().default(false),
   weight: integer("weight").notNull().default(0),
   trackingNumber: text("tracking_number"),
   packageCount: integer("package_count").notNull().default(1),
@@ -932,6 +933,7 @@ export const carriers = pgTable("carriers", {
   baseCost: money("base_cost"),
   perKgCost: money("per_kg_cost"),
   freeThreshold: money("free_threshold"),
+  supportsFreightCollect: boolean("supports_freight_collect").notNull().default(false),
   minDays: integer("min_days").notNull().default(1),
   maxDays: integer("max_days").notNull().default(3),
   isActive: boolean("is_active").notNull().default(true),

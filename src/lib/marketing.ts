@@ -40,6 +40,9 @@ export async function carrierCost(tx: DB, c: Carrier, city: string, weight: numb
   return c.baseCost + c.perKgCost * Math.max(0, Math.ceil(weight / 1000) - 1);
 }
 
+/** Freight-collect delivery is a single carrier-level option, independent of city and weight. */
+export const carrierHasFreightCollect = (c: Carrier) => c.supportsFreightCollect;
+
 export type DiscountLine = { productId: number; categoryId: number | null; amount: number };
 export type DiscountResult = { ok: boolean; error?: string; codeId?: number; code?: string; title?: string; amount: number };
 

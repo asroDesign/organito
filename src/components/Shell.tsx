@@ -120,7 +120,7 @@ export async function Shell({ user, area, children }: { user: SessionUser; area:
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-l border-slate-200 bg-white lg:block">{side}</aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur">
-          <SideNav items={items} groups={area === "admin" ? adminGroups : undefined} mobile title={title} />
+          <SideNav items={items} groups={area === "admin" ? adminGroups : undefined} mobile title={title} footer={<div className="shrink-0 border-t border-slate-100 p-3"><LogoutButton /></div>} />
           <div className="hidden text-sm text-slate-500 lg:block">{title}</div>
           <div className="flex items-center gap-2">
             <NotificationBell initialUnread={n} />

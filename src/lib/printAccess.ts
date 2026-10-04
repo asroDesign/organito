@@ -62,7 +62,7 @@ export function labelData(s: SettingsShape, o: typeof orders.$inferSelect, sh: t
     order: o.number, shipment: String(sh.id), carrier: sh.carrier ?? "—", tracking: sh.trackingNumber ?? "—", packages: faNum(sh.packageCount),
     sender: seller?.shopName ?? s.senderName, senderAddress: seller ? `${seller.city}` : `${s.senderCity} - ${s.senderAddress}`,
     senderPhone: seller ? "" : s.senderPhone, senderPostalCode: seller ? "" : s.senderPostalCode, date: jdate(new Date()),
-    total: `${faNum(o.total)} تومان`, payment: o.paymentStatus === "paid" ? "پرداخت‌شده" : "پرداخت‌نشده",
+    total: `${faNum(o.total)} تومان`, payment: o.paymentStatus === "paid" ? "پرداخت‌شده" : "پرداخت‌نشده", shippingCharge: sh.freightCollect ? "پس‌کرایه؛ هزینه ارسال هنگام تحویل به شرکت پستی پرداخت می‌شود" : "",
     barcode: sh.trackingNumber && /^[A-Za-z0-9\- .]+$/.test(sh.trackingNumber) ? sh.trackingNumber : `${o.number}-${sh.id}`,
   };
 }

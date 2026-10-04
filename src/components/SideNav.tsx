@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import type { ReactNode } from "react";
 import {
   LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, Menu, X, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage, Heart, AlertTriangle, ChevronDown,
 } from "lucide-react";
@@ -11,7 +12,7 @@ const ICONS = { LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse,
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
 export type NavGroup = { label: string; icon: keyof typeof ICONS; items: NavItem[] };
 
-export function SideNav({ items, groups, mobile, title }: { items: NavItem[]; groups?: NavGroup[]; mobile?: boolean; title?: string }) {
+export function SideNav({ items, groups, mobile, title, footer }: { items: NavItem[]; groups?: NavGroup[]; mobile?: boolean; title?: string; footer?: ReactNode }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
@@ -63,6 +64,7 @@ export function SideNav({ items, groups, mobile, title }: { items: NavItem[]; gr
           <div role="dialog" aria-modal="true" aria-label={title ?? "منوی پنل"} className="absolute inset-y-0 right-0 flex w-[min(21rem,88vw)] flex-col bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 p-4"><b>{title}</b><button type="button" className="rounded-lg p-2 hover:bg-slate-100" aria-label="بستن منو" onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             {list}
+            {footer}
           </div>
         </div>, document.body
       )}
