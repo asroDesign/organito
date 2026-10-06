@@ -28,6 +28,8 @@ export const paymentRoutes: Route[] = [
   { method: "POST", pattern: "orders/:id/manual-payment", handler: async (req, p, m) => {
     const u = await requireApi();
     rateLimit(`mpay:${u.id}`, 5, 60_000);
+    const settings = await getSettings();
+    if (Number(settings.paymentManualEnabled) !== 1) throw new HttpError(403, "پرداخت کارت‌به‌کارت و حواله بانکی غیرفعال است");
     const b = await body(req);
     const info = parsePay(b, false);
     if (info.receiptMediaId) {

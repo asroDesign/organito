@@ -26,6 +26,7 @@ export const DEFAULT_SETTINGS = {
   releasePolicy: "on_customer_confirm",
   paymentGateway: "zarinpal",
   paymentGatewaysConfigured: 0,
+  paymentManualEnabled: 1,
   paymentZarinpalEnabled: 0,
   paymentZibalEnabled: 0,
   paymentTorobpayEnabled: 0,

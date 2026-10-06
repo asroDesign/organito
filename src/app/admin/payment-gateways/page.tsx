@@ -8,6 +8,7 @@ export default async function PaymentGatewaysPage() {
   const s = await getSettings();
   return <><PageHeader title="درگاه‌های پرداخت" subtitle="اتصال، آیکن و فعال‌سازی هم‌زمان درگاه‌ها" /><PaymentGatewaySettings initial={{
     paymentGatewaysConfigured: s.paymentGatewaysConfigured,
+    paymentManualEnabled: s.paymentManualEnabled,
     paymentZarinpalEnabled: s.paymentZarinpalEnabled, paymentZibalEnabled: s.paymentZibalEnabled, paymentTorobpayEnabled: s.paymentTorobpayEnabled,
     paymentZarinpalIconId: s.paymentZarinpalIconId, paymentZibalIconId: s.paymentZibalIconId, paymentTorobpayIconId: s.paymentTorobpayIconId,
     zarinpalMerchantId: s.zarinpalMerchantId, zarinpalSandbox: s.zarinpalSandbox, zibalMerchant: s.zibalMerchant,

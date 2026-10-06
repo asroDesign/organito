@@ -19,7 +19,7 @@ export default async function CartPage() {
       <SiteHeader />
       <main className="mx-auto max-w-6xl px-4 py-6">
         <h1 className="mb-4 text-2xl font-extrabold">سبد خرید</h1>
-        <CartView loggedIn={!!u} defaultName={u?.name ?? ""} defaultPhone={u?.phone ?? ""} savedAddresses={savedAddresses} paymentGateway={settings.paymentGateway} paymentGateways={getPaymentGatewayOptions(settings)} initialProfile={profile ? {...profile,birthdate:profile.birthdate?.toISOString()??null} : undefined} />
+        <CartView loggedIn={!!u} defaultName={u?.name ?? ""} defaultPhone={u?.phone ?? ""} savedAddresses={savedAddresses} paymentGateway={settings.paymentGateway} paymentGateways={getPaymentGatewayOptions(settings)} manualPaymentEnabled={Number(settings.paymentManualEnabled) === 1} initialProfile={profile ? {...profile,birthdate:profile.birthdate?.toISOString()??null} : undefined} />
       </main>
       <SiteFooter />
     </>

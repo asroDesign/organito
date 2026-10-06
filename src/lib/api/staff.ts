@@ -317,7 +317,7 @@ export const staffRoutes: Route[] = [
       if (["invoiceBorderColor", "invoiceAccentColor"].includes(k) && !/^#[0-9a-f]{6}$/i.test(String(v))) throw new HttpError(400, "رنگ فاکتور باید کد HEX شش‌رقمی باشد");
       if (k === "organicBadgeLabel" && !str(v, 80)) throw new HttpError(400, "عنوان نشان اصالت کالا نمی‌تواند خالی باشد");
       if (k === "paymentGateway" && v !== "zarinpal" && v !== "zibal") throw new HttpError(400, "درگاه پرداخت نامعتبر است");
-      if (["paymentGatewaysConfigured", "paymentZarinpalEnabled", "paymentZibalEnabled", "paymentTorobpayEnabled", "zarinpalSandbox"].includes(k) && ![0, 1].includes(Number(v))) throw new HttpError(400, "وضعیت فعال‌سازی درگاه نامعتبر است");
+      if (["paymentGatewaysConfigured", "paymentManualEnabled", "paymentZarinpalEnabled", "paymentZibalEnabled", "paymentTorobpayEnabled", "zarinpalSandbox"].includes(k) && ![0, 1].includes(Number(v))) throw new HttpError(400, "وضعیت فعال‌سازی درگاه نامعتبر است");
       if (["paymentZarinpalIconId", "paymentZibalIconId", "paymentTorobpayIconId"].includes(k) && Number(v) < 0) throw new HttpError(400, "شناسه آیکن درگاه نامعتبر است");
       changes[k] = ["smsApiKey", "torobpayClientSecret", "torobpayPassword"].includes(k) ? "[configured]" : v;
       await db.insert(settings).values({ key: k, value: v }).onConflictDoUpdate({ target: settings.key, set: { value: v } });
