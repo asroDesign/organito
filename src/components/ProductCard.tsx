@@ -12,7 +12,7 @@ export function ProductCard({ p }: { p: ShopProduct }) {
       <div className="relative aspect-square overflow-hidden bg-gradient-to-b from-[#f3efe2] to-white">
         <Link href={`/products/${p.slug}`}><Img id={p.imageId} alt={p.nameFa} className={`h-full w-full transition duration-500 group-hover:scale-110 ${p.inStock ? "" : "opacity-60 grayscale"}`} /></Link>
         <div className="absolute right-2 top-2 flex flex-col items-start gap-1">
-          {p.certifiedOrganic && <span className="rounded-lg bg-emerald-700 px-2 py-0.5 text-[10px] font-bold text-white">ارگانیک گواهی‌شده</span>}
+          {p.certifiedOrganic && <span className="rounded-lg bg-emerald-700 px-2 py-0.5 text-[10px] font-bold text-white">{p.certificationLabel}</span>}
           {p.festival && <span className="flex items-center gap-0.5 rounded-lg px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: p.festival.color }}><Flame className="h-3 w-3" />جشنواره</span>}
         </div>
         <div className="absolute bottom-2 right-2 z-10"><FavoriteButton productId={p.id}/></div>

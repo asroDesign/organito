@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Trash2, Truck, Package, AlertTriangle, Minus, Plus, MapPin, X, PlusCircle } from "lucide-react";
 import { api, toast, uid, useCart, writeCart, type CartItem } from "./client";
 import type { Quote } from "@/lib/services/orders";
+import type { PaymentGatewayOption, GatewayId } from "@/lib/payment-gateways";
 import { toman } from "@/lib/util";
 import { CustomerIdentityForm, type CustomerIdentity } from "./CustomerIdentityForm";
 
@@ -14,7 +15,7 @@ const keyOf = (i: { productId: number; offerId: number | null; variantId: number
 const MapPicker = dynamic(() => import("./MapPicker"), { ssr: false, loading: () => <div className="skeleton h-56 rounded-xl" /> });
 
 type SavedAddress = { id:number; title:string; receiverName:string; receiverPhone:string; city:string; address:string; postalCode:string|null; latitude:string|null; longitude:string|null; isDefault:boolean };
-export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[], paymentGateway="zarinpal", initialProfile }: { loggedIn: boolean; defaultName: string; defaultPhone: string; savedAddresses?:SavedAddress[]; paymentGateway?: string; initialProfile?:CustomerIdentity }) {
+export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[], paymentGateway="zarinpal", paymentGateways=[], initialProfile }: { loggedIn: boolean; defaultName: string; defaultPhone: string; savedAddresses?:SavedAddress[]; paymentGateway?: string; paymentGateways?: PaymentGatewayOption[]; initialProfile?:CustomerIdentity }) {
   const cart = useCart();
   const router = useRouter();
   const recoveryKey = useRef(uid());
@@ -31,6 +32,9 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
   const [freightCollect, setFreightCollect] = useState(false);
   const [err, setErr] = useState("");
   const [payMethod, setPayMethod] = useState<"gateway" | "manual">("gateway");
+  const [selectedGateway, setSelectedGateway] = useState<GatewayId>((paymentGateways[0]?.id ?? paymentGateway) as GatewayId);
+  const [torobEligible, setTorobEligible] = useState<boolean | null>(null);
+  const [checkingTorob, setCheckingTorob] = useState(false);
   const [selectedAddress,setSelectedAddress]=useState<SavedAddress|null>(savedAddresses.find(a=>a.isDefault)??savedAddresses[0]??null);
   const [addressModal,setAddressModal]=useState(false);
   const [savingAddress,setSavingAddress]=useState(false);
@@ -50,6 +54,20 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
       setErr("");
     }).catch((e) => { setErr(e.message); toast(e.message, false); }).finally(() => setLoading(false));
   }, [cart, code, cityQ, carrierId, freightCollect]);
+  useEffect(() => {
+    if (!paymentGateways.some((gateway) => gateway.id === "torobpay") || !quote?.valid || !quote.finalTotal) { setTorobEligible(null); return; }
+    let current = true;
+    setCheckingTorob(true); setTorobEligible(null);
+    api<{ eligible: boolean; titleMessage: string; description: string }>("/api/payments/torobpay/eligible", "POST", { amount: quote.itemsSubtotal + quote.sellerShippingTotal + quote.centralShipping + quote.tax })
+      .then((result) => { if (current) setTorobEligible(result.eligible); })
+      .catch(() => { if (current) setTorobEligible(false); })
+      .finally(() => { if (current) setCheckingTorob(false); });
+    return () => { current = false; };
+  }, [paymentGateways, quote?.finalTotal, quote?.valid]);
+  const visibleGateways = paymentGateways.filter((gateway) => gateway.id !== "torobpay" || torobEligible === true);
+  useEffect(() => {
+    if (visibleGateways.length && !visibleGateways.some((gateway) => gateway.id === selectedGateway)) setSelectedGateway(visibleGateways[0].id);
+  }, [visibleGateways, selectedGateway]);
   useEffect(() => {
     if (!loggedIn || !cart.length) return;
     const timer = setTimeout(() => {
@@ -94,7 +112,7 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
                         </div>
                         <div className="flex flex-wrap gap-1.5 text-[11px]">
                           {l.brand && <span className="rounded bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">{l.brand}</span>}
-                          {l.certifiedOrganic && <span className="rounded bg-emerald-700 px-2 py-0.5 font-bold text-white">ارگانیک گواهی‌شده</span>}
+                          {l.certifiedOrganic && <span className="rounded bg-emerald-700 px-2 py-0.5 font-bold text-white">{l.certificationLabel}</span>}
                           {l.partNumber && <span className="rounded border border-slate-200 px-2 py-0.5 font-mono text-slate-600" dir="ltr">PN: {l.partNumber}</span>}
                           {l.sku && <span className="rounded border border-slate-200 px-2 py-0.5 font-mono text-slate-500" dir="ltr">SKU: {l.sku}</span>}
                         </div>
@@ -181,8 +199,9 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
               const r = await api<{ id: number;paid:boolean }>("/api/orders", "POST", { items: cart.map(({ productId, offerId, variantId, qty, selectedOptions }) => ({ productId, offerId, variantId, qty, selectedOptions })), address: {fullName:selectedAddress.receiverName,phone:selectedAddress.receiverPhone,city:selectedAddress.city,address:selectedAddress.address,postalCode:selectedAddress.postalCode??"",latitude:selectedAddress.latitude??"",longitude:selectedAddress.longitude??""}, idempotencyKey: idem.current, recoveryKey: recoveryKey.current, code: quote?.code?.ok ? code : "", carrierId, freightCollect, requestOfficialInvoice, officialInvoiceType });
               writeCart([]);
               if (payMethod === "gateway"&&!r.paid) {
-                toast(`سفارش ثبت شد؛ در حال انتقال به درگاه ${paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}…`);
-                try { const g = await api<{ url: string }>(`/api/orders/${r.id}/gateway`, "POST", {}); window.location.href = g.url; return; }
+                const selected = paymentGateways.find((gateway) => gateway.id === selectedGateway);
+                toast(`سفارش ثبت شد؛ در حال انتقال به درگاه ${selected?.label ?? (paymentGateway === "zibal" ? "زیبال" : "زرین‌پال")}…`);
+                try { const g = await api<{ url: string }>(`/api/orders/${r.id}/gateway`, "POST", { provider: selectedGateway }); window.location.href = g.url; return; }
                 catch (ge) { toast(`اتصال به درگاه ناموفق بود: ${(ge as Error).message}. از صفحه سفارش دوباره تلاش کنید.`, false); }
               } else toast(r.paid?"سفارش با کیف پول تسویه شد":"سفارش ثبت شد؛ اطلاعات کارت به کارت را در صفحه سفارش ثبت کنید");
               router.push(`/customer/orders/${r.id}`);
@@ -190,14 +209,16 @@ export function CartView({ loggedIn, defaultName, defaultPhone, savedAddresses=[
           }}>
             <div className="space-y-2 pt-1">
               <b className="text-xs text-slate-600">روش پرداخت</b>
-              {([["gateway", `پرداخت آنلاین — درگاه ${paymentGateway === "zibal" ? "زیبال" : "زرین‌پال"}`, "همه کارت‌های عضو شتاب"], ["manual", "کارت به کارت / حواله بانکی", "ثبت فیش پس از ثبت سفارش؛ پردازش پس از تأیید مالی"]] as const).map(([k, l, d]) => (
-                <label key={k} className={`flex cursor-pointer items-start gap-2 rounded-xl border p-2.5 text-sm ${payMethod === k ? "border-emerald-500 bg-emerald-50" : "border-slate-200"}`}>
-                  <input type="radio" className="mt-1" checked={payMethod === k} onChange={() => setPayMethod(k)} /><span><b>{l}</b><div className="text-[11px] text-slate-500">{d}</div></span>
-                </label>
-              ))}
+              {visibleGateways.map((gateway) => <label key={gateway.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm ${payMethod === "gateway" && selectedGateway === gateway.id ? "border-emerald-500 bg-emerald-50" : "border-slate-200"}`}>
+                <input type="radio" name="payment-gateway" checked={payMethod === "gateway" && selectedGateway === gateway.id} onChange={() => { setSelectedGateway(gateway.id); setPayMethod("gateway"); }} />
+                {gateway.iconId > 0 ? <img src={`/api/media/${gateway.iconId}`} alt={`آیکن ${gateway.label}`} className="h-9 w-9 rounded-lg bg-white object-contain p-1" /> : <span className="grid h-9 w-9 place-items-center rounded-lg bg-amber-100 text-[10px] font-black text-amber-900">{gateway.label.slice(0, 2)}</span>}
+                <span><b>پرداخت آنلاین با {gateway.label}</b><div className="text-[11px] text-slate-500">{gateway.id === "torobpay" ? "پرداخت اعتباری؛ پس از بررسی واجدشرایط‌بودن سفارش" : "پرداخت از همه کارت‌های عضو شتاب"}</div></span>
+              </label>)}
+              {checkingTorob && <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">در حال بررسی امکان پرداخت ترب‌پی…</div>}
+              <label className={`flex cursor-pointer items-start gap-2 rounded-xl border p-3 text-sm ${payMethod === "manual" ? "border-emerald-500 bg-emerald-50" : "border-slate-200"}`}><input type="radio" name="payment-gateway" className="mt-1" checked={payMethod === "manual"} onChange={() => setPayMethod("manual")} /><span><b>کارت به کارت / حواله بانکی</b><div className="text-[11px] text-slate-500">ثبت فیش پس از ثبت سفارش؛ پردازش پس از تأیید مالی</div></span></label>
             </div>
             {quote && !quote.valid && <div className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">برخی اقلام سبد قابل خرید نیستند؛ آن‌ها را اصلاح یا حذف کنید.</div>}
-            <button disabled={placing || loading || !quote?.valid || !selectedAddress || Boolean(quote?.lines.some(l=>l.ok)&&(!quote.carriers.length||!quote.carriers.some(c=>c.id===carrierId&&(!freightCollect||c.supportsFreightCollect))))} className="btn-primary w-full">{placing && <Loader2 className="h-4 w-4 animate-spin" />}{payMethod === "gateway" ? "ثبت سفارش و پرداخت" : "ثبت سفارش"}{quote?.valid ? ` — ${quote.finalTotal.toLocaleString("fa-IR")} تومان` : ""}</button>
+            <button disabled={placing || loading || !quote?.valid || !selectedAddress || (payMethod === "gateway" && !visibleGateways.some((gateway) => gateway.id === selectedGateway)) || Boolean(quote?.lines.some(l=>l.ok)&&(!quote.carriers.length||!quote.carriers.some(c=>c.id===carrierId&&(!freightCollect||c.supportsFreightCollect))))} className="btn-primary w-full">{placing && <Loader2 className="h-4 w-4 animate-spin" />}{payMethod === "gateway" ? "ثبت سفارش و پرداخت" : "ثبت سفارش"}{quote?.valid ? ` — ${quote.finalTotal.toLocaleString("fa-IR")} تومان` : ""}</button>
           </form>
         )}
       </aside>

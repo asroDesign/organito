@@ -37,7 +37,7 @@ export default async function PayResult({ searchParams }: { searchParams: Promis
               {o && <Row k="شماره سفارش" v={<b dir="ltr">{o.number}</b>} />}
               {r && <Row k="درخواست تأمین" v={<b dir="ltr">{r.number}</b>} />}
               <Row k="مبلغ" v={`${faNum(mine.amount)} تومان`} />
-              {mine.refCode && ok && <Row k={`کد رهگیری ${mine.gateway?.startsWith("zibal") ? "زیبال" : "زرین‌پال"}`} v={<b dir="ltr" className="font-mono">{mine.refCode}</b>} />}
+              {mine.refCode && ok && <Row k={`کد رهگیری ${mine.gateway?.startsWith("zibal") ? "زیبال" : mine.gateway?.startsWith("torobpay") ? "ترب‌پی" : "زرین‌پال"}`} v={<b dir="ltr" className="font-mono">{mine.refCode}</b>} />}
               {mine.cardMasked && <Row k="کارت" v={<span dir="ltr">{mine.cardMasked}</span>} />}
               <Row k="زمان" v={jdate(mine.paidAt ?? mine.createdAt, true)} />
             </div>

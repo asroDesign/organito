@@ -85,7 +85,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-6 pb-28 lg:pb-10">
         <nav className="text-xs text-slate-500"><Link href="/">خانه</Link> / <Link href="/shop">فروشگاه</Link>{row.cat && <> / <Link href={`/shop?cat=${row.cat.id}`}>{row.cat.name}</Link></>} / <span className="text-emerald-800">{p.nameFa}</span></nav>
         <div className="grid gap-8 lg:grid-cols-[1fr_1fr_380px]">
-          <div className="lg:sticky lg:top-40 lg:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? "ارگانیک گواهی‌شده" : undefined} /></div>
+          <div className="lg:sticky lg:top-40 lg:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? s.organicBadgeLabel : undefined} /></div>
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Link href={`/shop?brand=${encodeURIComponent(p.brand)}`} className="rounded-full bg-emerald-50 px-3 py-1 font-bold text-emerald-800 ring-1 ring-emerald-200">🌿 {p.brand}</Link>
@@ -104,7 +104,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             {(org.suitableFor?.length ?? 0) > 0 && <div className="flex flex-wrap gap-1.5">{org.suitableFor!.map((t) => <Link key={t} href={`/shop?make=${encodeURIComponent(t)}`} className="flex items-center gap-1 rounded-full bg-lime-100 px-3 py-1 text-xs font-bold text-lime-800"><Leaf className="h-3 w-3" />{t}</Link>)}</div>}
             {orgRows.length > 0 && (
               <div className="grid grid-cols-2 gap-2">
-                {orgRows.slice(0, 4).map(([k, l, I]) => <div key={k} className="flex items-start gap-2.5 rounded-2xl bg-white p-3 ring-1 ring-emerald-900/5"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><I className="h-4 w-4" /></span><div className="min-w-0"><div className="text-[11px] text-slate-500">{l}</div><b className="line-clamp-2 text-xs text-emerald-950">{org[k] as string}</b></div></div>)}
+                {orgRows.slice(0, 4).map(([k, l, I]) => <div key={k} className="flex items-start gap-2.5 rounded-2xl bg-white p-3 ring-1 ring-emerald-900/5"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><I className="h-4 w-4" /></span><div className="min-w-0"><div className="text-[11px] text-slate-500">{k === "certificate" ? s.organicBadgeLabel : l}</div><b className="line-clamp-2 text-xs text-emerald-950">{org[k] as string}</b></div></div>)}
               </div>
             )}
             {visibleSpecs.length > 0 && <ul className="grid gap-1.5 text-sm sm:grid-cols-2">{visibleSpecs.slice(0, 6).map((sp) => <li key={sp.k} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-lime-500" /><span className="text-slate-500">{sp.k}:</span><b className="text-slate-700">{sp.v}</b></li>)}</ul>}
@@ -133,7 +133,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             <div className="rounded-[2rem] bg-emerald-950 p-6 text-white">
               <h2 className="mb-4 flex items-center gap-2 text-xl font-black"><Sprout className="h-5 w-5 text-lime-300" />شناسنامه محصول ارگانیک</h2>
               {orgRows.length === 0 ? <p className="text-sm text-emerald-100/70">اطلاعات شناسنامه برای این محصول ثبت نشده است.</p> : (
-                <div className="grid gap-3 sm:grid-cols-2">{orgRows.map(([k, l, I]) => <div key={k} className="rounded-2xl bg-white/5 p-3.5 ring-1 ring-white/10"><div className="mb-1 flex items-center gap-1.5 text-xs text-lime-300"><I className="h-4 w-4" />{l}</div><b className="text-sm leading-7">{org[k] as string}</b></div>)}</div>
+                <div className="grid gap-3 sm:grid-cols-2">{orgRows.map(([k, l, I]) => <div key={k} className="rounded-2xl bg-white/5 p-3.5 ring-1 ring-white/10"><div className="mb-1 flex items-center gap-1.5 text-xs text-lime-300"><I className="h-4 w-4" />{k === "certificate" ? s.organicBadgeLabel : l}</div><b className="text-sm leading-7">{org[k] as string}</b></div>)}</div>
               )}
               {(org.suitableFor?.length ?? 0) > 0 && <div className="mt-4 flex flex-wrap gap-1.5">{org.suitableFor!.map((t) => <span key={t} className="rounded-full bg-lime-400/20 px-3 py-1 text-xs text-lime-200">✓ مناسب {t}</span>)}</div>}
             </div>
@@ -149,7 +149,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 </div>
                 {(allPros.length > 0 || allCons.length > 0) && (
                   <div className="space-y-3 rounded-3xl bg-white p-4 ring-1 ring-slate-100 text-xs">
-                    {topOf(allPros).length > 0 && <div><b className="mb-1 block text-emerald-700">پرتکرارترین نقاط قوت</b>{topOf(allPros).map(([t, c]) => <div key={t} className="flex justify-between py-0.5"><span>+ {t}</span><span className="text-slate-400">{faNum(c)}</span></div>)}</div>}
+                    {topOf(allPros).length > 0 && <div><b className="mb-1 block text-emerald-700">پرتکرارترین نقاط قوت</b>{topOf(allPros).map(([t, c]) => <div key={t} className="flex justify-between py-0.5"><span className="text-emerald-700">+ {t}</span><span className="text-slate-400">{faNum(c)}</span></div>)}</div>}
                     {topOf(allCons).length > 0 && <div><b className="mb-1 block text-rose-600">پرتکرارترین نقاط ضعف</b>{topOf(allCons).map(([t, c]) => <div key={t} className="flex justify-between py-0.5"><span>− {t}</span><span className="text-slate-400">{faNum(c)}</span></div>)}</div>}
                   </div>
                 )}

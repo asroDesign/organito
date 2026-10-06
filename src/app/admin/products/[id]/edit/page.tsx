@@ -15,5 +15,5 @@ export default async function EditProduct({ params }: { params: Promise<{ id: st
   const p = Number.isInteger(id) ? await loadProductInitial(id) : null;
   if (!p) notFound();
   const [cats, choices, s] = await Promise.all([categoryOptions(), db.select({ id: products.id, name: products.nameFa }).from(products).where(ne(products.status, "deleted")).orderBy(products.nameFa), getSettings()]);
-  return <><PageHeader title={`ویرایش: ${p.nameFa}`} /><ProductForm initial={p} categories={cats} productChoices={choices.filter((x) => x.id !== id)} productTypes={s.productTypes} mode="admin" backTo="/admin/products/:id" /></>;
+  return <><PageHeader title={`ویرایش: ${p.nameFa}`} /><ProductForm initial={p} categories={cats} productChoices={choices.filter((x) => x.id !== id)} productTypes={s.productTypes} certificationLabel={s.organicBadgeLabel} mode="admin" backTo="/admin/products/:id" /></>;
 }

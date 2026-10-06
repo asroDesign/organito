@@ -55,6 +55,7 @@ const ADMIN_GROUPS: { label: string; icon: NavItem["icon"]; items: (NavItem & { 
     { href: "/admin/users", label: "کاربران", icon: "Users", perm: "USERS_MANAGE" },
     { href: "/admin/access", label: "نقش‌ها، دسترسی و گروه‌ها", icon: "ShieldCheck", perm: ["USERS_MANAGE", "SMS_MANAGE"] },
     { href: "/admin/labels", label: "طراحی چاپ و لیبل", icon: "Tag", perm: "SETTINGS_MANAGE" },
+    { href: "/admin/payment-gateways", label: "درگاه‌های پرداخت", icon: "Wallet", perm: "SETTINGS_MANAGE" },
     { href: "/admin/settings", label: "تنظیمات عمومی", icon: "Settings", perm: "SETTINGS_MANAGE" },
     { href: "/admin/audit", label: "گزارش ممیزی", icon: "ShieldCheck", perm: "AUDIT_LOG_VIEW" },
   ] },

@@ -4,6 +4,7 @@ import { Card, PageHeader } from "@/components/ui";
 import { JsonForm } from "@/components/client";
 import { HeroEditor } from "@/components/HeroEditor";
 import PosTerminalManager from "@/components/PosTerminalManager";
+import { ProductTypeManager } from "@/components/ProductTypeManager";
 
 export default async function SettingsPage() {
   await requirePage({ perm: "SETTINGS_MANAGE" });
@@ -32,6 +33,7 @@ export default async function SettingsPage() {
           { name: "defaultCommission", label: "کمیسیون پیش‌فرض (%)", type: "number", half: true, defaultValue: s.defaultCommission },
           { name: "minWithdrawal", label: "حداقل برداشت (تومان)", type: "number", half: true, defaultValue: s.minWithdrawal },
           { name: "loyaltyPointValue", label: "ارزش هر امتیاز باشگاه (تومان)", type: "number", half: true, defaultValue: s.loyaltyPointValue },
+          { name: "organicBadgeLabel", label: "عنوان نشان تأیید اصالت محصول", half: true, defaultValue: s.organicBadgeLabel },
           { name: "releasePolicy", label: "سیاست آزادسازی وجه", type: "select", half: true, defaultValue: s.releasePolicy, options: [["on_customer_confirm", "پس از تأیید تحویل"], ["on_delivery", "پس از ثبت تحویل"]] },
           { name: "supportPhone", label: "تلفن پشتیبانی", half: true, defaultValue: s.supportPhone },
           { name: "supportEmail", label: "ایمیل پشتیبانی", half: true, defaultValue: s.supportEmail },
@@ -39,8 +41,6 @@ export default async function SettingsPage() {
           { name: "freeShippingOver", label: "ارسال رایگان از مبلغ (نمایشی)", type: "number", half: true, defaultValue: s.freeShippingOver },
           { name: "returnDays", label: "مهلت بازگشت کالا (روز)", type: "number", half: true, defaultValue: s.returnDays },
           { name: "orderExpiryMinutes", label: "لغو خودکار سفارش پرداخت‌نشده (دقیقه، ۰=غیرفعال)", type: "number", half: true, defaultValue: s.orderExpiryMinutes },
-          { name: "paymentGateway", label: "درگاه پرداخت", type: "select", half: true, defaultValue: s.paymentGateway, options: [["zarinpal", "زرین‌پال"], ["zibal", "زیبال"]] },
-          { name: "zibalMerchant", label: "شناسه مرچنت زیبال (خالی = مقدار سرور)", half: true, defaultValue: s.zibalMerchant },
           { name: "inventoryPolicy", label: "سیاست موجودی", type: "select", half: true, defaultValue: s.inventoryPolicy, options: [["reserve_on_order", "رزرو در ثبت سفارش"]] },
           { name: "supplyDefaultMargin", label: "حاشیه پیش‌فرض تأمین (%)", type: "number", half: true, defaultValue: s.supplyDefaultMargin },
           { name: "supplyShippingCost", label: "هزینه ارسال تأمین سفارشی", type: "number", half: true, defaultValue: s.supplyShippingCost },
@@ -61,6 +61,7 @@ export default async function SettingsPage() {
           { name: "marketplaceRules", label: "قوانین مارکت‌پلیس", type: "textarea", defaultValue: s.marketplaceRules },
         ]} />
       </Card>
+      <Card title="نوع محصول و پارامترها" className="mt-6"><ProductTypeManager initial={s.productTypes} /></Card>
       <Card title="کدهای جاوااسکریپت فوتر" className="mt-6">
         <p className="mb-4 text-sm leading-7 text-slate-600">کد نماد اعتماد، گفتینو یا ابزارهای پشتیبانی را اینجا وارد کنید. کد فقط در فوتر صفحات عمومی سایت اجرا می‌شود و در پنل مدیریت نمایش داده نخواهد شد. این بخش محتوای واردشده را به‌عنوان کد اجرایی در نظر می‌گیرد؛ فقط کد سرویس‌های مورداعتماد را وارد کنید.</p>
         <JsonForm url="/api/admin/settings" submit="ذخیره کد فوتر" resetOnDone={false} fields={[

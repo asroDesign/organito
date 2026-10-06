@@ -5,6 +5,12 @@ import { zpMode } from "../zarinpal";
 import { str } from "../util";
 import { body, idParam, type Route } from "./router";
 import { HttpError } from "../util";
+import { db } from "@/db";
+import { payments } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import { getSettings } from "../settings";
+import { getPaymentGatewayOptions } from "../payment-gateways";
+import { torobPayEligible } from "../torobpay";
 
 export function baseUrl(req: NextRequest) {
   const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || req.nextUrl.host).split(",")[0].trim();
@@ -29,10 +35,19 @@ export function baseUrl(req: NextRequest) {
 }
 
 export const gatewayRoutes: Route[] = [
+  { method: "POST", pattern: "payments/torobpay/eligible", handler: async (req) => {
+    const u = await requireApi(); rateLimit(`gw:${u.id}`, 20, 60_000);
+    const settings = await getSettings();
+    if (!getPaymentGatewayOptions(settings).some((x) => x.id === "torobpay")) throw new HttpError(404, "ترب‌پی فعال نیست");
+    const b = await body(req), amount = Number(b.amount);
+    if (!Number.isSafeInteger(amount) || amount < 1) throw new HttpError(400, "مبلغ سفارش نامعتبر است");
+    return torobPayEligible({ clientId: settings.torobpayClientId, clientSecret: settings.torobpayClientSecret, username: settings.torobpayUsername, password: settings.torobpayPassword }, amount * 10);
+  } },
   { method: "POST", pattern: "orders/:id/gateway", handler: async (req, p, m) => {
     const u = await requireApi();
     rateLimit(`gw:${u.id}`, 10, 60_000);
-    return startGatewayPayment({ userId: u.id, ...m }, { orderId: idParam(p.id) }, baseUrl(req));
+    const b = await body(req), provider = ["zarinpal", "zibal", "torobpay"].includes(String(b.provider)) ? String(b.provider) as "zarinpal" | "zibal" | "torobpay" : undefined;
+    return startGatewayPayment({ userId: u.id, ...m }, { orderId: idParam(p.id) }, baseUrl(req), provider);
   } },
   { method: "POST", pattern: "supply/:id/gateway", handler: async (req, p, m) => {
     const u = await requireApi();
@@ -60,6 +75,20 @@ export const gatewayRoutes: Route[] = [
     const r = trackId ? await handleGatewayCallback(trackId, success, false, m, "zibal") : { ok: false, paymentId: null, message: "پارامتر trackId ارسال نشده است" };
     const url = new URL(`${baseUrl(req)}/pay/result`);
     url.searchParams.set("ok", r.ok ? "1" : "0"); if (r.paymentId) url.searchParams.set("pid", String(r.paymentId)); url.searchParams.set("msg", r.message);
+    return NextResponse.redirect(url, 303);
+  } },
+  { method: "POST", pattern: "payments/torobpay/callback", csrf: false, handler: async (req, _p, m) => {
+    const form = await req.formData();
+    const transactionId = str(form.get("transactionId"), 100), state = str(form.get("state"), 30);
+    const match = /^TOROB-(\d+)-[A-Za-z0-9]+$/.exec(transactionId);
+    const [pay] = match ? await db.select().from(payments).where(eq(payments.id, Number(match[1]))) : [];
+    let result: { ok: boolean; paymentId: number | null; message: string };
+    if (!pay || pay.gateway !== "torobpay" || pay.details.torobTransactionId !== transactionId || !pay.authority) result = { ok: false, paymentId: pay?.id ?? null, message: "تراکنش بازگشت‌داده‌شده ترب‌پی معتبر نیست" };
+    else result = await handleGatewayCallback(pay.authority, state, false, { ip: m.ip, ua: m.ua }, "torobpay", transactionId);
+    const url = new URL(`${baseUrl(req)}/pay/result`);
+    url.searchParams.set("ok", result.ok ? "1" : "0");
+    if (result.paymentId) url.searchParams.set("pid", String(result.paymentId));
+    url.searchParams.set("msg", result.message);
     return NextResponse.redirect(url, 303);
   } },
   { method: "GET", pattern: "payments/gateway-mode", handler: async () => ({ mode: zpMode() }) },

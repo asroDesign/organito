@@ -3,7 +3,7 @@ import { HttpError } from "../util";
 
 export type Meta = { ip: string; ua: string | null };
 export type Handler = (req: NextRequest, params: Record<string, string>, meta: Meta) => Promise<unknown>;
-export type Route = { method: string; pattern: string; handler: Handler };
+export type Route = { method: string; pattern: string; handler: Handler; csrf?: boolean };
 
 export function match(routes: Route[], method: string, parts: string[]) {
   let best: { route: Route; params: Record<string, string> } | null = null;
@@ -33,15 +33,17 @@ export function match(routes: Route[], method: string, parts: string[]) {
 export async function dispatch(routes: Route[], req: NextRequest, parts: string[]) {
   const method = req.method;
   try {
-    if (method !== "GET" && method !== "HEAD") {
-      // CSRF: require custom header (cannot be set cross-site without CORS preflight) and same-origin when Origin is present
-      if (req.headers.get("x-csrf") !== "1") throw new HttpError(403, "درخواست نامعتبر (CSRF)");
-      const origin = req.headers.get("origin");
-      const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
-      if (origin && host && new URL(origin).host !== host) throw new HttpError(403, "مبدأ درخواست نامعتبر است");
-    }
     const m = match(routes, method, parts);
     if (!m) throw new HttpError(404, "مسیر یافت نشد");
+    if (method !== "GET" && method !== "HEAD") {
+      // CSRF: require custom header (cannot be set cross-site without CORS preflight) and same-origin when Origin is present
+      if (m.route.csrf !== false) {
+        if (req.headers.get("x-csrf") !== "1") throw new HttpError(403, "درخواست نامعتبر (CSRF)");
+        const origin = req.headers.get("origin");
+        const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+        if (origin && host && new URL(origin).host !== host) throw new HttpError(403, "مبدأ درخواست نامعتبر است");
+      }
+    }
     const meta = { ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local", ua: req.headers.get("user-agent") };
     const out = await m.route.handler(req, m.params, meta);
     if (out instanceof Response) return out;

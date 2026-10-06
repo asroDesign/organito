@@ -303,7 +303,7 @@ export const staffRoutes: Route[] = [
     const changes: Record<string, unknown> = {};
     for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) {
       if (!(k in b)) continue;
-      if (k === "smsApiKey" && !str(b[k], 1000)) continue;
+      if (["smsApiKey", "torobpayClientSecret", "torobpayPassword"].includes(k) && !str(b[k], 1000)) continue;
       let v: unknown;
       if (k === "productTypes") {
         if (!Array.isArray(b[k])) throw new HttpError(400, "فهرست نوع محصولات نامعتبر است");
@@ -312,9 +312,14 @@ export const staffRoutes: Route[] = [
       } else v = typeof def === "number" ? int(b[k], 0, 1_000_000_000) : str(b[k], k === "footerScripts" ? 20000 : 1000);
       if (["invoiceWidth", "barcodeLabelWidth", "barcodeLabelHeight"].includes(k) && Number(v) < 20) throw new HttpError(400, "ابعاد چاپ باید دست‌کم ۲۰ میلی‌متر باشد");
       if (["invoiceFontSize", "barcodeFontSize"].includes(k) && (Number(v) < 6 || Number(v) > 40)) throw new HttpError(400, "اندازه فونت چاپ باید بین ۶ تا ۴۰ باشد");
+      if (k === "invoicePadding" && (Number(v) < 0 || Number(v) > 30)) throw new HttpError(400, "حاشیه داخلی فاکتور باید بین ۰ تا ۳۰ میلی‌متر باشد");
       if (k === "invoiceBorderStyle" && !["solid", "dashed", "none"].includes(String(v))) throw new HttpError(400, "نوع کادر فاکتور معتبر نیست");
+      if (["invoiceBorderColor", "invoiceAccentColor"].includes(k) && !/^#[0-9a-f]{6}$/i.test(String(v))) throw new HttpError(400, "رنگ فاکتور باید کد HEX شش‌رقمی باشد");
+      if (k === "organicBadgeLabel" && !str(v, 80)) throw new HttpError(400, "عنوان نشان اصالت کالا نمی‌تواند خالی باشد");
       if (k === "paymentGateway" && v !== "zarinpal" && v !== "zibal") throw new HttpError(400, "درگاه پرداخت نامعتبر است");
-      changes[k] = k === "smsApiKey" ? "[configured]" : v;
+      if (["paymentGatewaysConfigured", "paymentZarinpalEnabled", "paymentZibalEnabled", "paymentTorobpayEnabled", "zarinpalSandbox"].includes(k) && ![0, 1].includes(Number(v))) throw new HttpError(400, "وضعیت فعال‌سازی درگاه نامعتبر است");
+      if (["paymentZarinpalIconId", "paymentZibalIconId", "paymentTorobpayIconId"].includes(k) && Number(v) < 0) throw new HttpError(400, "شناسه آیکن درگاه نامعتبر است");
+      changes[k] = ["smsApiKey", "torobpayClientSecret", "torobpayPassword"].includes(k) ? "[configured]" : v;
       await db.insert(settings).values({ key: k, value: v }).onConflictDoUpdate({ target: settings.key, set: { value: v } });
     }
     await audit(db, { userId: u.id, ...m }, "settings.update", "settings", null, null, changes);

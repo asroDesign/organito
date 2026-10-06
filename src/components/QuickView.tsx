@@ -16,7 +16,7 @@ type Data = {
   };
   festival: { title: string; pct: number; color: string; endsAt: string } | null;
   images: number[]; variants: VariantView[]; offers: OfferView[];
-  rating: { avg: number; n: number }; store: { multiVendor: boolean; siteName: string; freeShippingOver: number; returnDays: number };
+  rating: { avg: number; n: number }; store: { multiVendor: boolean; siteName: string; freeShippingOver: number; returnDays: number; certificationLabel: string };
 };
 const fa = (n: number) => n.toLocaleString("fa-IR");
 
@@ -46,7 +46,7 @@ function QuickViewModal({ id, onClose }: { id: number; onClose: () => void }) {
   if (!mounted) return null;
   const p = data?.product;
   const org = p?.organicInfo ?? {};
-  const facts = p ? ([[MapPin, "خاستگاه", org.origin], [CalendarDays, "برداشت", org.harvest], [Sprout, "روش تولید", org.method], [BadgeCheck, "گواهی", p.certifiedOrganic ? org.certificate : undefined]] as const).filter(([, , v]) => v) : [];
+  const facts = p ? ([[MapPin, "خاستگاه", org.origin], [CalendarDays, "برداشت", org.harvest], [Sprout, "روش تولید", org.method], [BadgeCheck, data?.store.certificationLabel ?? "گواهی", p.certifiedOrganic ? org.certificate : undefined]] as const).filter(([, , v]) => v) : [];
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-emerald-950/60 p-3 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} role="dialog" aria-modal="true" dir="rtl">
       <div className="qv-in relative my-6 w-full max-w-5xl overflow-hidden rounded-[2rem] bg-[#faf7ef] shadow-2xl ring-1 ring-emerald-900/10">
@@ -55,9 +55,10 @@ function QuickViewModal({ id, onClose }: { id: number; onClose: () => void }) {
           <div className="grid h-96 place-items-center">{err ? <div className="text-sm text-rose-600">{err}</div> : <Loader2 className="h-9 w-9 animate-spin text-emerald-600" />}</div>
         ) : (
           <div className="grid gap-6 p-5 md:grid-cols-2 md:p-7 lg:grid-cols-[1fr_1fr_340px]">
-            <div className="lg:col-span-1"><Gallery ids={data.images} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? "ارگانیک گواهی‌شده" : undefined} /></div>
+            <div className="lg:col-span-1"><Gallery ids={data.images} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? data.store.certificationLabel : undefined} /></div>
             <div className="space-y-4">
               <div className="flex flex-wrap gap-1.5 text-[11px]">
+                {p.certifiedOrganic && <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-bold text-emerald-800 ring-1 ring-emerald-200">{data.store.certificationLabel}</span>}
                 {p.category && <span className="rounded-full bg-amber-50 px-2.5 py-1 font-bold text-amber-800 ring-1 ring-amber-200">{p.category}</span>}
                 <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-bold text-emerald-800 ring-1 ring-emerald-200">🌿 {p.brand}</span>
               </div>

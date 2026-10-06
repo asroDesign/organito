@@ -60,7 +60,7 @@ export default async function Shop({ searchParams }: { searchParams: Promise<Sho
         </div>
       </div>
       <div><b className="mb-2 block text-sm">بازه قیمت (تومان)</b><div className="grid grid-cols-2 gap-2"><input name="min" type="number" defaultValue={sp.min} placeholder="از" className="input" /><input name="max" type="number" defaultValue={sp.max} placeholder="تا" className="input" /></div></div>
-      <div><b className="mb-2 block text-sm">نوع محصول</b><div className="space-y-1 text-sm">{[["", "همه"], ["Original", "ارگانیک گواهی‌شده"], ["OEM", "طبیعی و بدون افزودنی"], ["Aftermarket", "محلی و سنتی"]].map(([v, l]) => <label key={v} className="flex items-center gap-2"><input type="radio" name="auth" value={v} defaultChecked={(sp.auth ?? "") === v} />{l}</label>)}</div></div>
+      <div><b className="mb-2 block text-sm">نوع محصول</b><div className="space-y-1 text-sm">{[["", "همه"], ["Original", "اصلی"], ["OEM", "سازنده اصلی"], ["Aftermarket", "متفرقه"]].map(([v, l]) => <label key={v} className="flex items-center gap-2"><input type="radio" name="auth" value={v} defaultChecked={(sp.auth ?? "") === v} />{l}</label>)}</div></div>
       <div><b className="mb-2 block text-sm">برند</b><select name="brand" defaultValue={sp.brand ?? ""} className="input"><option value="">همه برندها</option>{brands.map((b) => <option key={b.b}>{b.b}</option>)}</select></div>
       <div><b className="mb-2 block text-sm">گواهی / استاندارد</b><select name="make" defaultValue={sp.make ?? ""} className="input"><option value="">همه محصولها</option>{makes.map((m) => <option key={m.make}>{m.make}</option>)}</select></div>
       <div className="space-y-2 text-sm">

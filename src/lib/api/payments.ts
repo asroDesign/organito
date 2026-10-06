@@ -76,7 +76,7 @@ export const paymentRoutes: Route[] = [
         available: pr.onHand - pr.reserved, allowBackorder: pr.allowBackorder, status: pr.status, options: pr.options, mainImageId: pr.mainImageId,
         organicInfo: pr.organicInfo, videoMediaId: pr.videoMediaId, compareAtPrice: pr.compareAtPrice, purchaseOptions: pr.purchaseOptions,
       },
-      rating: rv, store: { multiVendor: !!st.multiVendor, siteName: st.siteName, freeShippingOver: st.freeShippingOver, returnDays: st.returnDays },
+      rating: rv, store: { multiVendor: !!st.multiVendor, siteName: st.siteName, freeShippingOver: st.freeShippingOver, returnDays: st.returnDays, certificationLabel: st.organicBadgeLabel },
       festival: fest ? { title: fest.title, pct: fest.discountPercent, color: fest.color, endsAt: fest.endsAt.toISOString() } : null,
       images: images.map((i) => i.mediaId),
       variants: variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved, isSellable: v.isSellable })),
