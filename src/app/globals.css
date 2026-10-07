@@ -54,6 +54,105 @@ body { font-feature-settings: "ss01"; }
   background-color: #faf7ef;
   background-image: radial-gradient(circle at 20% 20%, rgba(132, 204, 22, .08) 0, transparent 40%), radial-gradient(circle at 80% 0%, rgba(16, 185, 129, .08) 0, transparent 35%);
 }
+[data-palette="sunshine"] {
+  --color-emerald-50: #fffde7;
+  --color-emerald-100: #fff9c4;
+  --color-emerald-200: #fff59d;
+  --color-emerald-300: #fff176;
+  --color-emerald-400: #ffee58;
+  --color-emerald-500: #ffeb3b;
+  --color-emerald-600: #fdd835;
+  --color-emerald-700: #fbc02d;
+  --color-emerald-800: #f9a825;
+  --color-emerald-900: #6d4c41;
+  --color-emerald-950: #3e2723;
+}
+[data-palette="forest"] {
+  --color-emerald-50: #f0fdf4;
+  --color-emerald-100: #dcfce7;
+  --color-emerald-200: #bbf7d0;
+  --color-emerald-300: #86efac;
+  --color-emerald-400: #4ade80;
+  --color-emerald-500: #22c55e;
+  --color-emerald-600: #16a34a;
+  --color-emerald-700: #15803d;
+  --color-emerald-800: #166534;
+  --color-emerald-900: #14532d;
+  --color-emerald-950: #052e16;
+}
+[data-palette="ocean"] {
+  --color-emerald-50: #eff6ff;
+  --color-emerald-100: #dbeafe;
+  --color-emerald-200: #bfdbfe;
+  --color-emerald-300: #93c5fd;
+  --color-emerald-400: #60a5fa;
+  --color-emerald-500: #3b82f6;
+  --color-emerald-600: #2563eb;
+  --color-emerald-700: #1d4ed8;
+  --color-emerald-800: #1e40af;
+  --color-emerald-900: #1e3a8a;
+  --color-emerald-950: #172554;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+  --color-amber-50: #272318;
+  --color-amber-100: #332b1a;
+  --color-orange-50: #271e17;
+  --color-orange-100: #35251a;
+  --color-lime-50: #1a2519;
+  --color-lime-100: #202d1e;
+  --color-yellow-50: #292417;
+  --color-yellow-100: #352d1a;
+  --color-emerald-50: #18251f;
+  --color-emerald-100: #1e3026;
+}
+[data-theme="dark"] body,
+[data-theme="dark"] .bg-leaf-pattern {
+  background-color: #0d1513;
+  background-image: radial-gradient(circle at 20% 20%, rgba(132, 204, 22, .035) 0, transparent 40%), radial-gradient(circle at 80% 0%, rgba(16, 185, 129, .04) 0, transparent 35%);
+  color: #e2e8f0;
+}
+[data-theme="dark"] [class~="bg-white"], [data-theme="dark"] [class~="bg-white/95"], [data-theme="dark"] [class~="bg-white/90"], [data-theme="dark"] [class~="bg-white/80"], [data-theme="dark"] [class~="bg-white/70"], [data-theme="dark"] [class~="bg-white/60"], [data-theme="dark"] [class~="bg-white/50"], [data-theme="dark"] [class~="bg-white/40"] { background-color: #111c19 !important; }
+[data-theme="dark"] [class*="bg-[#faf7ef]"] { background-color: #17231e !important; }
+[data-theme="dark"] [class*="bg-[#f3efe2]"] { background-color: #202b25 !important; }
+[data-theme="dark"] [class*="bg-[#f1f6ef]"] { background-color: #0d1513 !important; }
+[data-theme="dark"] .product-gallery-surface { background-image: linear-gradient(to bottom, #202b25, #111c19) !important; }
+[data-theme="dark"] [class~="bg-slate-50"] { background-color: #14201c !important; }
+[data-theme="dark"] [class~="bg-slate-100"] { background-color: #1c2a25 !important; }
+[data-theme="dark"] [class~="bg-slate-200"] { background-color: #2a3933 !important; }
+[data-theme="dark"] [class~="bg-emerald-50"] { background-color: color-mix(in srgb, var(--color-emerald-700) 18%, #111c19) !important; }
+[data-theme="dark"] [class~="bg-emerald-100"] { background-color: color-mix(in srgb, var(--color-emerald-700) 28%, #111c19) !important; }
+[data-theme="dark"] [class~="bg-amber-50"] { background-color: #292417 !important; }
+[data-theme="dark"] [class~="bg-amber-100"] { background-color: #3b321a !important; }
+[data-theme="dark"] [class~="bg-rose-50"] { background-color: #30191b !important; }
+[data-theme="dark"] [class~="bg-rose-100"] { background-color: #472124 !important; }
+[data-theme="dark"] [class~="text-slate-900"], [data-theme="dark"] [class~="text-slate-800"] { color: #f1f5f9 !important; }
+[data-theme="dark"] [class~="text-slate-700"], [data-theme="dark"] [class~="text-slate-600"] { color: #d2ddd8 !important; }
+[data-theme="dark"] [class~="text-slate-500"] { color: #aab9b2 !important; }
+[data-theme="dark"] [class~="text-slate-400"] { color: #82928a !important; }
+[data-theme="dark"] [class~="text-emerald-50"], [data-theme="dark"] [class~="text-emerald-100"] { color: #d1fae5 !important; }
+[data-theme="dark"] [class~="text-emerald-950"], [data-theme="dark"] [class~="text-emerald-900"] { color: #f0fdf4 !important; }
+[data-theme="dark"] [class*="text-emerald-50/"], [data-theme="dark"] [class*="text-emerald-100/"] { color: #e2e8f0 !important; }
+[data-theme="dark"] [class~="text-emerald-800"] { color: #bbf7d0 !important; }
+[data-theme="dark"] [class~="text-emerald-700"], [data-theme="dark"] [class~="text-emerald-600"] { color: #86efac !important; }
+[data-theme="dark"] [class~="text-amber-900"], [data-theme="dark"] [class~="text-amber-950"] { color: #fef3c7 !important; }
+[data-theme="dark"] [class~="text-amber-800"], [data-theme="dark"] [class~="text-amber-700"] { color: #fcd34d !important; }
+[data-theme="dark"] [class*="text-amber-900/"], [data-theme="dark"] [class*="text-amber-800/"] { color: #fef3c7 !important; }
+[data-theme="dark"] [class*="text-emerald-900/"], [data-theme="dark"] [class*="text-emerald-800/"] { color: #d1fae5 !important; }
+[data-theme="dark"] [class*="from-amber-400"] [class~="text-amber-950"] { color: #451a03 !important; }
+[data-theme="dark"] [class~="text-rose-800"], [data-theme="dark"] [class~="text-rose-700"], [data-theme="dark"] [class~="text-rose-600"] { color: #fda4af !important; }
+[data-theme="dark"] [class~="border-slate-100"], [data-theme="dark"] [class~="border-slate-200"], [data-theme="dark"] [class~="border-slate-300"] { border-color: #33443d !important; }
+[data-theme="dark"] .btn-ghost, [data-theme="dark"] .btn-sm, [data-theme="dark"] .input { background-color: #111c19 !important; color: #e2e8f0 !important; border-color: #33443d !important; }
+[data-theme="dark"] .prose-rich { color: #cbd5d1; }
+[data-theme="dark"] .prose-rich h2, [data-theme="dark"] .prose-rich h3 { color: #bbf7d0; }
+[data-theme="dark"] .prose-rich blockquote, [data-theme="dark"] .prose-rich th { background: #1c2a25; }
+[data-theme="dark"] .prose-rich td, [data-theme="dark"] .prose-rich th { border-color: #33443d; }
+[data-theme="dark"] .rich-editor .ck.ck-toolbar { background: #1c2a25; }
+[data-theme="dark"] [class*="from-emerald-50"] { --tw-gradient-from: #14201c !important; --tw-gradient-to: #14201c !important; }
+[data-theme="dark"] [class*="via-white"] { --tw-gradient-via: #111c19 !important; }
+[data-theme="dark"] [class*="from-white"][class*="via-lime-100"] { --tw-gradient-from: #fff7ed !important; --tw-gradient-via: #fde68a !important; --tw-gradient-to: #fef3c7 !important; }
+[data-theme="dark"] .home-hero-wave { color: #0d1513 !important; }
+.theme-preview-card { transition: background-color .2s ease, color .2s ease, border-color .2s ease; }
 .text-balance { text-wrap: balance; }
 
 /* CKEditor */

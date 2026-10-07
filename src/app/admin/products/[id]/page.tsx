@@ -51,6 +51,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
           <div className="grid gap-x-8 sm:grid-cols-2">
             <KV k="نام انگلیسی" v={p.nameEn ?? "—"} /><KV k="کد محصول" v={<span dir="ltr">{p.partNumber}</span>} /><KV k="OEM" v={<span dir="ltr">{p.oemNumber ?? "—"}</span>} />
             <KV k="برند / سازنده" v={`${p.brand} / ${p.manufacturer ?? "—"}`} /><KV k="کشور" v={p.country ?? "—"} /><KV k="نوع محصول" v={p.productType ?? "—"} /><KV k="گواهی ارگانیک" v={p.certifiedOrganic ? "تأیید شده" : "ندارد"} />
+            {p.externalSourceUrl && <KV k="منبع اطلاعات" v={<a href={p.externalSourceUrl} target="_blank" rel="noreferrer" className="text-emerald-700 underline">دیجی‌کالا · {p.externalSourceId ?? "مشاهده منبع"}</a>} />}
             <KV k="قیمت پایه" v={toman(p.basePrice)} /><KV k="قبل از تخفیف" v={toman(p.compareAtPrice)} /><KV k="منبع" v={p.source === "central" ? "انبار مرکزی" : `Marketplace — ${row.shop ?? ""}`} />
             <KV k={`موجودی پایه / رزرو (${p.inventoryBaseUnit})`} v={`${faNum(stockQty)} / ${faNum(reservedQty)}`} /><KV k={vars.length ? "بهای تمام‌شده تنوع‌ها (برای هر تنوع جداگانه)" : "میانگین موزون خرید"} v={vars.length ? "محاسبه‌شده در انبار" : toman(p.avgCost)} /><KV k="ارزش موجودی متعلق به فروشگاه" v={toman(stockValue)} />
             <KV k="حد هشدار" v={faNum(p.lowStockThreshold)} /><KV k="Slug" v={<span dir="ltr">{p.slug}</span>} /><KV k="به‌روزرسانی" v={jdate(p.updatedAt, true)} />

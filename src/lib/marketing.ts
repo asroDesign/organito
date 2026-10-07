@@ -1,6 +1,6 @@
-import { and, asc, eq, gte, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 import { db } from "@/db";
-import { carrierRates, carriers, discountCodes, discountUsages, festivals, users } from "@/db/schema";
+import { carrierRates, carriers, discountCodes, discountUsages, festivals, users, variantScheduledDiscounts } from "@/db/schema";
 import type { DB } from "./types";
 
 export type Festival = typeof festivals.$inferSelect;
@@ -21,7 +21,33 @@ export function festivalFor(fs: Festival[], productId: number, categoryId: numbe
   }
   return best;
 }
+
+export type VariantScheduledDiscount = typeof variantScheduledDiscounts.$inferSelect;
+export async function activeVariantDiscounts(tx: DB, variantIds: number[], now = new Date()) {
+  if (!variantIds.length) return new Map<number, VariantScheduledDiscount>();
+  const rows = await tx.select().from(variantScheduledDiscounts).where(and(
+    inArray(variantScheduledDiscounts.variantId, variantIds),
+    eq(variantScheduledDiscounts.isActive, true),
+    lte(variantScheduledDiscounts.startsAt, now),
+    gte(variantScheduledDiscounts.endsAt, now),
+  )).orderBy(asc(variantScheduledDiscounts.variantId), asc(variantScheduledDiscounts.startsAt), asc(variantScheduledDiscounts.id));
+  return new Map(rows.map((row) => [row.variantId, row]));
+}
+
+export async function activeVariantDiscount(tx: DB, variantId: number, now = new Date()) {
+  const discounts = await activeVariantDiscounts(tx, [variantId], now);
+  return discounts.get(variantId) ?? null;
+}
+
 export const applyPct = (price: number, pct: number) => price - Math.round((price * pct) / 100);
+
+/** Largest whole-number discount percentage that keeps the selling price at or above cost. */
+export function safeDiscountPercent(price: number, cost: number, requested: number) {
+  for (let pct = Math.min(90, Math.max(0, Math.floor(requested))); pct >= 0; pct--) {
+    if (applyPct(price, pct) >= cost) return pct;
+  }
+  return 0;
+}
 
 export async function activeCarriers(tx: DB = db) {
   return tx.select().from(carriers).where(eq(carriers.isActive, true)).orderBy(asc(carriers.sortOrder), asc(carriers.id));
@@ -43,7 +69,7 @@ export async function carrierCost(tx: DB, c: Carrier, city: string, weight: numb
 /** Freight-collect delivery is a single carrier-level option, independent of city and weight. */
 export const carrierHasFreightCollect = (c: Carrier) => c.supportsFreightCollect;
 
-export type DiscountLine = { productId: number; categoryId: number | null; amount: number };
+export type DiscountLine = { productId: number; categoryId: number | null; amount: number; maxDiscount?: number };
 export type DiscountResult = { ok: boolean; error?: string; codeId?: number; code?: string; title?: string; amount: number };
 
 export async function evaluateCode(tx: DB, rawCode: string, userId: number | null, lines: DiscountLine[], lock = false): Promise<DiscountResult> {
@@ -78,5 +104,8 @@ export async function evaluateCode(tx: DB, rawCode: string, userId: number | nul
   let amount = d.type === "percent" ? Math.round((base * d.value) / 100) : d.value;
   if (d.type === "percent" && d.maxDiscount > 0) amount = Math.min(amount, d.maxDiscount);
   amount = Math.min(amount, base);
+  const costBounded = eligible.some((line) => line.maxDiscount !== undefined);
+  const safeCapacity = eligible.reduce((sum, line) => sum + (line.maxDiscount === undefined ? line.amount : Math.max(0, line.maxDiscount)), 0);
+  if (costBounded && amount > safeCapacity) return fail("این کد تخفیف با تخفیف‌های فعلی، قیمت فروش را از بهای خرید پایین‌تر می‌برد و قابل اعمال نیست");
   return { ok: true, codeId: d.id, code, title: d.title, amount };
 }

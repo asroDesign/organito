@@ -1,11 +1,14 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Plus, Save, Eye, EyeOff, FilePlus2, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Save, Eye, EyeOff, FilePlus2, Trash2, History, X, LayoutTemplate } from "lucide-react";
 import { api, toast } from "./client";
 import { ImageUploader } from "./client";
+import Link from "next/link";
 import type { SitePageBlock, SitePageBlockItem } from "@/db/schema";
 import { createHomeTemplateBlocks, DEFAULT_HOME_LAYOUT } from "@/lib/home-page-builder";
+import { SiteBlockContent } from "./SiteBlockContent";
+import { PageBlockFrame } from "./PageBlockFrame";
 
 type Page = {
   id: number; title: string; slug: string; template: string; summary: string | null;
@@ -20,6 +23,31 @@ const itemText = (items: { title: string; body: string }[] | undefined) => (item
 const parseItems = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
   const [title, ...rest] = line.split("|"); return { title: title.trim(), body: rest.join("|").trim() };
 });
+const pagePresets: Record<string, { label: string; template: string; blocks: () => Block[] }> = {
+  story: { label: "معرفی برند ارگانیک", template: "nature", blocks: () => [
+    { ...newBlock("hero"), title: "داستان ما؛ از خاک سالم تا سفره شما", body: "با انتخاب محصولات سالم و مسئولانه، کیفیت زندگی را در کنار طبیعت حفظ می‌کنیم.", buttonLabel: "مشاهده محصولات", href: "/shop", options: { badge: "طبیعی، سالم و قابل اعتماد" } },
+    { ...newBlock("text"), title: "تعهد ما به کیفیت", body: "هر محصول با دقت انتخاب می‌شود تا مسیر تولید تا مصرف شفاف و قابل اعتماد باشد." },
+    { ...newBlock("features"), title: "چرا از ما خرید کنید؟", items: [{ ...newItem(), title: "انتخاب مسئولانه", body: "محصولات منتخب از تولیدکنندگان قابل اعتماد." }, { ...newItem(), title: "تازگی و کیفیت", body: "توجه به کیفیت در تمام مراحل نگهداری و ارسال." }, { ...newItem(), title: "پشتیبانی همراه", body: "پاسخ‌گویی در کنار شما برای خریدی مطمئن." }] },
+    { ...newBlock("cta"), title: "طعم انتخاب سالم را تجربه کنید", body: "محصول مورد نیازتان را از فروشگاه ببینید.", buttonLabel: "رفتن به فروشگاه", href: "/shop" },
+  ] },
+  guide: { label: "راهنمای پرسش‌های متداول", template: "editorial", blocks: () => [
+    { ...newBlock("hero"), title: "راهنمای خرید و نگهداری", body: "پاسخ پرسش‌های رایج درباره انتخاب، سفارش و نگهداری محصولات.", options: { badge: "راهنمای مشتریان" } },
+    { ...newBlock("text"), title: "پیش از خرید بدانید", body: "اطلاعات محصول و شرایط ارسال را بررسی کنید؛ تیم پشتیبانی برای راهنمایی بیشتر در دسترس است." },
+    { ...newBlock("faq"), title: "پرسش‌های متداول", items: [{ ...newItem(), title: "چطور سفارش خود را ثبت کنم؟", body: "محصول را به سبد خرید اضافه کنید و مراحل تسویه را تکمیل کنید." }, { ...newItem(), title: "چطور سفارش را پیگیری کنم؟", body: "از بخش سفارش‌های من می‌توانید وضعیت سفارش را مشاهده کنید." }] },
+    { ...newBlock("cta"), title: "هنوز پرسشی دارید؟", buttonLabel: "تماس با پشتیبانی", href: "/contact" },
+  ] },
+  editorial: { label: "مقاله و محتوای تصویری", template: "editorial", blocks: () => [
+    { ...newBlock("hero"), title: "عنوان محتوای شما", body: "یک مقدمه کوتاه و روشن برای معرفی موضوع این صفحه بنویسید.", options: { badge: "مجله سبزینه" } },
+    { ...newBlock("image"), title: "تصویر شاخص", caption: "توضیح کوتاه تصویر" },
+    { ...newBlock("text"), title: "بخش نخست", body: "متن اصلی صفحه را در این بخش وارد کنید. برای خوانایی بهتر، هر بخش را به یک موضوع مشخص اختصاص دهید." },
+    { ...newBlock("grid"), title: "بخش‌های مرتبط", items: [{ ...newItem("cta"), title: "مطالب بیشتر", body: "محتوای مرتبط را معرفی کنید.", buttonLabel: "مطالعه بیشتر", href: "/blog" }] },
+  ] },
+  contact: { label: "تماس و پشتیبانی", template: "contact", blocks: () => [
+    { ...newBlock("hero"), title: "در کنار شما هستیم", body: "برای دریافت راهنمایی درباره محصولات و سفارش‌ها با ما در ارتباط باشید.", options: { badge: "پشتیبانی مشتریان" } },
+    { ...newBlock("features"), title: "راه‌های ارتباطی", items: [{ ...newItem(), title: "تماس تلفنی", body: "در ساعات کاری با تیم پشتیبانی تماس بگیرید." }, { ...newItem(), title: "پیام و پیگیری", body: "درخواست خود را ثبت کنید تا همکاران ما پاسخ دهند." }] },
+    { ...newBlock("cta"), title: "مشاهده پرسش‌های متداول", buttonLabel: "راهنمای خرید", href: "/pages/faq" },
+  ] },
+};
 
 export function SiteContentManager({ initialPages, initialLinks }: { initialPages: Page[]; initialLinks: FooterLink[] }) {
   const router = useRouter();
@@ -30,6 +58,11 @@ export function SiteContentManager({ initialPages, initialLinks }: { initialPage
   const [newLink, setNewLink] = useState({ groupTitle: "دسترسی سریع", label: "", href: "", sortOrder: 0 });
   const [linkBusy, setLinkBusy] = useState(false);
   const [newBlockType, setNewBlockType] = useState<Block["type"]>("text");
+  const [selectedPreset, setSelectedPreset] = useState("story");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [revisions, setRevisions] = useState<{ id: number; document: Omit<Page, "id">; createdAt: string }[]>([]);
+  const [historyBusy, setHistoryBusy] = useState(false);
 
   const edit = (page: Page) => setDraft({ ...page, blocks: page.blocks ?? [] });
   const createFromHomeDesign = () => setDraft({
@@ -43,6 +76,26 @@ export function SiteContentManager({ initialPages, initialLinks }: { initialPage
     status: "draft",
   });
   const patchPage = <K extends keyof Omit<Page, "id">>(key: K, value: Omit<Page, "id">[K]) => setDraft((old) => old ? { ...old, [key]: value } : old);
+  const applyPreset = () => {
+    if (!draft) return;
+    if (draft.blocks.length && !window.confirm("بلوک‌های فعلی پیش‌نویس با الگوی انتخاب‌شده جایگزین شوند؟ تا وقتی ذخیره نکنید، صفحهٔ منتشرشده تغییر نمی‌کند.")) return;
+    const preset = pagePresets[selectedPreset];
+    patchPage("template", preset.template); patchPage("blocks", preset.blocks());
+  };
+  const openHistory = async () => {
+    if (!draft?.id) return;
+    setHistoryBusy(true); setHistoryOpen(true);
+    try { const rows = await api<typeof revisions>(`/api/admin/site-pages/${draft.id}/revisions`); setRevisions(rows); }
+    catch (error) { toast((error as Error).message, false); setHistoryOpen(false); }
+    finally { setHistoryBusy(false); }
+  };
+  const restoreRevision = async (revisionId: number) => {
+    if (!draft?.id || !window.confirm("این نسخه در ویرایشگر بازیابی شود؟ صفحه به حالت پیش‌نویس می‌رود و تا ذخیره/انتشار تغییری در سایت عمومی نمی‌کند.")) return;
+    setBusy(true);
+    try { const restored = await api<Page>(`/api/admin/site-pages/${draft.id}/restore/${revisionId}`, "POST", {}); setDraft(restored); setPages((old) => old.map((page) => page.id === restored.id ? { ...page, ...restored } : page)); setHistoryOpen(false); toast("نسخه در حالت پیش‌نویس بازیابی شد"); }
+    catch (error) { toast((error as Error).message, false); }
+    finally { setBusy(false); }
+  };
   const patchBlock = (index: number, value: Partial<Block>) => setDraft((old) => old ? { ...old, blocks: old.blocks.map((block, i) => i === index ? { ...block, ...value } : block) } : old);
   const patchItems = (blockIndex: number, items: SitePageBlockItem[]) => patchBlock(blockIndex, { items });
   const patchItem = (blockIndex: number, itemIndex: number, value: Partial<SitePageBlockItem>) => setDraft((old) => old ? { ...old, blocks: old.blocks.map((block, i) => i === blockIndex ? { ...block, items: (block.items ?? []).map((item, j) => j === itemIndex ? { ...item, ...value } : item) } : block) } : old);
@@ -66,6 +119,16 @@ export function SiteContentManager({ initialPages, initialLinks }: { initialPage
     try { await api("/api/admin/footer-links/" + link.id, "POST", link); toast("پیوند ذخیره شد"); }
     catch (error) { toast((error as Error).message, false); }
   };
+  const trashPage = async (page: Page) => {
+    if (["home", "about", "contact"].includes(page.slug)) return;
+    if (!window.confirm(`صفحه «${page.title}» به زباله منتقل شود؟ امکان بازیابی دارد.`)) return;
+    try {
+      await api("/api/admin/site-pages/" + page.id, "POST", { delete: true });
+      setPages((old) => old.filter((item) => item.id !== page.id));
+      if (draft?.id === page.id) setDraft(null);
+      toast("صفحه به زباله منتقل شد.");
+    } catch (error) { toast((error as Error).message, false); }
+  };
   const createLink = async (event: React.FormEvent) => {
     event.preventDefault(); setLinkBusy(true);
     try { const row = await api<FooterLink>("/api/admin/footer-links", "POST", newLink); setLinks((old) => [...old, row]); setNewLink({ ...newLink, label: "", href: "", sortOrder: 0 }); toast("پیوند فوتر افزوده شد"); }
@@ -76,12 +139,13 @@ export function SiteContentManager({ initialPages, initialLinks }: { initialPage
   return <div className="space-y-6">
     <section className="rounded-2xl border bg-white p-4 shadow-sm sm:p-6">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">مدیریت صفحات سایت</h2><p className="mt-1 text-sm text-slate-500">صفحات درباره ما، تماس با ما و صفحه‌های محتوایی را ویرایش کنید.</p></div><div className="flex flex-wrap gap-2"><button className="btn-ghost" onClick={createFromHomeDesign}><FilePlus2 className="size-4"/>صفحه تازه از طرح آماده</button><button className="btn-primary" onClick={() => setDraft(freshPage())}><FilePlus2 className="size-4"/>صفحه خالی</button></div></div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{pages.map((page) => <button key={page.id} onClick={() => edit(page)} className="rounded-xl border p-3 text-right hover:border-emerald-400 hover:bg-emerald-50/40"><span className="flex items-center justify-between gap-2"><b>{page.title}</b><span className={"rounded-full px-2 py-0.5 text-[10px] " + (page.status === "published" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600")}>{page.status === "published" ? "منتشر" : "پیش‌نویس"}</span></span><small className="mt-1 block text-slate-500" dir="ltr">{page.slug === "about" || page.slug === "contact" ? "/" + page.slug : "/pages/" + page.slug}</small></button>)}</div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{pages.map((page) => <article key={page.id} className="rounded-xl border p-3 hover:border-emerald-300"><button onClick={() => edit(page)} className="w-full text-right"><span className="flex items-center justify-between gap-2"><b>{page.title}</b><span className={"rounded-full px-2 py-0.5 text-[10px] " + (page.status === "published" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600")}>{page.status === "published" ? "منتشر" : "پیش‌نویس"}</span></span><small className="mt-1 block text-slate-500" dir="ltr">{page.slug === "about" || page.slug === "contact" ? "/" + page.slug : "/pages/" + page.slug}</small></button>{!["home", "about", "contact"].includes(page.slug) && <button type="button" onClick={() => void trashPage(page)} className="btn-sm mt-2 text-rose-600"><Trash2 className="size-3.5"/>انتقال به زباله</button>}</article>)}</div>
       {!pages.length && <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">هنوز صفحه‌ای ایجاد نشده است.</p>}
     </section>
 
     {draft && <section className="space-y-5 rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-6">
-      <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-black">{draft.id ? "ویرایش صفحه" : "ساخت صفحه جدید"}</h2><p className="text-xs text-slate-500">از دکمه افزودن بخش برای ساخت چیدمان استفاده کنید.</p></div><a href={draft.id ? (draft.slug === "about" || draft.slug === "contact" ? "/" + draft.slug : "/pages/" + draft.slug) : "#"} target="_blank" className="btn-ghost"><Eye className="size-4"/>پیش‌نمایش</a></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-black">{draft.id ? "ویرایش صفحه" : "ساخت صفحه جدید"}</h2><p className="text-xs text-slate-500">چیدمان، محتوا و نسخه‌های صفحه را از همین‌جا مدیریت کنید.</p></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => setPreviewOpen(true)} className="btn-ghost"><Eye className="size-4"/>پیش‌نمایش زنده</button>{draft.id && <button type="button" onClick={() => void openHistory()} className="btn-ghost"><History className="size-4"/>نسخه‌های قبلی</button>}</div></div>
+      <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-end"><label className="flex-1 text-sm font-bold">الگوی آماده صفحه<select className="input mt-1" value={selectedPreset} onChange={(e) => setSelectedPreset(e.target.value)}>{Object.entries(pagePresets).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}</select></label><button type="button" className="btn-ghost" onClick={applyPreset}><LayoutTemplate className="size-4"/>استفاده از الگو</button><p className="text-xs leading-6 text-amber-900 sm:max-w-xs">الگوها فقط پیش‌نویس فعلی را تغییر می‌دهند؛ انتشار پس از ذخیره و انتخاب وضعیت انجام می‌شود.</p></div>
       <div className="grid gap-3 md:grid-cols-2">
         <label className="text-sm">عنوان صفحه<input className="input mt-1" value={draft.title} onChange={(e) => patchPage("title", e.target.value)} /></label>
         <label className="text-sm">نشانی (Slug)<input className="input mt-1" dir="ltr" placeholder="مثلاً shipping-guide" value={draft.slug} onChange={(e) => patchPage("slug", e.target.value)} /></label>
@@ -120,17 +184,11 @@ export function SiteContentManager({ initialPages, initialLinks }: { initialPage
       <div className="flex flex-wrap justify-between gap-2"><div className="flex flex-wrap gap-2"><select aria-label="نوع سکشن جدید" className="input w-auto min-w-40" value={newBlockType} onChange={(e)=>setNewBlockType(e.target.value as Block["type"])}><option value="text">متن و توضیح</option><option value="image">تصویر</option><option value="hero">بنر</option><option value="grid">گرید جدید</option><option value="slider">اسلایدر جدید</option><option value="features">کارت‌های ویژگی</option><option value="cta">دعوت به اقدام</option><option value="faq">سؤالات متداول</option></select><button type="button" className="btn-ghost" onClick={() => patchPage("blocks", [...draft.blocks, newBlock(newBlockType)])}><Plus className="size-4"/>افزودن سکشن</button></div><div className="flex gap-2"><button type="button" className="btn-ghost" onClick={() => setDraft(null)}>انصراف</button><button type="button" disabled={busy} className="btn-primary" onClick={savePage}><Save className="size-4"/>{busy ? "در حال ذخیره…" : "ذخیره صفحه"}</button></div></div>
     </section>}
 
-    <section className="rounded-2xl border bg-white p-4 shadow-sm sm:p-6">
-      <div className="mb-4"><h2 className="text-xl font-black">منوهای فوتر</h2><p className="mt-1 text-sm text-slate-500">عنوان ستون، متن پیوند، نشانی و ترتیب نمایش را ویرایش کنید.</p></div>
-      <div className="space-y-3">{links.map((link) => <FooterLinkRow key={link.id} link={link} onSave={saveLink} onToggle={toggleLink} onChange={(updated) => setLinks((old) => old.map((x) => x.id === link.id ? updated : x))}/>)}</div>
-      <form onSubmit={createLink} className="mt-5 grid gap-2 rounded-xl bg-slate-50 p-3 md:grid-cols-[1fr_1fr_2fr_100px_auto]">
-        <input className="input" placeholder="عنوان ستون" value={newLink.groupTitle} onChange={(e) => setNewLink({ ...newLink, groupTitle: e.target.value })} required/>
-        <input className="input" placeholder="متن پیوند" value={newLink.label} onChange={(e) => setNewLink({ ...newLink, label: e.target.value })} required/>
-        <input className="input" dir="ltr" placeholder="/pages/shipping" value={newLink.href} onChange={(e) => setNewLink({ ...newLink, href: e.target.value })} required/>
-        <input className="input" type="number" placeholder="ترتیب" value={newLink.sortOrder} onChange={(e) => setNewLink({ ...newLink, sortOrder: Number(e.target.value) })}/>
-        <button disabled={linkBusy} className="btn-primary"><Plus className="size-4"/>افزودن</button>
-      </form>
-    </section>
+    {previewOpen && draft && <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 p-2 sm:p-6" role="dialog" aria-modal="true" aria-label="پیش‌نمایش زنده صفحه"><section className="flex h-[96vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"><header className="flex items-center justify-between border-b px-4 py-3"><div><b>پیش‌نمایش زنده</b><p className="text-xs text-slate-500">تغییرات ذخیره‌نشدهٔ همین ویرایشگر · {draft.template}</p></div><button type="button" className="btn-sm" onClick={() => setPreviewOpen(false)}><X className="size-4"/>بستن</button></header><div className="min-h-0 flex-1 overflow-auto bg-stone-50"><main className={(draft.template === "editorial" ? "max-w-4xl" : draft.template === "minimal" ? "max-w-3xl" : "max-w-6xl") + " mx-auto space-y-7 px-4 py-8 sm:py-12"}><div className="mb-8 border-b border-amber-200 pb-4"><small className="text-amber-800">پیش‌نمایش صفحه</small><h1 className="mt-2 text-3xl font-black">{draft.title || "عنوان صفحه"}</h1>{draft.summary && <p className="mt-2 text-slate-600">{draft.summary}</p>}</div>{draft.blocks.map((block, index) => <PageBlockFrame key={block.id || index} block={block}><SiteBlockContent block={block} primary={index === 0}/></PageBlockFrame>)}{draft.template === "contact" && <div className="rounded-2xl border bg-white p-6 text-sm text-slate-600">اطلاعات تماس از تنظیمات عمومی سایت در صفحهٔ منتشرشده نمایش داده می‌شود.</div>}</main></div></section></div>}
+
+    {historyOpen && <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/60 p-3" role="dialog" aria-modal="true" aria-label="نسخه‌های صفحه"><section className="max-h-[85vh] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl"><header className="flex items-center justify-between border-b p-4"><div><b>نسخه‌های ذخیره‌شده</b><p className="text-xs text-slate-500">حداکثر ۲۰ نسخهٔ اخیر نگهداری می‌شود.</p></div><button type="button" className="btn-sm" onClick={() => setHistoryOpen(false)}><X className="size-4"/>بستن</button></header><div className="max-h-[70vh] space-y-2 overflow-auto p-4">{historyBusy ? <p className="p-5 text-center text-sm text-slate-500">در حال دریافت نسخه‌ها…</p> : revisions.length ? revisions.map((revision) => <article key={revision.id} className="flex flex-col justify-between gap-3 rounded-xl border p-3 sm:flex-row sm:items-center"><div><b>{revision.document.title}</b><p className="mt-1 text-xs text-slate-500">{new Intl.DateTimeFormat("fa-IR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(revision.createdAt))} · {revision.document.blocks?.length ?? 0} بخش · {revision.document.status === "published" ? "منتشر" : "پیش‌نویس"}</p></div><button type="button" disabled={busy} className="btn-sm" onClick={() => void restoreRevision(revision.id)}>بازیابی به‌صورت پیش‌نویس</button></article>) : <p className="rounded-xl bg-slate-50 p-5 text-center text-sm text-slate-500">برای صفحه نسخه‌ای ثبت نشده است. از این پس پیش از هر تغییر، نسخهٔ قبلی نگهداری می‌شود.</p>}</div></section></div>}
+
+    <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-5"><div><h2 className="font-extrabold text-emerald-900">ویرایش منوهای سایت</h2><p className="mt-1 text-sm text-emerald-800">منوهای هدر، فوتر و موبایل اکنون در منوساز چندجایگاهی مدیریت می‌شوند.</p></div><Link href="/admin/menus" className="btn-primary">رفتن به منوساز</Link></section>
   </div>;
 }
 

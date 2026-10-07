@@ -3,7 +3,7 @@ import path from "path";
 import { eq, sql } from "drizzle-orm";
 import { db, pool } from "@/db";
 import {
-  accounts, categories, media, productImages, products, productVariants, sellerOffers, sellers, settings, smsTemplates,
+  accounts, affiliateProfiles, categories, media, productImages, products, productVariants, sellerOffers, sellers, settings, smsTemplates,
   supplyQuotes, supplyRequests, ticketMessages, tickets, users, wallets, sellerShipments, ticketDepartments, detailAccounts, carriers, carrierRates, discountCodes, festivals, reviews, productQuestions, productAnswers,
 } from "@/db/schema";
 import { CHART, postJournal } from "./accounting";
@@ -240,9 +240,21 @@ export async function ensureExtras() {
       det = await db.select().from(detailAccounts);
     }
     const sParent = det.find((d) => d.code === "S");
+    let affiliateParent = det.find((d) => d.code === "A");
+    if (!affiliateParent) {
+      const personRoot = det.find((d) => d.code === "1");
+      [affiliateParent] = await db.insert(detailAccounts).values({ code: "A", name: "همکاران فروش", level: 2, parentId: personRoot?.id ?? null }).returning();
+    }
     const allSellers = await db.select().from(sellers);
     for (const sl of allSellers) {
       if (!det.some((d) => d.code === `S-${sl.id}`)) await db.insert(detailAccounts).values({ code: `S-${sl.id}`, name: sl.shopName, level: 3, parentId: sParent?.id ?? null });
+    }
+    const affiliateRows = await db.select({ userId: affiliateProfiles.userId }).from(affiliateProfiles);
+    for (const profile of affiliateRows) {
+      if (!det.some((d) => d.code === `A-${profile.userId}`)) {
+        const [owner] = await db.select({ name: users.name }).from(users).where(eq(users.id, profile.userId));
+        await db.insert(detailAccounts).values({ code: `A-${profile.userId}`, name: owner?.name || `همکار ${profile.userId}`, level: 3, parentId: affiliateParent.id });
+      }
     }
     await db.execute(sql`update journal_lines l set detail1_id = d.id from detail_accounts d where l.detail1_id is null and l.detail1 like 'seller:%' and d.code = 'S-' || substring(l.detail1 from 8)`);
     // SMS: an extra alternative pattern for shipping (multiple templates per event)
@@ -290,6 +302,16 @@ async function ensureMarketing() {
   if (!acc) {
     const [grp] = await db.select().from(accounts).where(eq(accounts.code, "5"));
     await db.insert(accounts).values({ code: "5301", name: "هزینه تخفیفات و جشنواره‌ها", level: "subsidiary", type: "expense", parentId: grp?.id ?? null });
+  }
+  for (const [code, name, parentCode, type] of [
+    ["2105", "پورسانت همکاران فروش پرداختنی", "21", "liability"],
+    ["5302", "هزینه پورسانت همکاری در فروش", "5", "expense"],
+  ] as const) {
+    const [existing] = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.code, code));
+    if (!existing) {
+      const [parent] = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.code, parentCode));
+      await db.insert(accounts).values({ code, name, level: "subsidiary", type, parentId: parent?.id ?? null });
+    }
   }
   const cs = await db.select().from(carriers);
   if (!cs.length) {

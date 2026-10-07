@@ -3,7 +3,7 @@ import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/db";
-import { auditLogs, orderHistory, orderItems, orders, payments, sellers, sellerShipments, users } from "@/db/schema";
+import { auditLogs, orderHistory, orderItems, orders, payments, sellers, sellerShipments, users, pickupCenters } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth";
 import { ORDER_STATUS, SHIPMENT_STATUS, jdate, toman, faNum } from "@/lib/util";
 import { Card, KV, PageHeader, StatusBadge } from "./ui";
@@ -32,6 +32,7 @@ export async function OrderDetail({ id, user, view }: { id: number; user: Sessio
     items = items.filter((i) => i.sellerId === user.sellerId);
   }
   const [customer] = await db.select({ name: users.name, phone: users.phone }).from(users).where(eq(users.id, o.customerId));
+  const [pickupCenter] = o.pickupCenterId ? await db.select().from(pickupCenters).where(eq(pickupCenters.id, o.pickupCenterId)) : [];
   const history = await db.select().from(orderHistory).where(eq(orderHistory.orderId, id)).orderBy(orderHistory.createdAt);
   const pays = view === "seller" ? [] : await db.select().from(payments).where(eq(payments.orderId, id)).orderBy(payments.id);
   const settingsNow = await getSettings();
@@ -59,21 +60,22 @@ export async function OrderDetail({ id, user, view }: { id: number; user: Sessio
         {view === "admin" && user.permissions.includes("ORDERS_MANAGE") && ["pending_payment", "paid"].includes(o.status) && <ActionButton url={`/api/admin/orders/${o.id}/cancel`} className="btn-danger" confirm="لغو سفارش؟" prompt="دلیل:" promptKey="reason">لغو سفارش</ActionButton>}
         {view === "admin" && user.permissions.includes("PAYMENTS_MANAGE") && o.status === "pending_payment" && <AdminRecordPayment orderId={o.id} amount={o.total} />}
       </>} />
+      {o.fulfillmentType === "pickup" && <Card title="دریافت حضوری" className="border-amber-200 bg-amber-50/60"><div className="grid gap-3 sm:grid-cols-2"><div><div className="text-xs text-slate-500">مرکز دریافت</div><b>{o.pickupCenterName}</b><div className="text-sm text-slate-700">{o.address.city}، {o.address.address}</div>{pickupCenter?.latitude && pickupCenter.longitude && <a className="mt-1 inline-block text-xs font-bold text-amber-800 underline" target="_blank" rel="noreferrer" href={`https://www.openstreetmap.org/?mlat=${pickupCenter.latitude}&mlon=${pickupCenter.longitude}#map=16/${pickupCenter.latitude}/${pickupCenter.longitude}`}>موقعیت مرکز روی نقشه</a>}</div><div><div className="text-xs text-slate-500">زمان مراجعه</div><b>{o.pickupDate ? jdate(new Date(`${o.pickupDate}T12:00:00+03:30`)) : "—"} · ساعت {o.pickupTime ?? "—"}</b><div className="mt-2 text-xs text-slate-500">کد تحویل را هنگام مراجعه اعلام کنید</div><div className="font-mono text-2xl font-black tracking-[0.3em]">{o.paymentStatus === "paid" ? o.pickupCode ?? "—" : "پس از پرداخت نمایش داده می‌شود"}</div><div className="mt-1 text-xs text-amber-900">وضعیت: {o.pickupStatus === "completed" ? "تحویل‌شده" : o.pickupStatus === "ready" ? "آماده تحویل" : "در انتظار آماده‌سازی"}</div></div></div></Card>}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           {shipments.map(({ sh, s }) => {
             const its = items.filter((i) => i.shipmentId === sh.id);
             return (
-              <Card key={sh.id} title={<span className="flex items-center gap-2">مرسوله #{faNum(sh.id)} — {hideSellers ? settingsNow.siteName : s?.shopName ?? `انبار مرکزی ${settingsNow.siteName}`} <StatusBadge status={sh.status} map={SHIPMENT_STATUS} /></span>}
-                action={view === "seller" ? <ShipmentActions id={sh.id} status={sh.status} base="/api/seller/shipments" carriers={carrierList} defaultCarrierId={sh.carrierId} /> : canManageShip ? <ShipmentActions id={sh.id} status={sh.status} base="/api/admin/shipments" allowDeliver carriers={carrierList} defaultCarrierId={sh.carrierId} /> : null}>
+              <Card key={sh.id} title={<span className="flex items-center gap-2">{o.fulfillmentType === "pickup" ? "اقلام سفارش برای دریافت" : <>مرسوله #{faNum(sh.id)} — {hideSellers ? settingsNow.siteName : s?.shopName ?? `انبار مرکزی ${settingsNow.siteName}`} <StatusBadge status={sh.status} map={SHIPMENT_STATUS} /></>}</span>}
+                action={o.fulfillmentType === "pickup" ? null : view === "seller" ? <ShipmentActions id={sh.id} status={sh.status} base="/api/seller/shipments" carriers={carrierList} defaultCarrierId={sh.carrierId} /> : canManageShip ? <ShipmentActions id={sh.id} status={sh.status} base="/api/admin/shipments" allowDeliver carriers={carrierList} defaultCarrierId={sh.carrierId} /> : null}>
                 {view !== "customer" && o.paymentStatus === "paid" && <div className="mb-3"><IssuePanel shipmentId={sh.id} packageCount={sh.packageCount} issue={issueFor(sh.id)} canIssue={view === "seller" ? true : canIssueStaff && sh.sellerId === null} /></div>}
-                <div className="mb-4"><ShipmentTimeline sh={sh} trackingUrl={sh.carrierId ? cmap.get(sh.carrierId)?.trackingUrl : null} /></div>
+                {o.fulfillmentType !== "pickup" && <div className="mb-4"><ShipmentTimeline sh={sh} trackingUrl={sh.carrierId ? cmap.get(sh.carrierId)?.trackingUrl : null} /></div>}
                 <table className="w-full text-sm"><tbody className="divide-y">
                   {its.map((i) => <tr key={i.id}><td className="py-2">{i.title}</td><td className="py-2 text-slate-500">{toman(i.unitPrice)} × {faNum(i.qty)}</td><td className="py-2 text-left font-bold">{toman(i.lineTotal)}</td></tr>)}
                 </tbody></table>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {(o.paymentStatus === "paid" || view === "admin") && sh.status !== "cancelled" && <a href={`/print/invoice/${sh.id}`} target="_blank" className="btn-sm">🧾 {sh.sellerId ? "فاکتور نیابتی" : "فاکتور فروش"}</a>}
-                  {view !== "customer" && sh.status !== "cancelled" && <a href={`/print/label/${sh.id}`} target="_blank" className="btn-sm">🏷️ چاپ لیبل پستی</a>}
+                  {view !== "customer" && o.fulfillmentType !== "pickup" && sh.status !== "cancelled" && <a href={`/print/label/${sh.id}`} target="_blank" className="btn-sm">🏷️ چاپ لیبل پستی</a>}
                 </div>
                 <div className="mt-3 grid gap-x-6 rounded-xl bg-slate-50 p-3 text-xs sm:grid-cols-2">
                   <KV k="هزینه ارسال" v={toman(sh.shippingCost)} /><KV k="تعداد بسته" v={faNum(sh.packageCount)} />
@@ -98,6 +100,7 @@ export async function OrderDetail({ id, user, view }: { id: number; user: Sessio
               <KV k="جمع اقلام" v={toman(o.itemsSubtotal)} /><KV k="ارسال فروشندگان" v={toman(o.sellerShippingTotal)} /><KV k="ارسال انبار مرکزی" v={toman(o.centralShipping)} />
               <KV k="مالیات" v={toman(o.tax)} />
               {o.festivalDiscount > 0 && <KV k="تخفیف جشنواره" v={`- ${toman(o.festivalDiscount)}`} />}
+              {o.variantDiscount > 0 && <KV k="تخفیف زمان‌دار تنوع‌ها" v={`- ${toman(o.variantDiscount)}`} />}
               {o.codeDiscount > 0 && <KV k={`کد تخفیف ${o.discountCode ?? ""}`} v={`- ${toman(o.codeDiscount)}`} />}
               <div className="mt-2 flex justify-between border-t pt-2 font-extrabold"><span>مبلغ کل</span><span className="text-emerald-700">{toman(o.total)}</span></div>
               {view === "customer" && <div className="mt-3"><PaymentInfoBox pays={pays} compact /></div>}
@@ -116,10 +119,10 @@ export async function OrderDetail({ id, user, view }: { id: number; user: Sessio
             {!o.attribution && <p className="text-xs text-slate-500">اطلاعات منبع برای این سفارش ذخیره نشده است.</p>}
           </Card>}
           {view === "customer" && pendingVerify && <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">فیش پرداخت شما ثبت شده و در انتظار تأیید واحد مالی است.</div>}
-          <Card title="مشتری و آدرس تحویل">
+          <Card title={o.fulfillmentType === "pickup" ? "مشتری و مرکز دریافت" : "مشتری و آدرس تحویل"}>
             <KV k="مشتری" v={customer?.name} />
             <KV k="تحویل‌گیرنده" v={o.address.fullName} /><KV k="تلفن" v={view === "seller" ? o.address.phone.replace(/(\d{4})\d{4}(\d{3})/, "$1****$2") : o.address.phone} />
-            <KV k="شهر" v={o.address.city} /><p className="mt-2 text-sm text-slate-600">{o.address.address}</p><KV k="کد پستی" v={o.address.postalCode || "—"} />
+            <KV k="شهر" v={o.address.city} /><p className="mt-2 text-sm text-slate-600">{o.fulfillmentType === "pickup" ? o.pickupCenterName : o.address.address}</p>{o.fulfillmentType === "delivery" && <KV k="کد پستی" v={o.address.postalCode || "—"} />}
           </Card>
           {view==="customer"&&o.paymentStatus==="paid"&&["shipped","completed"].includes(o.status)&&<RequestReturnButton orderId={o.id}/>}
           <Link href={view === "admin" ? "/admin/orders" : view === "seller" ? "/seller/orders" : "/customer"} className="btn-ghost w-full">بازگشت به فهرست</Link>

@@ -106,10 +106,12 @@ export function LinkBtn({ href, children, variant = "primary" }: { href: string;
   return <Link href={href} className={variant === "primary" ? "btn-primary" : "btn-ghost"}>{children}</Link>;
 }
 
-export function Img({ id, alt, className = "" }: { id: number | null | undefined; alt: string; className?: string }) {
+export function Img({ id, alt, className = "", sizes = "(max-width: 640px) 90vw, (max-width: 1024px) 50vw, 33vw" }: { id: number | null | undefined; alt: string; className?: string; sizes?: string }) {
   if (!id) return <div className={`grid place-items-center bg-gradient-to-br from-slate-100 to-slate-200 text-3xl ${className}`}>⚙️</div>;
+  const src = `/api/media/${id}`;
+  const srcSet = [320, 640, 960, 1280, 1600].map((width) => `${src}?w=${width} ${width}w`).join(", ");
   // eslint-disable-next-line @next/next/no-img-element
-  return <img src={`/api/media/${id}`} alt={alt} className={`object-cover ${className}`} loading="lazy" />;
+  return <img src={`${src}?w=960`} srcSet={srcSet} sizes={sizes} alt={alt} className={`object-cover ${className}`} loading="lazy" decoding="async" />;
 }
 
 export function KV({ k, v }: { k: string; v: ReactNode }) {

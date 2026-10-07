@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { HttpError } from "../util";
+import { invalidatePublicCatalogCache, invalidatePublicContentCache, invalidatePublicBrandCache } from "../public-cache";
 
 export type Meta = { ip: string; ua: string | null };
 export type Handler = (req: NextRequest, params: Record<string, string>, meta: Meta) => Promise<unknown>;
@@ -46,6 +47,12 @@ export async function dispatch(routes: Route[], req: NextRequest, parts: string[
     }
     const meta = { ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local", ua: req.headers.get("user-agent") };
     const out = await m.route.handler(req, m.params, meta);
+    if (method !== "GET" && method !== "HEAD") {
+      const path = parts.join("/");
+      if (/^(admin\/(products|categories|inventory|product-prices|fx-product-prices|variant-discounts|festivals)|seller\/(products|pos)|admin\/pos|admin\/orders|orders|checkout|admin\/returns|returns|admin\/supply|supply|admin\/product-inquiries|admin\/warehouse-issues)/.test(path)) invalidatePublicCatalogCache();
+      if (/^(admin\/(blog|site-pages|home-builder|site-content)|admin\/settings)/.test(path)) invalidatePublicContentCache();
+      if (/^admin\/brands/.test(path)) invalidatePublicBrandCache();
+    }
     if (out instanceof Response) return out;
     return NextResponse.json(out ?? { ok: true });
   } catch (e) {

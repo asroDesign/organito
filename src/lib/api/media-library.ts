@@ -1,11 +1,13 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lt, ne, notInArray, or, sql } from "drizzle-orm";
+import sharp from "sharp";
 import { db } from "@/db";
-import { media, mediaFolders } from "@/db/schema";
-import { requireApi } from "../auth";
+import { media, mediaFolders, mediaVariants } from "@/db/schema";
+import { rateLimit, requireApi } from "../auth";
 import { audit } from "../audit";
 import { HttpError, int, slugify, str } from "../util";
 import { body, idParam, type Route } from "./router";
-import { removeMediaFile } from "../media-storage";
+import { readMediaFile, removeMediaFile } from "../media-storage";
+import { createImageVariants, type ImageCropRatio, type ImageOutputFormat } from "../media-processing";
 
 async function folderExists(id: number | null) {
   if (!id) return;
@@ -43,11 +45,56 @@ export const mediaLibraryRoutes: Route[] = [
     await audit(db, { userId: user.id, ...meta }, "media.folder.update", "media_folder", id, old, row);
     return row;
   } },
+  { method: "POST", pattern: "admin/media/:id/process", handler: async (req, p, meta) => {
+    const user = await requireApi("PRODUCTS_EDIT"), id = idParam(p.id), b = await body(req);
+    rateLimit(`media-process:${user.id}`, 5, 60_000);
+    const cropRatio = ["original", "1:1", "4:3", "16:9", "3:4"].includes(String(b.cropRatio)) ? String(b.cropRatio) as ImageCropRatio : "original";
+    const format = ["webp", "avif", "both"].includes(String(b.format)) ? String(b.format) as ImageOutputFormat : "webp";
+    const focalX = int(b.focalX ?? 50, 0, 100), focalY = int(b.focalY ?? 50, 0, 100), quality = int(b.quality ?? 80, 50, 95);
+    const staleBefore = new Date(Date.now() - 10 * 60_000);
+    const [source] = await db.update(media).set({ processingStatus: "processing", processingError: null, updatedAt: new Date() })
+      .where(and(eq(media.id, id), or(ne(media.processingStatus, "processing"), lt(media.updatedAt, staleBefore)))).returning({ id: media.id, mime: media.mime, size: media.size, storagePath: media.storagePath, processingStatus: media.processingStatus });
+    if (!source) {
+      const [exists] = await db.select({ id: media.id }).from(media).where(eq(media.id, id));
+      if (!exists) throw new HttpError(404, "فایل یافت نشد");
+      throw new HttpError(409, "پردازش این تصویر در حال انجام است");
+    }
+    let variants: Awaited<ReturnType<typeof createImageVariants>> = [];
+    try {
+      if (!source.mime.startsWith("image/")) throw new HttpError(400, "پردازش فقط برای فایل‌های تصویری در دسترس است");
+      if (source.size > 20 * 1024 * 1024) throw new HttpError(400, "برای جلوگیری از مصرف بیش از حد منابع، پردازش تصویرهای بزرگ‌تر از ۲۰ مگابایت ممکن نیست.");
+      const input = await readMediaFile(source.storagePath);
+      variants = await createImageVariants(id, input, { cropRatio, focalX, focalY, quality, format });
+      const previous = await db.select({ storagePath: mediaVariants.storagePath }).from(mediaVariants).where(eq(mediaVariants.mediaId, id));
+      const finishedAt = new Date();
+      const nextNames = variants.map((variant) => variant.variant);
+      await db.transaction(async (tx) => {
+        await tx.delete(mediaVariants).where(and(eq(mediaVariants.mediaId, id), notInArray(mediaVariants.variant, nextNames)));
+        for (const variant of variants) {
+          await tx.insert(mediaVariants).values({ mediaId: id, ...variant }).onConflictDoUpdate({
+            target: [mediaVariants.mediaId, mediaVariants.variant],
+            set: { storagePath: variant.storagePath, mime: variant.mime, size: variant.size, width: variant.width, height: variant.height, cropRatio: variant.cropRatio, focalX: variant.focalX, focalY: variant.focalY, quality: variant.quality, createdAt: finishedAt },
+          });
+        }
+        await tx.update(media).set({ processingStatus: "ready", processingError: null, processedAt: finishedAt, updatedAt: finishedAt }).where(eq(media.id, id));
+      });
+      const newPaths = new Set(variants.map((variant) => variant.storagePath));
+      await Promise.all(previous.filter((variant) => !newPaths.has(variant.storagePath)).map((variant) => removeMediaFile(variant.storagePath)));
+      await audit(db, { userId: user.id, ...meta }, "media.process", "media", id, { variants: previous.length }, { variants: variants.length, cropRatio, format, quality }).catch(() => undefined);
+      return { ok: true, status: "ready", variants: variants.map(({ variant, mime, size, width, height }) => ({ variant, mime, size, width, height })), supportedAvif: Boolean(sharp.format.avif?.output?.file) };
+    } catch (error) {
+      await Promise.all(variants.map((variant) => removeMediaFile(variant.storagePath)));
+      const message = error instanceof HttpError ? error.message : (error as Error).message || "خطای پردازش تصویر";
+      await db.update(media).set({ processingStatus: "failed", processingError: message.slice(0, 300), updatedAt: new Date() }).where(eq(media.id, id));
+      throw error;
+    }
+  } },
   { method: "POST", pattern: "admin/media/:id", handler: async (req, p, meta) => {
     const user = await requireApi("PRODUCTS_EDIT"), id = idParam(p.id), b = await body(req);
     const [old] = await db.select().from(media).where(eq(media.id, id));
     if (!old) throw new HttpError(404, "فایل یافت نشد");
     if (b.delete === true) {
+      const variants = await db.select({ storagePath: mediaVariants.storagePath }).from(mediaVariants).where(eq(mediaVariants.mediaId, id));
       const used = await db.execute(sql`select exists(
         select 1 from product_images where media_id=${id}
         union all select 1 from products where video_media_id=${id}
@@ -58,7 +105,7 @@ export const mediaLibraryRoutes: Route[] = [
       ) as used`);
       if ((used.rows[0] as { used: boolean }).used) throw new HttpError(409, "این فایل در بخشی از سایت استفاده شده و قابل حذف نیست");
       await db.delete(media).where(eq(media.id, id));
-      await removeMediaFile(old.storagePath);
+      await Promise.all([removeMediaFile(old.storagePath), ...variants.map((variant) => removeMediaFile(variant.storagePath))]);
       await audit(db, { userId: user.id, ...meta }, "media.delete", "media", id, { filename: old.filename }, null);
       return { ok: true };
     }

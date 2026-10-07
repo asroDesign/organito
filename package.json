@@ -8,6 +8,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "db:migrate": "node scripts/migrate.mjs",
+    "updates:keys": "node scripts/generate-update-keys.mjs",
+    "updates:package": "node scripts/create-update-package.mjs",
+    "updates:apply": "node scripts/apply-update.mjs",
     "db:import-legacy-media": "node scripts/import-legacy-media.mjs",
     "db:import-legacy-commerce": "node scripts/import-legacy-commerce.mjs",
     "db:cache-legacy-media": "node scripts/cache-legacy-media.mjs"

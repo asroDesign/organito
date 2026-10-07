@@ -4,21 +4,27 @@ import { db } from "@/db";
 import {
   orders, orderItems, sellerShipments, orderHistory, payments, products, productVariants, sellerOffers, sellers,
   stockMovements, wallets, walletTransactions, users, discountCodes, discountUsages, carriers, referralAwards, incompleteCarts, loyaltyPointEntries, type Address,
+  affiliateProfiles, affiliateProgramSettings, pickupCenters,
 } from "@/db/schema";
-import { activeCarriers, activeFestivals, carrierCost, evaluateCode, festivalFor } from "../marketing";
+import { activeCarriers, activeFestivals, activeVariantDiscount, carrierCost, evaluateCode, festivalFor, safeDiscountPercent } from "../marketing";
 import { audit, notify } from "../audit";
 import { postJournal, reverseJournal, type Line } from "../accounting";
 import { getSettings } from "../settings";
+import { snapPayCancel } from "../snappay";
 import { sendSms } from "../sms";
 import { HttpError, genNumber } from "../util";
 import type { Ctx, DB } from "../types";
 import { consumeConsignmentLots, postConsignmentPayables } from "./inventory-accounting";
+import { recordAffiliateEarnings, releaseAffiliateEarnings, reverseAffiliateEarnings } from "./affiliates";
+import { customerLoyaltyTier, syncCustomerLoyaltyTier } from "./loyalty-tiers";
+import { applicableQuantityTier, quantityTierPrice } from "../quantity-pricing";
+import { randomInt } from "node:crypto";
 
 export type CartInput = { productId: number; offerId?: number | null; variantId?: number | null; qty: number; selectedOptions?: Record<string, string | string[]> };
 
 export type QuoteLine = {
   key: string; productId: number; offerId: number | null; variantId: number | null; sellerId: number | null;
-  title: string; slug: string; imageId: number | null; unitPrice: number; qty: number; lineTotal: number; available: number; categoryId: number | null; weight: number; festivalPct: number; festivalTitle: string | null; listPrice: number;
+  title: string; slug: string; imageId: number | null; unitPrice: number; qty: number; lineTotal: number; available: number; categoryId: number | null; weight: number; festivalPct: number; festivalTitle: string | null; promotionKind: "festival" | "variant" | null; listPrice: number; tieredPricing?: boolean;
   ok: boolean; error?: string; unitCost: number; allowBackorder: boolean;
   brand: string; partNumber: string; sku: string; authenticity: string; certifiedOrganic: boolean; certificationLabel: string; sellerName: string; attrs: Record<string, string>; variantTitle: string | null; warranty: string | null; maxQty: number;
   alternatives: { offerId: number; sellerId: number; shopName: string; price: number; available: number; prepDays: number; shippingCost: number; isBuyBox: boolean }[];
@@ -28,10 +34,10 @@ export type CarrierOption = { id: number; name: string; cost: number; minDays: n
 export type Quote = {
   creditAmount:number; giftCardId:number|null;
   lines: QuoteLine[]; groups: QuoteGroup[]; itemsSubtotal: number; sellerShippingTotal: number; centralShipping: number; discount: number; tax: number; finalTotal: number; valid: boolean;
-  festivalDiscount: number; codeDiscount: number; code: { ok: boolean; error?: string; code?: string; title?: string; codeId?: number } | null;
+  festivalDiscount: number; variantDiscount: number; codeDiscount: number; code: { ok: boolean; error?: string; code?: string; title?: string; codeId?: number } | null;
   carriers: CarrierOption[]; carrierId: number | null; freightCollect: boolean; city: string;
 };
-export type QuoteOpts = { userId?: number | null; code?: string; city?: string; carrierId?: number | null; freightCollect?: boolean; lockCode?: boolean };
+export type QuoteOpts = { userId?: number | null; code?: string; city?: string; carrierId?: number | null; freightCollect?: boolean; lockCode?: boolean; pickup?: boolean };
 
 export function sanitizeCart(raw: unknown): CartInput[] {
   if (!Array.isArray(raw) || raw.length === 0 || raw.length > 50) throw new HttpError(400, "سبد خرید نامعتبر است");
@@ -98,12 +104,13 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
       key: `${it.productId}:${it.offerId ?? 0}:${it.variantId ?? 0}:${JSON.stringify(it.selectedOptions ?? {})}`, productId: it.productId, offerId: it.offerId ?? null, variantId: it.variantId ?? null,
       sellerId: null, title: p?.nameFa ?? "محصول نامشخص", slug: p?.slug ?? "", imageId: p?.mainImageId ?? null, unitPrice: 0, qty: it.qty, lineTotal: 0,
       available: 0, ok: false, unitCost: p?.avgCost ?? 0, allowBackorder: p?.allowBackorder ?? false, alternatives: [],
-      categoryId: p?.categoryId ?? null, weight: (p?.weight ?? 0) > 0 ? p!.weight! : 500, festivalPct: 0, festivalTitle: null, listPrice: 0,
+      categoryId: p?.categoryId ?? null, weight: (p?.weight ?? 0) > 0 ? p!.weight! : 500, festivalPct: 0, festivalTitle: null, promotionKind: null, listPrice: 0,
       brand: p?.brand ?? "", partNumber: p?.partNumber ?? "", sku: p?.sku ?? "", authenticity: p?.authenticity ?? "", certifiedOrganic: p?.certifiedOrganic ?? false, certificationLabel: s.organicBadgeLabel, sellerName: s.senderName, attrs: {}, variantTitle: null, warranty: null, maxQty: 0,
     };
     const fest = p ? festivalFor(fests, p.id, p.categoryId) : null;
-    if (fest) { base.festivalPct = fest.discountPercent; base.festivalTitle = fest.title; }
+    if (fest) { base.festivalPct = fest.discountPercent; base.festivalTitle = fest.title; base.promotionKind = "festival"; }
     if (!p || (p.status !== "active" && !(p.status === "out_of_stock" && p.allowBackorder))) { lines.push({ ...base, error: "محصول قابل فروش نیست" }); continue; }
+    if (p.inquiryOnly) { lines.push({ ...base, error: "برای اطلاع از قیمت و ثبت خرید با فروشگاه تماس بگیرید" }); continue; }
     const basePrice = it.offerId ? undefined : it.variantId ? undefined : p.basePrice;
     if (it.offerId) {
       const oq = tx.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId))
@@ -123,20 +130,36 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
       const vq = tx.select().from(productVariants).where(and(eq(productVariants.id, it.variantId), eq(productVariants.productId, p.id), isNull(productVariants.deletedAt)));
       const [v] = lock ? await vq.for("update") : await vq;
       if (!v || !v.isActive || !v.isSellable) { lines.push({ ...base, error: "این تنوع برای فروش مستقیم فعال نیست" }); continue; }
+      if (v.inquiryOnly) { lines.push({ ...base, variantTitle: v.title, error: "برای اطلاع از قیمت و ثبت خرید این تنوع با فروشگاه تماس بگیرید" }); continue; }
       const available = v.onHand - v.reserved;
       const ok = available >= it.qty || p.allowBackorder;
-      const option = addPurchaseOptions(p, it, v.price);
-      lines.push({ ...base, title: p.nameFa, variantTitle: [v.title, option.title].filter(Boolean).join(" · ") || null, attrs: v.attrs, maxQty: p.allowBackorder ? 100 : Math.min(100, Math.max(0, available)), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error,
-        error: option.error ?? (ok ? undefined : "موجودی انبار مرکزی کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
+      const tier = applicableQuantityTier(v.quantityPriceTiers, it.qty);
+      const tierPrice = quantityTierPrice(v.price, tier);
+      const option = addPurchaseOptions(p, it, tierPrice);
+      const unitCost = v.costPrice ?? p.avgCost;
+      const tierFloorOk = !tier || tierPrice >= unitCost;
+      const scheduled = p.source === "central" ? await activeVariantDiscount(tx, v.id) : null;
+      const useVariantDiscount = !!scheduled && scheduled.discountPercent >= base.festivalPct;
+      const requestedPct = useVariantDiscount ? scheduled!.discountPercent : base.festivalPct;
+      const safePct = safeDiscountPercent(option.price, unitCost, requestedPct);
+      const promotionKind = safePct ? (useVariantDiscount ? "variant" : base.promotionKind) : null;
+      const error = option.error ?? (!tierFloorOk ? "قیمت پلکانی از آخرین بهای خرید کمتر است" : option.price < unitCost ? "قیمت فروش از آخرین بهای خرید کمتر است" : ok ? undefined : "موجودی انبار مرکزی کافی نیست");
+      lines.push({ ...base, festivalPct: safePct, festivalTitle: promotionKind === "variant" ? scheduled!.title : base.festivalTitle, promotionKind, title: p.nameFa, variantTitle: [v.title, option.title].filter(Boolean).join(" · ") || null, attrs: v.attrs, maxQty: p.allowBackorder ? 100 : Math.min(100, Math.max(0, available)), unitPrice: option.price, lineTotal: option.price * it.qty, available, unitCost, ok: ok && !error, tieredPricing: !!tier,
+        error, alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     } else {
       if (p.source !== "central") { lines.push({ ...base, error: "برای این محصول فروشنده را انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
       const hasVariants = await tx.select({ id: productVariants.id }).from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true), isNull(productVariants.deletedAt))).limit(1);
       if ((p.options?.length ?? 0) > 0 || hasVariants.length) { lines.push({ ...base, error: "برای این محصول باید تنوع (مشخصات) را از صفحه محصول انتخاب کنید", alternatives: await alternativesFor(tx, p.id, it.qty) }); continue; }
       const available = p.onHand - p.reserved;
       const ok = available >= it.qty || p.allowBackorder;
-      const option = addPurchaseOptions(p, it, p.basePrice);
-      lines.push({ ...base, allowBackorder: p.allowBackorder, variantTitle: option.title, maxQty: p.allowBackorder ? 100 : Math.min(100, Math.max(0, available)), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !option.error,
-        error: option.error ?? (ok ? undefined : "موجودی انبار مرکزی کافی نیست"), alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
+      const tier = applicableQuantityTier(p.quantityPriceTiers, it.qty);
+      const tierPrice = quantityTierPrice(p.basePrice, tier);
+      const option = addPurchaseOptions(p, it, tierPrice);
+      const safePct = safeDiscountPercent(option.price, p.avgCost, base.festivalPct);
+      const tierFloorOk = !tier || tierPrice >= p.avgCost;
+      const error = option.error ?? (!tierFloorOk ? "قیمت پلکانی از آخرین بهای خرید کمتر است" : option.price < p.avgCost ? "قیمت فروش از آخرین بهای خرید کمتر است" : ok ? undefined : "موجودی انبار مرکزی کافی نیست");
+      lines.push({ ...base, festivalPct: safePct, promotionKind: safePct ? base.promotionKind : null, allowBackorder: p.allowBackorder, variantTitle: option.title, maxQty: p.allowBackorder ? 100 : Math.min(100, Math.max(0, available)), unitPrice: option.price, lineTotal: option.price * it.qty, available, ok: ok && !error, tieredPricing: !!tier,
+        error, alternatives: ok ? [] : await alternativesFor(tx, p.id, it.qty) });
     }
   }
   const groupsMap = new Map<string, QuoteGroup>();
@@ -159,13 +182,14 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   }
   const groups = [...groupsMap.values()].filter((g) => g.lines.some((l) => l.ok));
   for (const g of groups) g.packages = Math.max(1, Math.ceil(g.lines.reduce((a, l) => a + (l.ok ? l.qty : 0), 0) / 5));
+  if (opts.pickup) for (const group of groups) group.shippingCost = 0;
   const itemsSubtotal = groups.reduce((a, g) => a + g.itemsTotal, 0);
   // carrier-based central shipping (weight & city)
   const city = (opts.city ?? "").trim();
   const central = groups.find((g) => !g.sellerId);
   const carrierOpts: CarrierOption[] = [];
   let carrierId: number | null = null;
-  const active = groups.length ? await activeCarriers(tx) : [];
+  const active = groups.length && !opts.pickup ? await activeCarriers(tx) : [];
   for (const c of active) {
     let cost = 0;
     if (!c.supportsFreightCollect) for (const group of groups) cost += await carrierCost(tx, c, city, group.weight, group.itemsTotal);
@@ -182,15 +206,23 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
   const sellerShippingTotal = groups.filter((g) => g.sellerId).reduce((a, g) => a + g.shippingCost, 0);
   const centralShipping = central?.shippingCost ?? 0;
   // festival discount (platform funded)
-  let festivalDiscount = 0;
-  for (const l of lines) if (l.ok && l.festivalPct) festivalDiscount += Math.round((l.lineTotal * l.festivalPct) / 100);
+  let festivalDiscount = 0, variantDiscount = 0;
+  for (const l of lines) if (l.ok && l.festivalPct) {
+    const amount = Math.round((l.lineTotal * l.festivalPct) / 100);
+    if (l.promotionKind === "variant") variantDiscount += amount; else festivalDiscount += amount;
+  }
   // discount code on post-festival amounts
   let code: Quote["code"] = null;
   let codeDiscount = 0;
   const creditCode=opts.code?.trim().toUpperCase()??"";
   const isCredit=creditCode==="WALLET"||creditCode.startsWith("GIFT-");
   if (opts.code?.trim()&&!isCredit) {
-    const r = await evaluateCode(tx, opts.code, opts.userId ?? null, lines.filter((l) => l.ok).map((l) => ({ productId: l.productId, categoryId: l.categoryId, amount: l.lineTotal - Math.round((l.lineTotal * l.festivalPct) / 100) })), !!opts.lockCode);
+    // Quantity-tiered lines already carry their discount; coupons apply to the remaining eligible lines only.
+    const couponLines = lines.filter((l) => l.ok && !l.tieredPricing);
+    const r = await evaluateCode(tx, opts.code, opts.userId ?? null, couponLines.map((l) => {
+      const amount = l.lineTotal - Math.round((l.lineTotal * l.festivalPct) / 100);
+      return { productId: l.productId, categoryId: l.categoryId, amount, maxDiscount: l.offerId ? amount : Math.max(0, amount - l.unitCost * l.qty) };
+    }), !!opts.lockCode);
     code = { ok: r.ok, error: r.error, code: r.code, title: r.title, codeId: r.codeId };
     if (r.ok) codeDiscount = r.amount;
   }
@@ -198,7 +230,7 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
     let n = 0;
     for (const g of groupsMap.values()) { n++; if (g.sellerId) g.name = `${s.siteName} — مرسوله ${n.toLocaleString("fa-IR")}`; for (const l of g.lines) l.sellerName = s.siteName; }
   }
-  const discount = festivalDiscount + codeDiscount;
+  const discount = festivalDiscount + variantDiscount + codeDiscount;
   const tax = Math.round((Math.max(0, itemsSubtotal - discount) * s.taxRate) / 100);
   const gross=itemsSubtotal+sellerShippingTotal+centralShipping+tax-discount;
   let creditAmount=0,giftCardId:number|null=null;
@@ -207,11 +239,11 @@ export async function quoteCart(tx: DB, items: CartInput[], lock: boolean, opts:
     creditAmount,giftCardId,
     lines, groups: [...groupsMap.values()], itemsSubtotal, sellerShippingTotal, centralShipping, discount, tax,
     finalTotal: gross-creditAmount,
-    valid: lines.length > 0 && lines.every((l) => l.ok), festivalDiscount, codeDiscount, code, carriers: carrierOpts, carrierId, freightCollect, city,
+    valid: lines.length > 0 && lines.every((l) => l.ok), festivalDiscount, variantDiscount, codeDiscount, code, carriers: carrierOpts, carrierId, freightCollect, city,
   };
 }
 
-export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; freightCollect?: boolean; recoveryKey?: string; officialInvoiceType?: string | null; officialInvoiceDetails?: Record<string,string> | null; attribution?: { source: string; referrerHost?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; landingPath?: string } | null } = {}) {
+export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput[], address: Address, idemKey: string, extra: { code?: string; carrierId?: number | null; freightCollect?: boolean; recoveryKey?: string; officialInvoiceType?: string | null; officialInvoiceDetails?: Record<string,string> | null; attribution?: { source: string; referrerHost?: string; utmSource?: string; utmMedium?: string; utmCampaign?: string; landingPath?: string } | null; analyticsSessionId?: string | null; affiliateCode?: string | null; fulfillmentType?: "delivery" | "pickup"; pickupCenterId?: number | null; pickupDate?: string; pickupTime?: string } = {}) {
   const result = await db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${idemKey}))`);
     const [existing] = await tx.select().from(orders).where(eq(orders.idempotencyKey, idemKey));
@@ -219,13 +251,38 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
       if (existing.customerId !== ctx.userId) throw new HttpError(409, "کلید تکراری");
       return { order: existing, fresh: false };
     }
-    const q = await quoteCart(tx, items, true, { userId: ctx.userId, code: extra.code, city: address.city, carrierId: extra.carrierId, freightCollect: extra.freightCollect, lockCode: true });
+    let pickup: typeof pickupCenters.$inferSelect | undefined;
+    if (extra.fulfillmentType === "pickup") {
+      if (!extra.pickupCenterId || !extra.pickupDate || !extra.pickupTime) throw new HttpError(400, "مرکز، روز و ساعت دریافت را انتخاب کنید");
+      [pickup] = await tx.select().from(pickupCenters).where(and(eq(pickupCenters.id, extra.pickupCenterId), eq(pickupCenters.isActive, true))).for("update");
+      if (!pickup) throw new HttpError(409, "مرکز دریافت انتخاب‌شده فعال نیست");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(extra.pickupDate) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(extra.pickupTime)) throw new HttpError(400, "روز یا ساعت دریافت معتبر نیست");
+      const parsedDate = new Date(`${extra.pickupDate}T00:00:00Z`);
+      if (Number.isNaN(parsedDate.getTime())) throw new HttpError(400, "روز دریافت معتبر نیست");
+      const normalizedDate = parsedDate.toISOString().slice(0, 10);
+      const todayInTehran = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Tehran", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      if (normalizedDate !== extra.pickupDate || extra.pickupDate <= todayInTehran) throw new HttpError(400, "روز دریافت باید یک روز معتبر در آینده باشد");
+      const pickupDay = new Date(`${extra.pickupDate}T12:00:00+03:30`).getDay();
+      const hours = pickup.openingHours.find((h) => h.day === pickupDay && !h.closed);
+      if (!hours || extra.pickupTime < hours.open || extra.pickupTime >= hours.close) throw new HttpError(409, "مرکز در ساعت انتخاب‌شده باز نیست؛ زمان دیگری انتخاب کنید");
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`pickup:${pickup.id}:${extra.pickupDate}`}))`);
+      const [capacity] = await tx.select({ count: sql<number>`count(*)::int` }).from(orders).where(and(eq(orders.fulfillmentType, "pickup"), eq(orders.pickupCenterId, pickup.id), eq(orders.pickupDate, extra.pickupDate), ne(orders.status, "cancelled")));
+      if ((capacity?.count ?? 0) >= pickup.dailyCapacity) throw new HttpError(409, "ظرفیت دریافت این مرکز در روز انتخاب‌شده تکمیل است");
+      address = { fullName: address.fullName, phone: address.phone, city: pickup.city, address: pickup.address, postalCode: "", latitude: pickup.latitude ?? "", longitude: pickup.longitude ?? "" };
+    }
+    const q = await quoteCart(tx, items, true, { userId: ctx.userId, code: extra.code, city: address.city, carrierId: extra.carrierId, freightCollect: extra.freightCollect, lockCode: true, pickup: extra.fulfillmentType === "pickup" });
     if (!q.valid) throw new HttpError(409, q.lines.find((l) => !l.ok)?.error ?? "سبد نامعتبر");
     if (q.code && !q.code.ok) throw new HttpError(409, q.code.error ?? "کد تخفیف نامعتبر");
-    if (q.lines.some((line) => line.ok) && (!q.carriers.length || !extra.carrierId || !q.carriers.some((carrier) => carrier.id === extra.carrierId))) throw new HttpError(409, "برای ثبت سفارش باید یک شرکت پستی فعال انتخاب کنید");
+    if (extra.fulfillmentType === "pickup" && q.groups.some((group) => group.sellerId !== null)) throw new HttpError(409, "دریافت حضوری فقط برای کالاهای انبار مرکزی ممکن است؛ کالاهای فروشندگان را از سبد جدا کنید");
+    if (extra.fulfillmentType !== "pickup" && q.lines.some((line) => line.ok) && (!q.carriers.length || !extra.carrierId || !q.carriers.some((carrier) => carrier.id === extra.carrierId))) throw new HttpError(409, "برای ثبت سفارش باید یک شرکت پستی فعال انتخاب کنید");
     if (extra.freightCollect && !q.carriers.some((carrier) => carrier.id === extra.carrierId && carrier.supportsFreightCollect)) throw new HttpError(409, "این شرکت پستی ارسال پس‌کرایه ندارد");
     const carrierName = q.carriers.find((c) => c.id === q.carrierId)?.name ?? null;
     const [buyer] = await tx.select({ name: users.name, phone: users.phone }).from(users).where(eq(users.id, ctx.userId));
+    const [[affiliateConfig], [affiliate]] = await Promise.all([
+      tx.select({ enabled: affiliateProgramSettings.enabled }).from(affiliateProgramSettings).where(eq(affiliateProgramSettings.id, 1)),
+      extra.affiliateCode ? tx.select({ userId: affiliateProfiles.userId }).from(affiliateProfiles).where(and(eq(affiliateProfiles.code, extra.affiliateCode), eq(affiliateProfiles.status, "active"))) : Promise.resolve([]),
+    ]);
+    const affiliateUserId = affiliateConfig?.enabled && affiliate?.userId !== ctx.userId ? affiliate?.userId ?? null : null;
     const cartKey = `user-${ctx.userId}-${extra.recoveryKey || idemKey.replace(/[^\w-]/g, "-")}`;
     const [recovery] = await tx.insert(incompleteCarts).values({ cartKey, customerId: ctx.userId, customerName: buyer?.name ?? "مشتری", phone: buyer?.phone ?? address.phone, items: q.lines.map((line) => ({ productId: line.productId, variantId: line.variantId, offerId: line.offerId, qty: line.qty, selectedOptions: line.variantTitle, title: line.variantTitle ? `${line.title} — ${line.variantTitle}` : line.title })), reason: "سفارش ثبت شده اما پرداخت تکمیل نشده است", status: "checkout_started", updatedAt: new Date() })
       .onConflictDoUpdate({ target: incompleteCarts.cartKey, set: { customerId: ctx.userId, customerName: buyer?.name ?? "مشتری", phone: buyer?.phone ?? address.phone, items: q.lines.map((line) => ({ productId: line.productId, variantId: line.variantId, offerId: line.offerId, qty: line.qty, selectedOptions: line.variantTitle, title: line.variantTitle ? `${line.title} — ${line.variantTitle}` : line.title })), reason: "سفارش ثبت شده اما پرداخت تکمیل نشده است", status: "checkout_started", updatedAt: new Date() } }).returning({ id: incompleteCarts.id });
@@ -234,9 +291,12 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
       recoveryCartId: recovery.id,
       itemsSubtotal: q.itemsSubtotal, sellerShippingTotal: q.sellerShippingTotal, centralShipping: q.centralShipping,
       discount: q.discount, tax: q.tax, total: q.finalTotal, creditAmount:q.creditAmount,giftCardId:q.giftCardId,address, idempotencyKey: idemKey,
-      festivalDiscount: q.festivalDiscount, codeDiscount: q.codeDiscount, discountCodeId: q.code?.ok ? q.code.codeId ?? null : null, discountCode: q.code?.ok ? q.code.code ?? null : null, carrierId: q.carrierId,
+      festivalDiscount: q.festivalDiscount, variantDiscount: q.variantDiscount, codeDiscount: q.codeDiscount, discountCodeId: q.code?.ok ? q.code.codeId ?? null : null, discountCode: q.code?.ok ? q.code.code ?? null : null, carrierId: extra.fulfillmentType === "pickup" ? null : q.carrierId,
+      fulfillmentType: extra.fulfillmentType === "pickup" ? "pickup" : "delivery", pickupCenterId: pickup?.id ?? null, pickupCenterName: pickup?.name ?? null, pickupDate: pickup ? extra.pickupDate! : null, pickupTime: pickup ? extra.pickupTime! : null, pickupCode: pickup ? String(randomInt(100000, 1000000)) : null, pickupStatus: pickup ? "awaiting" : null,
       officialInvoiceType: extra.officialInvoiceType ?? null, officialInvoiceDetails: extra.officialInvoiceDetails ?? null,
       attribution: extra.attribution ?? null,
+      analyticsSessionId: extra.analyticsSessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(extra.analyticsSessionId) ? extra.analyticsSessionId : null,
+      affiliateUserId,
     }).returning();
     if(q.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,ctx.userId));await reserveCredit(tx,customer.phone,q.creditAmount,q.giftCardId,order.id,ctx.userId);}
     if (q.code?.ok && q.code.codeId) {
@@ -298,6 +358,7 @@ export async function payOrder(ctx: Ctx & { userId: number }, orderId: number, i
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
     if (!o || (!asStaff && o.customerId !== ctx.userId)) throw new HttpError(404, "سفارش یافت نشد");
     if (o.status !== "pending_payment") throw new HttpError(400, "سفارش در وضعیت پرداخت نیست");
+    const loyaltyTier = await customerLoyaltyTier(tx, o.customerId);
     const method = info?.method ?? "gateway";
     const settingsNow = await getSettings(tx);
     const base = {
@@ -313,9 +374,9 @@ export async function payOrder(ctx: Ctx & { userId: number }, orderId: number, i
     let pay: typeof payments.$inferSelect;
     if (info?.existingPaymentId) {
       const [ex] = await tx.select().from(payments).where(and(eq(payments.id, info.existingPaymentId), eq(payments.orderId, o.id))).for("update");
-      if (!ex || !["pending_verification", "initiated"].includes(ex.status)) throw new HttpError(400, "پرداخت در انتظار تأیید یافت نشد");
+      if (!ex || !["pending_verification", "initiated", "provider_settled"].includes(ex.status) || (ex.status === "provider_settled" && !["snappay", "behpardakht"].includes(ex.gateway ?? ""))) throw new HttpError(400, "پرداخت در انتظار تأیید یافت نشد");
       if (ex.status === "initiated" && ex.amount !== o.total) throw new HttpError(409, "مبلغ پرداخت با مبلغ سفارش مغایرت دارد");
-      [pay] = await tx.update(payments).set({ status: "success", amount: o.total, verifiedBy: ex.status === "initiated" ? null : ctx.userId, verifiedAt: new Date(), refCode: ex.refCode ?? `MN${Date.now()}` }).where(eq(payments.id, ex.id)).returning();
+      [pay] = await tx.update(payments).set({ status: "success", amount: o.total, verifiedBy: ["initiated", "provider_settled"].includes(ex.status) ? null : ctx.userId, verifiedAt: new Date(), refCode: ex.refCode ?? `MN${Date.now()}` }).where(eq(payments.id, ex.id)).returning();
     } else {
       [pay] = await tx.insert(payments).values({ ...base, orderId: o.id, refCode: `${method === "gateway" ? "PG" : "MN"}${Date.now()}`, idempotencyKey: idemKey } as typeof payments.$inferInsert).returning();
     }
@@ -343,16 +404,19 @@ export async function payOrder(ctx: Ctx & { userId: number }, orderId: number, i
     const METHOD_FA: Record<string, string> = { gateway: "درگاه اینترنتی", card_to_card: "کارت به کارت", bank_transfer: "حواله بانکی", cash: "نقدی", pos: "کارتخوان" };
     await tx.insert(orderHistory).values({ orderId: o.id, status: "paid", note: `پرداخت موفق (${METHOD_FA[pay.method] ?? pay.method}) - کد ${pay.refCode}${pay.trackingCode ? ` - پیگیری ${pay.trackingCode}` : ""}`, userId: ctx.userId });
     await audit(tx, ctx, "payment.success", "order", o.id, { status: o.status }, { status: "paid", amount: o.total, payment: pay.id });
-    const [buyer] = await tx.select({ id: users.id, referredById: users.referredById }).from(users).where(eq(users.id, o.customerId));
+    await recordAffiliateEarnings(tx, o.id);
+    const [buyer] = await tx.select({ id: users.id, phone: users.phone, referredById: users.referredById }).from(users).where(eq(users.id, o.customerId));
     const purchasedItems = await tx.select({ variantId: orderItems.variantId, qty: orderItems.qty, title: orderItems.title }).from(orderItems).where(eq(orderItems.orderId, o.id));
     const variantIds = purchasedItems.map((item) => item.variantId).filter((id): id is number => id !== null);
     const rewardVariants = variantIds.length ? await tx.select({ id: productVariants.id, rewardPoints: productVariants.rewardPoints }).from(productVariants).where(inArray(productVariants.id, variantIds)) : [];
     const rewardByVariant = new Map(rewardVariants.map((v) => [v.id, v.rewardPoints]));
-    const earned = purchasedItems.reduce((sum, item) => sum + (item.variantId ? (rewardByVariant.get(item.variantId) ?? 0) * item.qty : 0), 0);
+    const baseEarned = purchasedItems.reduce((sum, item) => sum + (item.variantId ? (rewardByVariant.get(item.variantId) ?? 0) * item.qty : 0), 0);
+    const earned = Math.round(baseEarned * loyaltyTier.pointsMultiplierBps / 10000);
     if (earned > 0) {
-      await tx.insert(loyaltyPointEntries).values({ userId: o.customerId, kind: "purchase", points: earned, orderId: o.id, reference: `purchase:${o.id}`, description: `امتیاز خرید سفارش ${o.number}` }).onConflictDoNothing();
+      await tx.insert(loyaltyPointEntries).values({ userId: o.customerId, kind: "purchase", points: earned, orderId: o.id, reference: `purchase:${o.id}`, description: `امتیاز خرید سفارش ${o.number}${loyaltyTier.pointsMultiplierBps > 10000 ? ` با ضریب سطح ${loyaltyTier.name}` : ""}` }).onConflictDoNothing();
       await tx.update(users).set({ marketingPoints: sql`${users.marketingPoints}+${earned}` }).where(eq(users.id, o.customerId));
     }
+    if (buyer) await syncCustomerLoyaltyTier(tx, { userId: buyer.id, phone: buyer.phone, reason: `پرداخت سفارش ${o.number}`, refType: "order_paid", refId: o.id });
     if (buyer?.referredById) {
       const points = Math.floor((o.total * 0.05) / 1000);
       if (points > 0) {
@@ -407,6 +471,7 @@ async function refreshOrderStatus(tx: DB, ctx: Ctx, orderId: number) {
     await tx.insert(orderHistory).values({ orderId, status, note: "به‌روزرسانی خودکار بر اساس وضعیت مرسوله‌ها", userId: ctx.userId });
     await audit(tx, ctx, "order.status", "order", orderId, { status: o.status }, { status });
   }
+  if (status === "completed") await releaseAffiliateEarnings(tx, orderId);
   return status;
 }
 
@@ -587,6 +652,7 @@ export async function confirmReceipt(ctx: Ctx & { userId: number }, orderId: num
       }
     }
     await tx.update(orders).set({ customerConfirmedAt: new Date(), status: "completed", updatedAt: new Date() }).where(eq(orders.id, o.id));
+    await releaseAffiliateEarnings(tx, o.id);
     await tx.insert(orderHistory).values({ orderId: o.id, status: "completed", note: "دریافت کامل سفارش توسط مشتری تأیید شد", userId: ctx.userId });
     await audit(tx, ctx, "order.confirm_receipt", "order", o.id, { status: o.status }, { status: "completed" });
     return o;
@@ -596,6 +662,18 @@ export async function confirmReceipt(ctx: Ctx & { userId: number }, orderId: num
 }
 
 export async function cancelOrder(ctx: Ctx & { userId: number }, orderId: number, scope: { staff: boolean }, reason: string) {
+  const [before] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!before || (!scope.staff && before.customerId !== ctx.userId)) throw new HttpError(404, "سفارش یافت نشد");
+  if (!["pending_payment", "paid"].includes(before.status)) throw new HttpError(400, "این سفارش قابل لغو نیست (پردازش آغاز شده)");
+  const beforeShipments = await db.select().from(sellerShipments).where(and(eq(sellerShipments.orderId, orderId), ne(sellerShipments.status, "cancelled")));
+  if (beforeShipments.some((shipment) => !["pending", "preparing"].includes(shipment.status))) throw new HttpError(400, "بخشی از سفارش ارسال شده است");
+  const [snapPayment] = await db.select().from(payments).where(and(eq(payments.orderId, orderId), eq(payments.gateway, "snappay"), inArray(payments.status, ["success", "provider_settled", "needs_refund"])));
+  if (snapPayment) {
+    if (!scope.staff) throw new HttpError(403, "لغو خرید اعتباری اسنپ‌پی باید توسط مدیر تأیید شود");
+    if (!snapPayment.authority) throw new HttpError(409, "توکن پرداخت اسنپ‌پی برای لغو در دسترس نیست");
+    const settings = await getSettings();
+    await snapPayCancel({ baseUrl: settings.snappayApiBaseUrl, clientId: settings.snappayClientId, clientSecret: settings.snappayClientSecret, username: settings.snappayUsername, password: settings.snappayPassword }, snapPayment.authority);
+  }
   return db.transaction(async (tx) => {
     const [o] = await tx.select().from(orders).where(eq(orders.id, orderId)).for("update");
     if (!o || (!scope.staff && o.customerId !== ctx.userId)) throw new HttpError(404, "سفارش یافت نشد");
@@ -610,6 +688,7 @@ export async function cancelOrder(ctx: Ctx & { userId: number }, orderId: number
       await tx.insert(stockMovements).values({ productId: it.productId, variantId: it.variantId, offerId: it.offerId, type: "release", qty: it.qty, refType: "order", refId: o.id, userId: ctx.userId, note: "لغو سفارش" });
     }
     if (o.paymentStatus === "paid") {
+      await reverseAffiliateEarnings(tx, o.id, ctx.userId);
       if (o.paymentEntryId) await reverseJournal(tx, o.paymentEntryId, `لغو سفارش ${o.number}`, ctx.userId);
       for (const sh of shs.filter((s) => s.sellerId)) {
         const gross = sh.itemsTotal + sh.shippingCost;
@@ -621,13 +700,18 @@ export async function cancelOrder(ctx: Ctx & { userId: number }, orderId: number
       }
       await tx.update(payments).set({ status: "refunded" }).where(eq(payments.orderId, o.id));
     }
+    if (snapPayment && o.paymentStatus !== "paid") await tx.update(payments).set({ status: "refunded" }).where(eq(payments.id, snapPayment.id));
     if(o.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,o.customerId));await restoreCredit(tx,customer.phone,o.creditAmount,o.giftCardId,o.id,o.customerId);}
     if (o.discountCodeId) {
       await tx.update(discountCodes).set({ usedCount: sql`greatest(${discountCodes.usedCount} - 1, 0)` }).where(eq(discountCodes.id, o.discountCodeId));
       await tx.delete(discountUsages).where(eq(discountUsages.orderId, o.id));
     }
     if (shs.length) await tx.update(sellerShipments).set({ status: "cancelled" }).where(inArray(sellerShipments.id, shs.map((s) => s.id)));
-    await tx.update(orders).set({ status: "cancelled", paymentStatus: o.paymentStatus === "paid" ? "refunded" : o.paymentStatus, updatedAt: new Date() }).where(eq(orders.id, o.id));
+    await tx.update(orders).set({ status: "cancelled", paymentStatus: o.paymentStatus === "paid" || snapPayment ? "refunded" : o.paymentStatus, updatedAt: new Date() }).where(eq(orders.id, o.id));
+    if (o.paymentStatus === "paid") {
+      const [customer] = await tx.select({ phone: users.phone }).from(users).where(eq(users.id, o.customerId));
+      if (customer) await syncCustomerLoyaltyTier(tx, { userId: o.customerId, phone: customer.phone, reason: `لغو سفارش ${o.number}`, refType: "order_cancel", refId: o.id });
+    }
     await tx.insert(orderHistory).values({ orderId: o.id, status: "cancelled", note: reason || "لغو سفارش", userId: ctx.userId });
     await audit(tx, ctx, "order.cancel", "order", o.id, { status: o.status }, { status: "cancelled", reason });
   });

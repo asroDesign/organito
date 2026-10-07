@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, inventoryParties, inventorySupplierPayments, journalLines, orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications } from "@/db/schema";
+import { accounts, inventoryParties, inventorySupplierPayments, journalLines, orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications, inventoryWarehouses, inventoryWarehouseStock, inventoryWarehouseTransfers, productVariants, products, stockMovements } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal, reverseJournal } from "../accounting";
@@ -23,6 +23,89 @@ async function requireSeller() {
 }
 
 export const staffRoutes: Route[] = [
+  { method: "GET", pattern: "admin/inventory/warehouses", handler: async () => {
+    await requireApi("INVENTORY_MANAGE");
+    const [warehouses, stock, productRows, variantRows] = await Promise.all([
+      db.select().from(inventoryWarehouses).orderBy(inventoryWarehouses.isDefault, inventoryWarehouses.name),
+      db.select().from(inventoryWarehouseStock),
+      db.select({ product: products }).from(products).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa),
+      db.select({ variant: productVariants, productName: products.nameFa, baseUnit: products.inventoryBaseUnit }).from(productVariants).innerJoin(products, eq(products.id, productVariants.productId)).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa, productVariants.title),
+    ]);
+    const items = [
+      ...variantRows.filter(({ variant }) => !variant.deletedAt).map(({ variant, productName, baseUnit }) => ({ productId: variant.productId, variantId: variant.id, label: `${productName} · ${variant.title}`, sku: variant.sku, unit: variant.inventoryUnit || baseUnit, centralAvailable: variant.onHand - variant.reserved })),
+      ...productRows.filter(({ product }) => !variantRows.some(({ variant }) => variant.productId === product.id && !variant.deletedAt)).map(({ product }) => ({ productId: product.id, variantId: null, label: product.nameFa, sku: product.sku, unit: product.inventoryBaseUnit, centralAvailable: product.onHand - product.reserved })),
+    ];
+    return { warehouses, stock, items };
+  } },
+  { method: "POST", pattern: "admin/inventory/warehouses", handler: async (req, _p, meta) => {
+    const user = await requireApi("INVENTORY_MANAGE"), b = await body(req), name = str(b.name, 100), code = str(b.code, 20).toUpperCase().replace(/[^A-Z0-9_-]/g, ""), address = str(b.address, 300);
+    if (!name || !/^[A-Z0-9][A-Z0-9_-]{1,19}$/.test(code)) throw new HttpError(400, "نام انبار و کد یکتای ۲ تا ۲۰ حرفی لازم است");
+    const [row] = await db.insert(inventoryWarehouses).values({ name, code, address: address || null }).returning();
+    await audit(db, { userId: user.id, ...meta }, "inventory.warehouse.create", "inventory_warehouse", row.id, null, row);
+    return row;
+  } },
+  { method: "PUT", pattern: "admin/inventory/warehouses/:id", handler: async (req, p, meta) => {
+    const user = await requireApi("INVENTORY_MANAGE"), id = idParam(p.id), b = await body(req), name = str(b.name, 100), address = str(b.address, 300);
+    if (!name) throw new HttpError(400, "نام انبار الزامی است");
+    const [old] = await db.select().from(inventoryWarehouses).where(eq(inventoryWarehouses.id, id));
+    if (!old) throw new HttpError(404, "انبار پیدا نشد");
+    const [row] = await db.update(inventoryWarehouses).set({ name, address: address || null, enabled: old.isDefault ? true : b.enabled === true, updatedAt: new Date() }).where(eq(inventoryWarehouses.id, id)).returning();
+    await audit(db, { userId: user.id, ...meta }, "inventory.warehouse.update", "inventory_warehouse", id, old, row);
+    return row;
+  } },
+  { method: "POST", pattern: "admin/inventory/warehouses/transfers", handler: async (req, _p, meta) => {
+    const user = await requireApi("INVENTORY_MANAGE"), b = await body(req), fromId = int(b.fromWarehouseId, 1), toId = int(b.toWarehouseId, 1), productId = int(b.productId, 1), variantId = b.variantId ? int(b.variantId, 1) : null, quantity = int(b.quantity, 1, 100000), note = str(b.note, 300);
+    if (fromId === toId) throw new HttpError(400, "مبدأ و مقصد انتقال باید متفاوت باشند");
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(99126)`);
+      const [from] = await tx.select().from(inventoryWarehouses).where(eq(inventoryWarehouses.id, fromId));
+      const [to] = await tx.select().from(inventoryWarehouses).where(eq(inventoryWarehouses.id, toId));
+      if (!from?.enabled || !to?.enabled) throw new HttpError(400, "انبار مبدأ یا مقصد غیرفعال است");
+      const [product] = await tx.select().from(products).where(and(eq(products.id, productId), eq(products.source, "central")));
+      if (!product) throw new HttpError(404, "کالای انبار مرکزی پیدا نشد");
+      let unitCost = product.avgCost;
+      if (variantId) {
+        const [variant] = await tx.select().from(productVariants).where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId))).for("update");
+        if (!variant || variant.deletedAt) throw new HttpError(404, "تنوع کالا پیدا نشد");
+        unitCost = variant.costPrice ?? product.avgCost;
+        if (from.isDefault) {
+          if (variant.onHand - variant.reserved < quantity) throw new HttpError(409, `موجودی آزاد انبار اصلی ${variant.onHand - variant.reserved} است`);
+          await tx.update(productVariants).set({ onHand: sql`${productVariants.onHand} - ${quantity}` }).where(eq(productVariants.id, variantId));
+        } else {
+          const [stock] = await tx.select().from(inventoryWarehouseStock).where(and(eq(inventoryWarehouseStock.warehouseId, fromId), eq(inventoryWarehouseStock.productId, productId), eq(inventoryWarehouseStock.variantId, variantId))).for("update");
+          if (!stock || stock.onHand - stock.reserved < quantity) throw new HttpError(409, "موجودی آزاد انبار مبدأ کافی نیست");
+          await tx.update(inventoryWarehouseStock).set({ onHand: stock.onHand - quantity, updatedAt: new Date() }).where(eq(inventoryWarehouseStock.id, stock.id));
+        }
+        if (to.isDefault) await tx.update(productVariants).set({ onHand: sql`${productVariants.onHand} + ${quantity}` }).where(eq(productVariants.id, variantId));
+        else {
+          await tx.insert(inventoryWarehouseStock).values({ warehouseId: toId, productId, variantId, onHand: 0, reserved: 0 }).onConflictDoNothing();
+          await tx.update(inventoryWarehouseStock).set({ onHand: sql`${inventoryWarehouseStock.onHand} + ${quantity}`, updatedAt: new Date() }).where(and(eq(inventoryWarehouseStock.warehouseId, toId), eq(inventoryWarehouseStock.variantId, variantId)));
+        }
+      } else {
+        const [base] = await tx.select().from(products).where(eq(products.id, productId)).for("update");
+        if (from.isDefault) {
+          if (base.onHand - base.reserved < quantity) throw new HttpError(409, `موجودی آزاد انبار اصلی ${base.onHand - base.reserved} است`);
+          await tx.update(products).set({ onHand: sql`${products.onHand} - ${quantity}` }).where(eq(products.id, productId));
+        } else {
+          const [stock] = await tx.select().from(inventoryWarehouseStock).where(and(eq(inventoryWarehouseStock.warehouseId, fromId), eq(inventoryWarehouseStock.productId, productId), sql`${inventoryWarehouseStock.variantId} is null`)).for("update");
+          if (!stock || stock.onHand - stock.reserved < quantity) throw new HttpError(409, "موجودی آزاد انبار مبدأ کافی نیست");
+          await tx.update(inventoryWarehouseStock).set({ onHand: stock.onHand - quantity, updatedAt: new Date() }).where(eq(inventoryWarehouseStock.id, stock.id));
+        }
+        if (to.isDefault) await tx.update(products).set({ onHand: sql`${products.onHand} + ${quantity}` }).where(eq(products.id, productId));
+        else {
+          await tx.insert(inventoryWarehouseStock).values({ warehouseId: toId, productId, variantId: null, onHand: 0, reserved: 0 }).onConflictDoNothing();
+          await tx.update(inventoryWarehouseStock).set({ onHand: sql`${inventoryWarehouseStock.onHand} + ${quantity}`, updatedAt: new Date() }).where(and(eq(inventoryWarehouseStock.warehouseId, toId), eq(inventoryWarehouseStock.productId, productId), sql`${inventoryWarehouseStock.variantId} is null`));
+        }
+      }
+      const [transfer] = await tx.insert(inventoryWarehouseTransfers).values({ fromWarehouseId: fromId, toWarehouseId: toId, productId, variantId, quantity, note: note || null, userId: user.id }).returning();
+      await tx.insert(stockMovements).values([
+        { productId, variantId, warehouseId: fromId, type: "warehouse_transfer_out", qty: -quantity, unitCost, refType: "warehouse_transfer", refId: transfer.id, note: `${from.name} ← خروج به ${to.name}${note ? ` · ${note}` : ""}`, userId: user.id },
+        { productId, variantId, warehouseId: toId, type: "warehouse_transfer_in", qty: quantity, unitCost, refType: "warehouse_transfer", refId: transfer.id, note: `${to.name} ← ورود از ${from.name}${note ? ` · ${note}` : ""}`, userId: user.id },
+      ]);
+      await audit(tx, { userId: user.id, ...meta }, "inventory.warehouse.transfer", "inventory_warehouse_transfer", transfer.id, null, { from: from.name, to: to.name, productId, variantId, quantity });
+      return { ok: true, transferId: transfer.id };
+    });
+  } },
   // ---------- products (seller or staff) ----------
   { method: "POST", pattern: "products", handler: async (req, _p, m) => {
     const u = await requireApi();
@@ -303,8 +386,11 @@ export const staffRoutes: Route[] = [
     const changes: Record<string, unknown> = {};
     for (const [k, def] of Object.entries(DEFAULT_SETTINGS)) {
       if (!(k in b)) continue;
-      if (["smsApiKey", "torobpayClientSecret", "torobpayPassword"].includes(k) && !str(b[k], 1000)) continue;
+      if (["smsApiKey", "smsPassword", "torobpayClientSecret", "torobpayPassword", "nextpayApiKey", "digipayClientSecret", "digipayPassword", "snappayClientSecret", "snappayPassword", "behpardakhtPassword", "pasargadPassword", "vandarApiKey"].includes(k) && !str(b[k], 1000)) continue;
       let v: unknown;
+      if (k === "smsProvider" && !["kavenegar", "smsir", "ghasedak", "melipayamak", "mediana", "ippanel"].includes(str(b[k], 20))) throw new HttpError(400, "سرویس پیامک نامعتبر است");
+      if (k === "appearanceMode" && !["light", "dark", "system"].includes(str(b[k], 12))) throw new HttpError(400, "حالت ظاهری نامعتبر است");
+      if (k === "appearancePalette" && !["sunshine", "forest", "ocean"].includes(str(b[k], 20))) throw new HttpError(400, "رنگ سازمانی نامعتبر است");
       if (k === "productTypes") {
         if (!Array.isArray(b[k])) throw new HttpError(400, "فهرست نوع محصولات نامعتبر است");
         v = (b[k] as Record<string, unknown>[]).map((x) => ({ name: str(x.name, 80), parameters: Array.isArray(x.parameters) ? [...new Set(x.parameters.map((p) => str(p, 80)).filter(Boolean))].slice(0, 40) : [] })).filter((x) => x.name).slice(0, 80);
@@ -317,9 +403,12 @@ export const staffRoutes: Route[] = [
       if (["invoiceBorderColor", "invoiceAccentColor"].includes(k) && !/^#[0-9a-f]{6}$/i.test(String(v))) throw new HttpError(400, "رنگ فاکتور باید کد HEX شش‌رقمی باشد");
       if (k === "organicBadgeLabel" && !str(v, 80)) throw new HttpError(400, "عنوان نشان اصالت کالا نمی‌تواند خالی باشد");
       if (k === "paymentGateway" && v !== "zarinpal" && v !== "zibal") throw new HttpError(400, "درگاه پرداخت نامعتبر است");
-      if (["paymentGatewaysConfigured", "paymentManualEnabled", "paymentZarinpalEnabled", "paymentZibalEnabled", "paymentTorobpayEnabled", "zarinpalSandbox"].includes(k) && ![0, 1].includes(Number(v))) throw new HttpError(400, "وضعیت فعال‌سازی درگاه نامعتبر است");
-      if (["paymentZarinpalIconId", "paymentZibalIconId", "paymentTorobpayIconId"].includes(k) && Number(v) < 0) throw new HttpError(400, "شناسه آیکن درگاه نامعتبر است");
-      changes[k] = ["smsApiKey", "torobpayClientSecret", "torobpayPassword"].includes(k) ? "[configured]" : v;
+      if ((/^payment[A-Za-z]+Enabled$/.test(k) || ["paymentGatewaysConfigured", "paymentManualEnabled", "zarinpalSandbox", "digipaySandbox"].includes(k)) && ![0, 1].includes(Number(v))) throw new HttpError(400, "وضعیت فعال‌سازی درگاه نامعتبر است");
+      if (/^payment[A-Za-z]+IconId$/.test(k) && Number(v) < 0) throw new HttpError(400, "شناسه آیکن درگاه نامعتبر است");
+      if (k === "snappayApiBaseUrl" && v) { try { const url = new URL(String(v)); if (url.protocol !== "https:" || url.pathname !== "/" || url.search || url.hash || url.username || url.password) throw new Error(); } catch { throw new HttpError(400, "نشانی API اسنپ‌پی باید دامنه HTTPS باشد"); } }
+      if (k === "digipayAmountMultiplier" && ![1, 10].includes(Number(v))) throw new HttpError(400, "واحد مبلغ دیجی‌پی نامعتبر است");
+      if (k === "digipayPreferredGateway" && ![0, 2].includes(Number(v))) throw new HttpError(400, "روش پرداخت دیجی‌پی نامعتبر است");
+      changes[k] = ["smsApiKey", "smsPassword", "torobpayClientSecret", "torobpayPassword", "nextpayApiKey", "digipayClientSecret", "digipayPassword", "snappayClientSecret", "snappayPassword", "behpardakhtPassword", "pasargadPassword", "vandarApiKey", "paypingApiKey", "sepalApiKey"].includes(k) ? "[configured]" : v;
       await db.insert(settings).values({ key: k, value: v }).onConflictDoUpdate({ target: settings.key, set: { value: v } });
     }
     await audit(db, { userId: u.id, ...m }, "settings.update", "settings", null, null, changes);

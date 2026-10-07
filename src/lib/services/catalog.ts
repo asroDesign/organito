@@ -1,6 +1,6 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, inventoryConsignmentLots, inventoryParties, inventoryReceipts, inventoryRepackJobs, inventorySupplierPayments, media, productImages, products, productVariants, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq } from "@/db/schema";
+import { accounts, inventoryConsignmentLots, inventoryParties, inventoryReceipts, inventoryRepackJobs, inventorySupplierPayments, media, productImages, products, productVariants, productPriceHistory, sellerOffers, sellers, stockMovements, users, type Compat, type Spec, type ProductOption, type PurchaseOption, type ProductFaq, type QuantityPriceTier } from "@/db/schema";
 import { audit, notify } from "../audit";
 import { postJournal } from "../accounting";
 import { sendSms } from "../sms";
@@ -45,6 +45,25 @@ export function parseProductInput(b: Record<string, unknown>) {
   })).filter((o) => o.name).slice(0, 20) : [];
   if (new Set(purchaseOptions.map((o) => o.name)).size !== purchaseOptions.length) throw new HttpError(400, "نام گزینه‌های محصول تکراری است");
   for (const option of purchaseOptions) if (new Set(option.values.map((v) => v.label)).size !== option.values.length) throw new HttpError(400, `انتخاب تکراری در گزینه «${option.name}» وجود دارد`);
+  const parseTiers = (raw: unknown, label: string): QuantityPriceTier[] => {
+    if (raw === undefined || raw === null) return [];
+    if (!Array.isArray(raw) || raw.length > 20) throw new HttpError(400, `حداکثر ۲۰ بازه قیمت پلکانی برای ${label} مجاز است`);
+    const tiers = raw.map((entry) => {
+      const row = (entry && typeof entry === "object" ? entry : {}) as Record<string, unknown>;
+      const minQty = int(row.minQty, 1, 100), maxQty = row.maxQty === null || row.maxQty === "" || row.maxQty === undefined ? null : int(row.maxQty, 1, 100);
+      if (row.discountType !== "percent" && row.discountType !== "fixed") throw new HttpError(400, `نوع تخفیف قیمت پلکانی ${label} معتبر نیست`);
+      const discountType: QuantityPriceTier["discountType"] = row.discountType === "percent" ? "percent" : "fixed";
+      const discountValue = int(row.discountValue, 1, discountType === "percent" ? 100 : 1_000_000_000);
+      if (maxQty !== null && maxQty < minQty) throw new HttpError(400, `حداکثر تعداد ${label} باید از حداقل تعداد کمتر نباشد`);
+      return { minQty, maxQty, discountType, discountValue };
+    }).sort((a, b) => a.minQty - b.minQty);
+    for (let i = 1; i < tiers.length; i++) {
+      const previous = tiers[i - 1], current = tiers[i];
+      if (previous.maxQty === null || previous.maxQty >= current.minQty) throw new HttpError(400, `بازه‌های قیمت پلکانی ${label} نباید هم‌پوشانی داشته باشند`);
+    }
+    return tiers;
+  };
+  const quantityPriceTiers = parseTiers(b.quantityPriceTiers, "محصول");
   const productFaqs: ProductFaq[] = Array.isArray(b.productFaqs) ? (b.productFaqs as Record<string, unknown>[]).map((x) => ({ question: str(x.question, 1000), answer: str(x.answer, 3000) })).filter((x) => x.question && x.answer).slice(0, 40) : [];
   const cleanIds = (v: unknown) => Array.isArray(v) ? Array.from(new Set(v.map((x) => int(x, 1)).filter(Boolean))).slice(0, 30) : [];
   const relatedProductIds = cleanIds(b.relatedProductIds), crossSellProductIds = cleanIds(b.crossSellProductIds);
@@ -69,8 +88,15 @@ export function parseProductInput(b: Record<string, unknown>) {
       throw new HttpError(400, "مقدار انتخاب‌شده برای یکی از تنوع‌های جدید معتبر نیست");
     }
     const title = options.length ? options.map((o) => attrs[o.name]).join(" / ") : str(v.title, 80);
-    return [{ id, title, attrs, sku: str(v.sku, 60), price: int(v.price ?? 0), rewardPoints: int(v.rewardPoints ?? 0, 0, 1000000), onHand: int(v.onHand ?? 0, 0, 100000), inventoryUnit: str(v.inventoryUnit, 30) || "عدد", baseUnitAmount: int(v.baseUnitAmount ?? 1, 1, 1_000_000_000), isActive: v.isActive !== false, isSellable: v.isSellable !== false }];
+    return [{ id, title, attrs, sku: str(v.sku, 60), price: int(v.price ?? 0), compareAtPrice: v.compareAtPrice === undefined ? undefined : int(v.compareAtPrice ?? 0), rewardPoints: int(v.rewardPoints ?? 0, 0, 1000000), quantityPriceTiers: parseTiers(v.quantityPriceTiers, `تنوع «${str(v.title, 80) || title}»`), onHand: int(v.onHand ?? 0, 0, 100000), inventoryUnit: str(v.inventoryUnit, 30) || "عدد", baseUnitAmount: int(v.baseUnitAmount ?? 1, 1, 1_000_000_000), isActive: v.isActive !== false, isSellable: v.isSellable !== false, inquiryOnly: v.inquiryOnly === true }];
   }).filter((v) => v.title).slice(0, 60) : [];
+  const ensurePositiveTierPrice = (price: number, tiers: QuantityPriceTier[], label: string) => {
+    if (tiers.some((tier) => (tier.discountType === "percent" ? price - Math.round(price * tier.discountValue / 100) : price - tier.discountValue) < 1)) {
+      throw new HttpError(400, `تخفیف قیمت پلکانی ${label} باید کمتر از قیمت هر واحد باشد`);
+    }
+  };
+  ensurePositiveTierPrice(int(b.basePrice ?? 0), quantityPriceTiers, "محصول");
+  for (const variant of variants) ensurePositiveTierPrice(variant.price, variant.quantityPriceTiers, `تنوع «${variant.title}»`);
   const variantKey = (attrs: Record<string, string>) => JSON.stringify(options.map((option) => attrs[option.name] ?? ""));
   const combos = new Set(variants.map((v) => variantKey(v.attrs)));
   if (options.length && combos.size !== variants.length) throw new HttpError(400, "ترکیب تکراری در تنوع‌ها وجود دارد");
@@ -82,6 +108,7 @@ export function parseProductInput(b: Record<string, unknown>) {
   return {
     data: {
       nameFa, nameEn: str(b.nameEn, 200) || null, sku, partNumber, normalizedPn: normalizePn(partNumber), oemNumber: str(b.oemNumber, 80) || null,
+      externalSourceUrl: str(b.externalSourceUrl, 300) || null, externalSourceId: str(b.externalSourceId, 80) || null,
       crossRefs, brand, manufacturer: str(b.manufacturer, 80) || null, country: str(b.country, 60) || null,
       categoryId: b.categoryId ? int(b.categoryId, 1) : null, authenticity,
       productType: str(b.productType, 80) || null, certifiedOrganic: b.certifiedOrganic === true,
@@ -92,8 +119,9 @@ export function parseProductInput(b: Record<string, unknown>) {
       slug: slugify(str(b.slug, 120) || `${str(b.nameEn, 120) || nameFa}-${sku}`),
       lowStockThreshold: b.lowStockThreshold !== undefined ? int(b.lowStockThreshold, 0, 10000) : 3,
       allowBackorder: b.allowBackorder === true,
+      inquiryOnly: b.inquiryOnly === true,
       inventoryBaseUnit: ["عدد", "گرم", "میلی‌لیتر"].includes(String(b.inventoryBaseUnit)) ? String(b.inventoryBaseUnit) : "عدد",
-      options, purchaseOptions, relatedProductIds, crossSellProductIds, productFaqs,
+      options, purchaseOptions, quantityPriceTiers, relatedProductIds, crossSellProductIds, productFaqs,
       deliveryEstimateEnabled: b.deliveryEstimateEnabled === true, deliveryMinDays, deliveryMaxDays,
       organicInfo: parseOrganic(b.organicInfo),
       videoMediaId: b.videoMediaId ? int(b.videoMediaId, 1) : null,
@@ -146,6 +174,17 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
       if (isSeller && old.ownerSellerId !== u.sellerId) throw new HttpError(404, "محصول یافت نشد");
       if (isSeller) { input.data.allowBackorder = old.allowBackorder; input.data.inventoryBaseUnit = old.inventoryBaseUnit; input.data.certifiedOrganic = old.certifiedOrganic; }
       else if (old.source !== "central") { input.data.allowBackorder = false; input.data.inventoryBaseUnit = old.inventoryBaseUnit; }
+      if (isSeller || old.source !== "central") input.data.quantityPriceTiers = old.quantityPriceTiers ?? [];
+      const validateFloor = (price: number, cost: number, tiers: QuantityPriceTier[], label: string) => {
+        for (const tier of tiers) {
+          const discounted = tier.discountType === "percent" ? price - Math.round(price * tier.discountValue / 100) : price - tier.discountValue;
+          if (discounted < cost) throw new HttpError(400, `قیمت پلکانی ${label} پس از تخفیف نباید از آخرین بهای خرید (${cost.toLocaleString("fa-IR")} تومان) کمتر شود`);
+        }
+      };
+      if (old.source === "central") {
+        validateFloor(input.data.basePrice, old.avgCost, input.data.quantityPriceTiers, `محصول «${input.data.nameFa}»`);
+        for (const v of input.variants) validateFloor(v.price, v.id ? (await tx.select({ cost: productVariants.costPrice }).from(productVariants).where(eq(productVariants.id, v.id)))[0]?.cost ?? old.avgCost : old.avgCost, v.quantityPriceTiers, `تنوع «${v.title}»`);
+      }
       if (old.inventoryBaseUnit !== input.data.inventoryBaseUnit) {
         const stockedVariants = await tx.select({ onHand: productVariants.onHand, reserved: productVariants.reserved }).from(productVariants).where(eq(productVariants.productId, id));
         if (old.onHand || old.reserved || stockedVariants.some((v) => v.onHand || v.reserved)) throw new HttpError(400, "واحد پایه را تا زمانی که موجودی محصول یا تنوع‌هایش صفر نشده تغییر ندهید");
@@ -154,6 +193,9 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
       const status = isSeller && importantChanged && old.status !== "draft" ? "pending" : old.status;
       await tx.update(products).set({ ...input.data, status, mainImageId: input.imageIds[0] ?? null, updatedAt: new Date() }).where(eq(products.id, id));
       productId = id;
+      if (old.basePrice !== input.data.basePrice || old.compareAtPrice !== input.data.compareAtPrice) {
+        await tx.insert(productPriceHistory).values({ productId, scope: "product", price: input.data.basePrice, referencePrice: input.data.compareAtPrice, source: isSeller ? "seller_product_edit" : "admin_product_edit", changedBy: ctx.userId });
+      }
       await audit(tx, ctx, old.basePrice !== input.data.basePrice ? "product.price_change" : "product.update", "product", id,
         { basePrice: old.basePrice, status: old.status, nameFa: old.nameFa }, { basePrice: input.data.basePrice, status, nameFa: input.data.nameFa });
     } else {
@@ -162,6 +204,7 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
         source: isSeller ? "marketplace" : "central", ownerSellerId: isSeller ? u.sellerId : null, createdBy: u.id, mainImageId: input.imageIds[0] ?? null,
       }).returning();
       productId = p.id;
+      await tx.insert(productPriceHistory).values({ productId, scope: "product", price: p.basePrice, referencePrice: p.compareAtPrice, source: "product_created", changedBy: ctx.userId });
       await audit(tx, ctx, "product.create", "product", p.id, null, { sku: p.sku, status: p.status });
     }
     await tx.delete(productImages).where(eq(productImages.productId, productId));
@@ -178,9 +221,14 @@ export async function saveProduct(ctx: Ctx & { userId: number }, u: SessionUser,
         if (current) {
           if ((current.onHand || current.reserved) && (v.inventoryUnit !== current.inventoryUnit || v.baseUnitAmount !== current.baseUnitAmount)) throw new HttpError(400, `واحد یا ضریب تبدیل تنوع «${current.title}» تا زمان صفرشدن موجودی آن قابل تغییر نیست`);
           keep.add(current.id);
-          await tx.update(productVariants).set({ title: v.title, attrs: v.attrs, sku: v.sku, price: v.price, rewardPoints: v.rewardPoints, inventoryUnit: v.inventoryUnit, baseUnitAmount: v.baseUnitAmount, isActive: v.isActive, isSellable: v.isSellable }).where(eq(productVariants.id, current.id));
+          const nextReferencePrice = v.compareAtPrice ?? current.compareAtPrice ?? 0;
+          await tx.update(productVariants).set({ title: v.title, attrs: v.attrs, sku: v.sku, price: v.price, ...(v.compareAtPrice !== undefined ? { compareAtPrice: v.compareAtPrice } : {}), rewardPoints: v.rewardPoints, quantityPriceTiers: v.quantityPriceTiers, inventoryUnit: v.inventoryUnit, baseUnitAmount: v.baseUnitAmount, isActive: v.isActive, isSellable: v.isSellable, inquiryOnly: v.inquiryOnly }).where(eq(productVariants.id, current.id));
+          if ((current.price ?? input.data.basePrice) !== v.price || (current.compareAtPrice ?? 0) !== nextReferencePrice) {
+            await tx.insert(productPriceHistory).values({ productId, scope: "variant", variantId: current.id, price: v.price, referencePrice: nextReferencePrice, source: "admin_variant_edit", changedBy: ctx.userId });
+          }
         } else {
-          const [nv] = await tx.insert(productVariants).values({ productId, title: v.title, attrs: v.attrs, sku: v.sku || `${input.data.sku}-${existing.length + keep.size + 1}`, price: v.price, rewardPoints: v.rewardPoints, inventoryUnit: v.inventoryUnit, baseUnitAmount: v.baseUnitAmount, onHand: v.onHand, isActive: v.isActive, isSellable: v.isSellable }).returning();
+          const [nv] = await tx.insert(productVariants).values({ productId, title: v.title, attrs: v.attrs, sku: v.sku || `${input.data.sku}-${existing.length + keep.size + 1}`, price: v.price, compareAtPrice: v.compareAtPrice ?? 0, rewardPoints: v.rewardPoints, quantityPriceTiers: v.quantityPriceTiers, inventoryUnit: v.inventoryUnit, baseUnitAmount: v.baseUnitAmount, onHand: v.onHand, isActive: v.isActive, isSellable: v.isSellable, inquiryOnly: v.inquiryOnly }).returning();
+          await tx.insert(productPriceHistory).values({ productId, scope: "variant", variantId: nv.id, price: v.price, referencePrice: v.compareAtPrice ?? 0, source: "variant_created", changedBy: ctx.userId });
           if (v.onHand > 0) await tx.insert(stockMovements).values({ productId, variantId: nv.id, type: "initial", qty: v.onHand, userId: ctx.userId, note: "موجودی اولیه تنوع" });
         }
       }
@@ -209,7 +257,11 @@ export async function setProductStatus(ctx: Ctx & { userId: number }, u: Session
       if (!(status === "pending" && ["draft", "rejected"].includes(p.status)) && !(status === "deleted" && p.status !== "active")) throw new HttpError(403, "این تغییر وضعیت برای فروشنده مجاز نیست");
     } else if (!u.permissions.includes(perm)) throw new HttpError(403, "دسترسی غیرمجاز");
     if (status === "deleted" && p.reserved > 0) throw new HttpError(400, "محصول دارای موجودی رزروشده است");
-    await tx.update(products).set({ status, rejectReason: status === "rejected" ? reason ?? null : null, updatedAt: new Date() }).where(eq(products.id, id));
+    const now = new Date();
+    await tx.update(products).set({
+      status, rejectReason: status === "rejected" ? reason ?? null : null, updatedAt: now,
+      ...(status === "deleted" ? { deletedAt: now, deletedBy: u.id, deletedFromStatus: p.status === "deleted" ? p.deletedFromStatus : p.status } : { deletedAt: null, deletedBy: null, deletedFromStatus: null }),
+    }).where(eq(products.id, id));
     await audit(tx, ctx, status === "active" || status === "approved" ? "product.approve" : `product.${status}`, "product", id, { status: p.status }, { status, reason });
     if (p.ownerSellerId && ["active", "rejected", "suspended"].includes(status)) {
       const [row] = await tx.select({ s: sellers, u: users }).from(sellers).innerJoin(users, eq(users.id, sellers.userId)).where(eq(sellers.id, p.ownerSellerId));
@@ -244,11 +296,13 @@ export async function upsertOffer(ctx: Ctx & { userId: number }, sellerId: numbe
       const sensitive = Math.abs(data.price - ex.price) / ex.price > 0.2 || data.condition !== ex.condition;
       const status = sensitive && ex.status === "approved" ? "pending" : ex.status;
       const [o] = await tx.update(sellerOffers).set({ ...data, status, updatedAt: new Date() }).where(eq(sellerOffers.id, ex.id)).returning();
+      if (ex.price !== data.price || ex.salePrice !== data.salePrice) await tx.insert(productPriceHistory).values({ productId, scope: "seller_offer", sellerOfferId: ex.id, sellerId, price: data.salePrice ?? data.price, referencePrice: data.salePrice ? data.price : 0, source: "seller_offer_edit", changedBy: ctx.userId });
       if (ex.stock !== data.stock) await tx.insert(stockMovements).values({ productId, offerId: ex.id, type: "seller_adjust", qty: data.stock - ex.stock, userId: ctx.userId });
       await audit(tx, ctx, ex.price !== data.price ? "offer.price_change" : "offer.update", "seller_offer", ex.id, { price: ex.price, stock: ex.stock, status: ex.status }, { price: data.price, stock: data.stock, status });
       return o;
     }
     const [o] = await tx.insert(sellerOffers).values({ ...data, productId, sellerId, status: "pending" }).returning();
+    await tx.insert(productPriceHistory).values({ productId, scope: "seller_offer", sellerOfferId: o.id, sellerId, price: data.salePrice ?? data.price, referencePrice: data.salePrice ? data.price : 0, source: "seller_offer_created", changedBy: ctx.userId });
     await audit(tx, ctx, "offer.create", "seller_offer", o.id, null, data);
     return o;
   });

@@ -74,15 +74,15 @@ export const paymentRoutes: Route[] = [
       product: {
         id: pr.id, slug: pr.slug, nameFa: pr.nameFa, nameEn: pr.nameEn, sku: pr.sku, partNumber: pr.partNumber, oemNumber: pr.oemNumber, crossRefs: pr.crossRefs,
         brand: pr.brand, manufacturer: pr.manufacturer, country: pr.country, authenticity: pr.authenticity, certifiedOrganic: pr.certifiedOrganic, category: row.cat, shortDesc: pr.shortDesc,
-        technicalReview: pr.technicalReview, specs: pr.specs, compatibility: pr.compatibility, weight: pr.weight, basePrice: pr.basePrice, source: pr.source,
+        technicalReview: pr.technicalReview, specs: pr.specs, compatibility: pr.compatibility, weight: pr.weight, basePrice: pr.inquiryOnly ? 0 : pr.basePrice, inquiryOnly: pr.inquiryOnly, source: pr.source,
         available: pr.onHand - pr.reserved, allowBackorder: pr.allowBackorder, status: pr.status, options: pr.options, mainImageId: pr.mainImageId,
-        organicInfo: pr.organicInfo, videoMediaId: pr.videoMediaId, compareAtPrice: pr.compareAtPrice, purchaseOptions: pr.purchaseOptions,
+        organicInfo: pr.organicInfo, videoMediaId: pr.videoMediaId, compareAtPrice: pr.inquiryOnly ? 0 : pr.compareAtPrice, purchaseOptions: pr.purchaseOptions,
       },
       rating: rv, store: { multiVendor: !!st.multiVendor, siteName: st.siteName, freeShippingOver: st.freeShippingOver, returnDays: st.returnDays, certificationLabel: st.organicBadgeLabel },
       festival: fest ? { title: fest.title, pct: fest.discountPercent, color: fest.color, endsAt: fest.endsAt.toISOString() } : null,
       images: images.map((i) => i.mediaId),
-      variants: variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved, isSellable: v.isSellable })),
-      offers: offers.map(({ o, s }) => ({ id: o.id, sellerId: s.id, shopName: s.shopName, rating: s.rating, city: o.shipCity ?? s.city, price: o.salePrice ?? o.price, listPrice: o.price, available: o.stock - o.reserved, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, isBuyBox: o.isBuyBox, condition: o.condition }))
+      variants: variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: pr.inquiryOnly || v.inquiryOnly ? 0 : v.price, compareAtPrice: pr.inquiryOnly || v.inquiryOnly ? 0 : v.compareAtPrice, inquiryOnly: pr.inquiryOnly || v.inquiryOnly, available: v.onHand - v.reserved, isSellable: v.isSellable })),
+      offers: offers.map(({ o, s }) => ({ id: o.id, sellerId: s.id, shopName: s.shopName, rating: s.rating, city: o.shipCity ?? s.city, price: pr.inquiryOnly ? 0 : o.salePrice ?? o.price, listPrice: pr.inquiryOnly ? 0 : o.price, available: o.stock - o.reserved, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, isBuyBox: o.isBuyBox, condition: o.condition }))
         .sort((a, b) => Number(b.isBuyBox) - Number(a.isBuyBox) || a.price - b.price)
         .map((o, i) => (st.multiVendor ? o : { ...o, sellerId: 0, shopName: st.siteName, city: "", rating: 0, isBuyBox: i === 0 })),
     };

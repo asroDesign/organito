@@ -1,12 +1,13 @@
 "use client";
 import { useState } from "react";
-import { Film, Loader2, Trash2, Upload } from "lucide-react";
+import { AudioLines, Film, Loader2, Trash2, Upload } from "lucide-react";
 import { toast } from "./client";
 
 /** Product video upload (MP4/WebM up to 40MB), streamed back through /api/media with Range support. */
 export function VideoUploader({ value, onChange, kind = "video", label = "ویدیوی معرفی محصول", accept = "video/mp4,video/webm" }: { value: number | null; onChange: (id: number | null) => void; kind?: string; label?: string; accept?: string }) {
   const [busy, setBusy] = useState(false);
   const [pct, setPct] = useState(0);
+  const isAudio = kind === "audio";
   const upload = (file: File) => new Promise<void>((resolve) => {
     setBusy(true); setPct(0);
     const fd = new FormData(); fd.append("file", file); fd.append("kind", kind);
@@ -19,11 +20,11 @@ export function VideoUploader({ value, onChange, kind = "video", label = "وید
   });
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 p-4">
-      <b className="mb-2 flex items-center gap-2 text-sm"><Film className="h-4 w-4 text-emerald-600" />{label}</b>
+      <b className="mb-2 flex items-center gap-2 text-sm">{isAudio ? <AudioLines className="h-4 w-4 text-emerald-600" /> : <Film className="h-4 w-4 text-emerald-600" />}{label}</b>
       {value ? (
         <div className="space-y-2">
-          <video src={`/api/media/${value}`} controls preload="metadata" className="aspect-video w-full max-w-lg rounded-xl bg-black" />
-          <button type="button" onClick={() => onChange(null)} className="btn-sm"><Trash2 className="h-3 w-3 text-rose-500" />حذف ویدیو</button>
+          {isAudio ? <audio src={`/api/media/${value}`} controls preload="metadata" className="w-full max-w-lg" /> : <video src={`/api/media/${value}`} controls preload="metadata" className="aspect-video w-full max-w-lg rounded-xl bg-black" />}
+          <button type="button" onClick={() => onChange(null)} className="btn-sm"><Trash2 className="h-3 w-3 text-rose-500" />حذف فایل</button>
         </div>
       ) : (
         <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl bg-slate-50 p-6 text-sm text-slate-500 hover:bg-emerald-50">

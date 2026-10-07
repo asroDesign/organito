@@ -150,8 +150,8 @@ export const sellerPosRoutes: Route[] = [
     const { sellerId } = await sellerUser();
     const { club } = await ensureClub(sellerId);
     const members = await db.select().from(sellerLoyaltyMembers).where(eq(sellerLoyaltyMembers.clubId, club.id)).orderBy(desc(sellerLoyaltyMembers.updatedAt)).limit(1000);
-    const [sms] = await db.select({ provider: sellerSmsSettings.provider, senderNumber: sellerSmsSettings.senderNumber, enabled: sellerSmsSettings.enabled, configured: sql<boolean>`(${sellerSmsSettings.apiKey} is not null and ${sellerSmsSettings.apiKey} <> '')` }).from(sellerSmsSettings).where(eq(sellerSmsSettings.sellerId, sellerId));
-    return { club, members, sms: sms ?? { provider: "simulate", senderNumber: null, enabled: false, configured: false } };
+    const [sms] = await db.select({ provider: sellerSmsSettings.provider, username: sellerSmsSettings.username, senderNumber: sellerSmsSettings.senderNumber, enabled: sellerSmsSettings.enabled, configured: sql<boolean>`case when ${sellerSmsSettings.provider} = 'melipayamak' then (${sellerSmsSettings.username} is not null and ${sellerSmsSettings.username} <> '' and ${sellerSmsSettings.password} is not null and ${sellerSmsSettings.password} <> '') when ${sellerSmsSettings.provider} = 'ippanel' then (${sellerSmsSettings.apiKey} is not null and ${sellerSmsSettings.apiKey} <> '' and ${sellerSmsSettings.senderNumber} is not null and ${sellerSmsSettings.senderNumber} <> '') else (${sellerSmsSettings.apiKey} is not null and ${sellerSmsSettings.apiKey} <> '') end` }).from(sellerSmsSettings).where(eq(sellerSmsSettings.sellerId, sellerId));
+    return { club, members, sms: sms ?? { provider: "simulate", username: null, senderNumber: null, enabled: false, configured: false } };
   } },
   { method: "POST", pattern: "seller/loyalty/members", handler: async (req, _p, meta) => {
     const { user, sellerId } = await sellerUser();
@@ -185,16 +185,18 @@ export const sellerPosRoutes: Route[] = [
   } },
   { method: "PUT", pattern: "seller/loyalty/sms-settings", handler: async (req, _p, meta) => {
     const { user, sellerId } = await sellerUser(), b = await body(req);
-    const provider = ["simulate", "kavenegar", "smsir"].includes(str(b.provider, 20)) ? str(b.provider, 20) : "";
+    const provider = ["simulate", "kavenegar", "smsir", "ghasedak", "melipayamak", "mediana", "ippanel"].includes(str(b.provider, 20)) ? str(b.provider, 20) : "";
     if (!provider) throw new HttpError(400, "سرویس پیامک را انتخاب کنید");
     const senderNumber = str(b.senderNumber, 40) || null;
+    const username = str(b.username, 100);
+    const password = str(b.password, 300);
     const apiKey = str(b.apiKey, 300);
     const [existing] = await db.select().from(sellerSmsSettings).where(eq(sellerSmsSettings.sellerId, sellerId));
-    const values = { sellerId, provider, senderNumber, enabled: b.enabled === true, apiKey: apiKey || existing?.apiKey || null, updatedAt: new Date() };
+    const values = { sellerId, provider, username: username || existing?.username || null, password: password || existing?.password || null, senderNumber, enabled: b.enabled === true, apiKey: apiKey || existing?.apiKey || null, updatedAt: new Date() };
     if (existing) await db.update(sellerSmsSettings).set(values).where(eq(sellerSmsSettings.id, existing.id));
     else await db.insert(sellerSmsSettings).values(values);
     await audit(db, { userId: user.id, ...meta }, "seller.loyalty_sms_settings", "seller", sellerId, null, { provider, senderNumber, enabled: values.enabled, hasKey: !!values.apiKey });
-    return { ok: true, configured: !!values.apiKey };
+    return { ok: true, configured: provider === "melipayamak" ? !!values.username && !!values.password : provider === "ippanel" ? !!values.apiKey && !!values.senderNumber : !!values.apiKey };
   } },
   { method: "POST", pattern: "seller/loyalty/send", handler: async (req, _p, meta) => {
     const { user, sellerId } = await sellerUser();
@@ -205,6 +207,7 @@ export const sellerPosRoutes: Route[] = [
     const [setting] = await db.select().from(sellerSmsSettings).where(eq(sellerSmsSettings.sellerId, sellerId));
     if (!setting?.enabled) throw new HttpError(400, "پنل پیامک باشگاه را ابتدا فعال کنید");
     if (setting.provider !== "simulate" && !setting.apiKey) throw new HttpError(400, "کلید API پنل پیامک ثبت نشده است");
+    if (setting.provider === "ippanel" && !setting.senderNumber) throw new HttpError(400, "شماره خط IPPanel ثبت نشده است");
     const { club, shopName } = await ensureClub(sellerId);
     const members = await db.select().from(sellerLoyaltyMembers).where(and(eq(sellerLoyaltyMembers.clubId, club.id), eq(sellerLoyaltyMembers.smsConsent, true))).limit(501);
     if (members.length > 500) throw new HttpError(400, "برای ارسال بیش از ۵۰۰ گیرنده، فهرست باشگاه را به چند نوبت تقسیم کنید");

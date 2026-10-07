@@ -1,11 +1,12 @@
 "use client";
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { api, toast, ImageUploader } from "./client";
 import { RichEditor } from "./RichEditor";
 import { ShortcodeInsert } from "./ShortcodeInsert";
 import { VideoUploader } from "./VideoUploader";
+import type { QuantityPriceTier } from "@/db/schema";
 
 const ORGANIC_FIELDS: [string, string, string][] = [
   ["origin", "خاستگاه / منطقه تولید", "دامنه‌های سبلان، اردبیل"], ["harvest", "زمان برداشت / تولید", "بهار ۱۴۰۵"], ["method", "روش تولید / فرآوری", "کندوی سنتی، بدون تغذیه شکر"],
@@ -17,13 +18,13 @@ type Spec = { k: string; v: string; group?: string; hidden?: boolean; order?: nu
 type PurchaseOption = { name: string; type: "text" | "select" | "checkbox" | "radio"; required: boolean; values: { label: string; price: number; priceType: "fixed" | "percent" }[] };
 type ProductFaq = { question: string; answer: string };
 type Compat = { make: string; model: string; years: string };
-type Variant = { id?: number; title: string; attrs: Record<string, string>; sku: string; price: number; rewardPoints: number; onHand: number; inventoryUnit: string; baseUnitAmount: number; isActive: boolean; isSellable: boolean };
+type Variant = { id?: number; title: string; attrs: Record<string, string>; sku: string; price: number; compareAtPrice?: number; rewardPoints: number; quantityPriceTiers: QuantityPriceTier[]; onHand: number; inventoryUnit: string; baseUnitAmount: number; isActive: boolean; isSellable: boolean; inquiryOnly?: boolean };
 type Opt = { name: string; values: string[] };
 export type ProductInitial = Partial<{
-  id: number; nameFa: string; nameEn: string | null; sku: string; partNumber: string; oemNumber: string | null; crossRefs: string[]; brand: string; manufacturer: string | null; source: string;
+  id: number; nameFa: string; nameEn: string | null; sku: string; partNumber: string; oemNumber: string | null; crossRefs: string[]; brand: string; manufacturer: string | null; source: string; externalSourceUrl: string | null; externalSourceId: string | null;
   country: string | null; categoryId: number | null; authenticity: string; productType: string | null; certifiedOrganic: boolean; basePrice: number; compareAtPrice: number; shortDesc: string | null; description: string | null;
   technicalReview: string | null; specs: Spec[]; compatibility: Compat[]; organicInfo: { [k: string]: string | string[] | undefined; suitableFor?: string[] }; videoMediaId: number | null; weight: number | null; barcode: string | null; seoTitle: string | null; metaDesc: string | null; slug: string;
-  lowStockThreshold: number; allowBackorder: boolean; inventoryBaseUnit: string; imageIds: number[]; variants: Variant[]; options: Opt[]; purchaseOptions: PurchaseOption[]; relatedProductIds: number[]; crossSellProductIds: number[]; productFaqs: ProductFaq[]; deliveryEstimateEnabled: boolean; deliveryMinDays: number; deliveryMaxDays: number; seoKeywords: string[]; seoImageId: number | null;
+  lowStockThreshold: number; allowBackorder: boolean; inquiryOnly: boolean; inventoryBaseUnit: string; imageIds: number[]; variants: Variant[]; quantityPriceTiers: QuantityPriceTier[]; options: Opt[]; purchaseOptions: PurchaseOption[]; relatedProductIds: number[]; crossSellProductIds: number[]; productFaqs: ProductFaq[]; deliveryEstimateEnabled: boolean; deliveryMinDays: number; deliveryMaxDays: number; seoKeywords: string[]; seoImageId: number | null;
 }>;
 
 function F({ name, label, dv, type = "text", ltr, req, half = true }: { name: string; label: string; dv?: string | number | null; type?: string; ltr?: boolean; req?: boolean; half?: boolean }) {
@@ -39,6 +40,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
   const [review, setReview] = useState(initial.technicalReview ?? "");
   const [video, setVideo] = useState<number | null>(initial.videoMediaId ?? null);
   const [variants, setVariants] = useState<Variant[]>(initial.variants ?? []);
+  const [quantityPriceTiers, setQuantityPriceTiers] = useState<QuantityPriceTier[]>(initial.quantityPriceTiers ?? []);
   const [opts, setOpts] = useState<Opt[]>(initial.options ?? []);
   const [purchaseOptions, setPurchaseOptions] = useState<PurchaseOption[]>(initial.purchaseOptions ?? []);
   const [faqs, setFaqs] = useState<ProductFaq[]>(initial.productFaqs ?? []);
@@ -56,7 +58,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
     <form className="space-y-4" onSubmit={async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.currentTarget));
-      const payload = { ...fd, productType, certifiedOrganic: fd.certifiedOrganic === "on", crossRefs: String(fd.crossRefs ?? ""), specs: specs.filter((s) => s.k), organicInfo: org, description: desc, technicalReview: review, videoMediaId: video, imageIds: images, variants, options: opts, purchaseOptions, productFaqs: faqs, relatedProductIds: relatedIds, crossSellProductIds: crossSellIds, seoImageId: seoImage[0] ?? null, deliveryEstimateEnabled: fd.deliveryEstimateEnabled === "on", allowBackorder: fd.allowBackorder === "on", seoKeywords: String(fd.seoKeywords ?? "").split(/[,،\n]/).map((x) => x.trim()).filter(Boolean) };
+      const payload = { ...fd, productType, certifiedOrganic: fd.certifiedOrganic === "on", inquiryOnly: fd.inquiryOnly === "on", crossRefs: String(fd.crossRefs ?? ""), specs: specs.filter((s) => s.k), organicInfo: org, description: desc, technicalReview: review, videoMediaId: video, imageIds: images, variants, quantityPriceTiers, options: opts, purchaseOptions, productFaqs: faqs, relatedProductIds: relatedIds, crossSellProductIds: crossSellIds, seoImageId: seoImage[0] ?? null, deliveryEstimateEnabled: fd.deliveryEstimateEnabled === "on", allowBackorder: fd.allowBackorder === "on", seoKeywords: String(fd.seoKeywords ?? "").split(/[,،\n]/).map((x) => x.trim()).filter(Boolean) };
       setBusy(true);
       try {
         const r = await api<{ id: number }>(isEdit ? `/api/products/${initial.id}` : "/api/products", isEdit ? "PUT" : "POST", payload);
@@ -65,6 +67,8 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
         router.refresh();
       } catch (e2) { toast((e2 as Error).message, false); } finally { setBusy(false); }
     }}>
+      <input type="hidden" name="externalSourceUrl" value={initial.externalSourceUrl ?? ""} readOnly />
+      <input type="hidden" name="externalSourceId" value={initial.externalSourceId ?? ""} readOnly />
       <div className="flex gap-1 overflow-x-auto rounded-xl bg-white p-1 shadow-sm">
         {tabs.map(([k, l]) => <button type="button" key={k} onClick={() => setTab(k)} className={`whitespace-nowrap rounded-lg px-4 py-2 text-sm ${tab === k ? "bg-emerald-600 font-bold text-white" : "text-slate-600 hover:bg-slate-50"}`}>{l}</button>)}
       </div>
@@ -77,6 +81,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
           <F name="country" label="کشور سازنده" dv={initial.country} />
           <label className="flex flex-col gap-1 text-sm"><span className="text-slate-600">دسته‌بندی</span><select name="categoryId" defaultValue={initial.categoryId ?? ""} className="input"><option value="">—</option>{categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label className="flex flex-col gap-1 text-sm"><span className="text-slate-600">نوع محصول (اختیاری)</span><select name="productType" value={productType} onChange={(e) => setProductType(e.target.value)} className="input"><option value="">بدون نوع</option>{productTypes.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}</select></label>
+          <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-sm"><input type="checkbox" name="inquiryOnly" defaultChecked={initial.inquiryOnly ?? false} className="mt-0.5 size-4 accent-amber-500"/><span><b className="block text-amber-950">قیمت و موجودی فقط با استعلام</b><span className="mt-1 block text-xs leading-5 text-amber-900/80">قیمت و تعداد موجودی در سایت مخفی می‌شود و مشتری برای ثبت درخواست تماس با شما فرم استعلام می‌فرستد.</span></span></label>
           {mode === "admin" && <label className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm"><input type="checkbox" name="certifiedOrganic" defaultChecked={initial.certifiedOrganic ?? false} className="size-4 accent-emerald-600" /><span><b className="block text-emerald-900">فعال‌سازی نشان «{certificationLabel}»</b><span className="text-xs text-emerald-800">فقط با فعال‌بودن این گزینه نشان در صفحه محصول نمایش داده می‌شود.</span></span></label>}
           <F name="barcode" label="بارکد" dv={initial.barcode} ltr /><F name="weight" label="وزن (گرم)" dv={initial.weight} type="number" />
           {mode === "admin" && !isEdit && <label className="flex flex-col gap-1 text-sm"><span className="text-slate-600">وضعیت اولیه</span><select name="status" className="input"><option value="draft">پیش‌نویس</option><option value="active">فعال</option></select></label>}
@@ -118,6 +123,13 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
             </div>
           )}
           {mode === "admin" && (
+            <details className="rounded-xl border border-amber-200 bg-amber-50/50 p-3" open={!variants.length && quantityPriceTiers.length > 0}>
+              <summary className="cursor-pointer text-sm font-bold text-amber-950">قیمت پلکانی محصول پایه</summary>
+              <p className="my-2 text-xs leading-5 text-slate-600">این بازه‌ها وقتی اعمال می‌شوند که محصول بدون تنوع فروخته شود. برای محصولات دارای تنوع، بازه‌ها را در تنظیم همان تنوع ثبت کنید.</p>
+              <QuantityTierEditor value={quantityPriceTiers} onChange={setQuantityPriceTiers} />
+            </details>
+          )}
+          {mode === "admin" && (
             <VariantBuilder opts={opts} setOpts={setOpts} optText={optText} setOptText={setOptText} variants={variants} setVariants={setVariants} baseSku={initial.sku ?? ""} basePrice={initial.basePrice ?? 0} baseUnit={initial.inventoryBaseUnit ?? "عدد"} />
           )}
         </div>
@@ -141,6 +153,25 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
   );
 }
 
+function QuantityTierEditor({ value, onChange }: { value: QuantityPriceTier[]; onChange: (tiers: QuantityPriceTier[]) => void }) {
+  const patch = (index: number, next: Partial<QuantityPriceTier>) => onChange(value.map((tier, i) => i === index ? { ...tier, ...next } : tier));
+  return <div className="space-y-2">
+    {value.map((tier, i) => <div key={i} className="grid gap-2 rounded-lg bg-white p-2 sm:grid-cols-[1fr_1fr_1.2fr_1fr_auto] sm:items-end">
+      <label className="text-xs text-slate-600">حداقل تعداد<input className="input mt-1" type="number" min="1" max="100" value={tier.minQty} onChange={(e) => patch(i, { minQty: Number(e.target.value) })} /></label>
+      <label className="text-xs text-slate-600">حداکثر تعداد<input className="input mt-1" type="number" min={tier.minQty} max="100" placeholder="بدون سقف" value={tier.maxQty ?? ""} onChange={(e) => patch(i, { maxQty: e.target.value ? Number(e.target.value) : null })} /></label>
+      <label className="text-xs text-slate-600">نوع تخفیف<select className="input mt-1" value={tier.discountType} onChange={(e) => patch(i, { discountType: e.target.value as QuantityPriceTier["discountType"] })}><option value="percent">درصدی از قیمت هر واحد</option><option value="fixed">مبلغ از قیمت هر واحد</option></select></label>
+      <label className="text-xs text-slate-600">مقدار تخفیف<input className="input mt-1" type="number" min="1" max={tier.discountType === "percent" ? 100 : undefined} value={tier.discountValue} onChange={(e) => patch(i, { discountValue: Number(e.target.value) })} /></label>
+      <button type="button" title="حذف بازه" aria-label="حذف بازه قیمت پلکانی" className="btn-sm h-10 justify-center" onClick={() => onChange(value.filter((_, j) => j !== i))}><Trash2 className="size-4 text-rose-600" /></button>
+    </div>)}
+    <button type="button" className="btn-sm" disabled={value.length >= 20 || value.length > 0 && value[value.length - 1].maxQty !== null && value[value.length - 1].maxQty! >= 100} onClick={() => {
+      const last = value[value.length - 1];
+      const minQty = last ? (last.maxQty ?? last.minQty) + 1 : 2;
+      const adjusted = last?.maxQty === null ? value.map((tier, i) => i === value.length - 1 ? { ...tier, maxQty: minQty - 1 } : tier) : value;
+      onChange([...adjusted, { minQty, maxQty: null, discountType: "percent", discountValue: 5 }]);
+    }}><Plus className="size-3" />افزودن بازه تعداد</button>
+  </div>;
+}
+
 function ProductPicker({ title, choices, selected, setSelected }: { title: string; choices: { id: number; name: string }[]; selected: number[]; setSelected: (v: number[]) => void }) {
   const [q, setQ] = useState("");
   const shown = choices.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())).slice(0, 80);
@@ -159,6 +190,7 @@ function combos(opts: Opt[]): Record<string, string>[] {
 function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVariants, baseSku, basePrice, baseUnit }: {
   opts: Opt[]; setOpts: (o: Opt[]) => void; optText: string[]; setOptText: (t: string[]) => void; variants: Variant[]; setVariants: (v: Variant[]) => void; baseSku: string; basePrice: number; baseUnit: string;
 }) {
+  const [editingTier, setEditingTier] = useState<number | null>(null);
   const sync = (names: Opt[], texts: string[]) => {
     setOptText(texts);
     setOpts(names.map((o, i) => ({ name: o.name, values: Array.from(new Set((texts[i] ?? "").split(/[,،]/).map((x) => x.trim()).filter(Boolean))) })));
@@ -168,7 +200,7 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
     if (!valid.length) { toast("ابتدا حداقل یک پارامتر با مقادیر تعریف کنید", false); return; }
     const key = (a: Record<string, string>) => JSON.stringify(valid.map((o) => a[o.name] ?? ""));
     const old = new Map(variants.map((v) => [key(v.attrs), v]));
-    const next = combos(valid).map((a, i) => old.get(key(a)) ?? { title: valid.map((o) => a[o.name]).join(" / "), attrs: a, sku: `${baseSku || "SKU"}-${i + 1}`, price: basePrice, rewardPoints: 0, onHand: 0, inventoryUnit: baseUnit, baseUnitAmount: 1, isActive: true, isSellable: true });
+    const next = combos(valid).map((a, i) => old.get(key(a)) ?? { title: valid.map((o) => a[o.name]).join(" / "), attrs: a, sku: `${baseSku || "SKU"}-${i + 1}`, price: basePrice, rewardPoints: 0, quantityPriceTiers: [], onHand: 0, inventoryUnit: baseUnit, baseUnitAmount: 1, isActive: true, isSellable: true, inquiryOnly: false });
     setOpts(valid);
     // Removed combinations are omitted from the submitted list and soft-deleted by the server.
     setVariants(next);
@@ -195,10 +227,10 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
       {variants.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-sm">
-            <thead className="text-xs text-slate-500"><tr><th className="p-2 text-right">ترکیب</th><th className="p-2 text-right">SKU</th><th className="p-2 text-right">واحد شمارش</th><th className="p-2 text-right">هر واحد چند {baseUnit} است؟</th><th className="p-2 text-right">قیمت (تومان)</th><th className="p-2 text-right">امتیاز خرید</th><th className="p-2 text-right">موجودی اولیه</th><th className="p-2">قابل فروش</th><th className="p-2">فعال</th><th className="p-2">حذف</th></tr></thead>
+            <thead className="text-xs text-slate-500"><tr><th className="p-2 text-right">ترکیب</th><th className="p-2 text-right">SKU</th><th className="p-2 text-right">واحد شمارش</th><th className="p-2 text-right">هر واحد چند {baseUnit} است؟</th><th className="p-2 text-right">قیمت (تومان)</th><th className="p-2 text-right">امتیاز خرید</th><th className="p-2 text-right">موجودی اولیه</th><th className="p-2">قیمت پلکانی</th><th className="p-2">استعلام تلفنی</th><th className="p-2">قابل فروش</th><th className="p-2">فعال</th><th className="p-2">حذف</th></tr></thead>
             <tbody className="divide-y">
               {variants.map((v, i) => (
-                <tr key={i} className={v.isActive ? "" : "opacity-50"}>
+                <Fragment key={v.id ?? `${v.sku}:${i}`}><tr className={v.isActive ? "" : "opacity-50"}>
                   <td className="p-2"><div className="flex flex-wrap gap-1">{Object.entries(v.attrs).length ? Object.entries(v.attrs).map(([k, val]) => <span key={k} className="rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-800">{k}: {val}</span>) : <input value={v.title} onChange={(e) => upd(i, { title: e.target.value })} className="input" />}</div></td>
                   <td className="p-2"><input value={v.sku} dir="ltr" onChange={(e) => upd(i, { sku: e.target.value })} className="input" /></td>
                   <td className="p-2"><input value={v.inventoryUnit ?? baseUnit} placeholder="عدد، کیلوگرم…" onChange={(e) => upd(i, { inventoryUnit: e.target.value })} className="input" /></td>
@@ -206,10 +238,12 @@ function VariantBuilder({ opts, setOpts, optText, setOptText, variants, setVaria
                   <td className="p-2"><input type="number" value={v.price} onChange={(e) => upd(i, { price: Number(e.target.value) })} className="input" /></td>
                   <td className="p-2"><input type="number" min="0" value={v.rewardPoints ?? 0} onChange={(e) => upd(i, { rewardPoints: Number(e.target.value) })} className="input" /></td>
                   <td className="p-2"><input type="number" value={v.onHand} disabled={!!v.id} title={v.id ? "موجودی از بخش انبار تغییر می‌کند" : ""} onChange={(e) => upd(i, { onHand: Number(e.target.value) })} className="input" /></td>
+                  <td className="p-2"><button type="button" className="btn-sm whitespace-nowrap" onClick={() => setEditingTier(editingTier === i ? null : i)}>{editingTier === i ? "بستن" : v.quantityPriceTiers?.length ? `${v.quantityPriceTiers.length.toLocaleString("fa-IR")} بازه` : "تعریف بازه"}</button></td>
+                  <td className="p-2 text-center"><input type="checkbox" checked={v.inquiryOnly === true} title="قیمت این تنوع فقط با استعلام ارائه شود" onChange={(e) => upd(i, { inquiryOnly: e.target.checked })}/></td>
                   <td className="p-2 text-center"><input type="checkbox" checked={v.isSellable !== false} title={v.isSellable ? "در فروشگاه و فروش حضوری قابل عرضه است" : "فقط برای مدیریت انبار و بسته‌بندی"} onChange={(e) => upd(i, { isSellable: e.target.checked })} /></td>
                   <td className="p-2 text-center"><input type="checkbox" checked={v.isActive} onChange={(e) => upd(i, { isActive: e.target.checked })} /></td>
                   <td className="p-2 text-center"><button type="button" title="حذف نرم تنوع؛ سوابق و ارجاعات انبار حفظ می‌شوند" aria-label={`حذف تنوع ${v.title}`} onClick={() => setVariants(variants.filter((_, j) => j !== i))}><Trash2 className="mx-auto size-4 text-rose-600" /></button></td>
-                </tr>
+                </tr>{editingTier === i && <tr><td colSpan={12} className="bg-amber-50/50 p-3"><b className="mb-2 block text-xs text-amber-950">بازه‌های تخفیف تنوع «{v.title}»</b><QuantityTierEditor value={v.quantityPriceTiers ?? []} onChange={(tiers) => upd(i, { quantityPriceTiers: tiers })} /></td></tr>}</Fragment>
               ))}
             </tbody>
           </table>

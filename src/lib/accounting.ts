@@ -15,6 +15,7 @@ export const CHART: { code: string; name: string; level: string; type: string; p
   { code: "2102", name: "کیف پول فروشندگان - قابل برداشت", level: "subsidiary", type: "liability", parent: "21" },
   { code: "2103", name: "پیش‌دریافت مشتریان", level: "subsidiary", type: "liability", parent: "21" },
   { code: "2104", name: "حساب‌های پرداختنی", level: "subsidiary", type: "liability", parent: "21" },
+  { code: "2105", name: "پورسانت همکاران فروش پرداختنی", level: "subsidiary", type: "liability", parent: "21" },
   { code: "2201", name: "مالیات بر ارزش افزوده پرداختنی", level: "subsidiary", type: "liability", parent: "21" },
   { code: "3", name: "حقوق صاحبان سهام", level: "group", type: "equity" },
   { code: "3101", name: "سرمایه", level: "subsidiary", type: "equity", parent: "3" },
@@ -26,6 +27,7 @@ export const CHART: { code: string; name: string; level: string; type: string; p
   { code: "5", name: "هزینه‌ها", level: "group", type: "expense" },
   { code: "5101", name: "بهای تمام‌شده کالای فروش‌رفته", level: "subsidiary", type: "expense", parent: "5" },
   { code: "5201", name: "هزینه حمل و گمرک", level: "subsidiary", type: "expense", parent: "5" },
+  { code: "5302", name: "هزینه پورسانت همکاری در فروش", level: "subsidiary", type: "expense", parent: "5" },
   { code: "8101", name: "کالای امانی نزد فروشگاه (انتظامی)", level: "subsidiary", type: "memorandum" },
   { code: "8201", name: "مالکیت دیگران بر کالای امانی (انتظامی)", level: "subsidiary", type: "memorandum" },
 ];
@@ -49,16 +51,16 @@ export async function postJournal(tx: DB, description: string, lines: Line[], re
     number: Number(n) + 1, description, refType: ref?.type, refId: ref?.id, createdBy: userId ?? null, entryDate: entryDate ?? new Date(),
   }).returning();
   // auto-link seller postings to their detail account (code S-<id>)
-  const sellerCodes = clean.map((l) => l.detail1?.startsWith("seller:") ? `S-${l.detail1.slice(7)}` : null).filter(Boolean) as string[];
+  const detailCodes = clean.map((l) => l.detail1?.startsWith("seller:") ? `S-${l.detail1.slice(7)}` : l.detail1?.startsWith("affiliate:") ? `A-${l.detail1.slice(10)}` : null).filter(Boolean) as string[];
   const dmap = new Map<string, number>();
-  if (sellerCodes.length) {
+  if (detailCodes.length) {
     const ds = await tx.select().from(detailAccounts);
     for (const d of ds) dmap.set(d.code, d.id);
   }
   await tx.insert(journalLines).values(clean.map((l) => {
     const accountId = map.get(l.code);
     if (!accountId) throw new HttpError(500, `حساب ${l.code} یافت نشد`);
-    const auto = l.detail1?.startsWith("seller:") ? dmap.get(`S-${l.detail1.slice(7)}`) ?? null : null;
+    const auto = l.detail1?.startsWith("seller:") ? dmap.get(`S-${l.detail1.slice(7)}`) ?? null : l.detail1?.startsWith("affiliate:") ? dmap.get(`A-${l.detail1.slice(10)}`) ?? null : null;
     return { entryId: entry.id, accountId, debit: l.debit ?? 0, credit: l.credit ?? 0, detail1: l.detail1, description: l.description,
       detail1Id: l.detail1Id ?? auto, detail2Id: l.detail2Id ?? null, detail3Id: l.detail3Id ?? null };
   }));

@@ -4,7 +4,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
-import { sellers, sessions, users, accessRoles } from "@/db/schema";
+import { sellers, sessions, users, accessRoles, notifications } from "@/db/schema";
 import { permissionsOf, isStaff, type Permission } from "./rbac";
 import { HttpError } from "./util";
 import { ensureSeeded } from "./seed";
@@ -31,12 +31,25 @@ export type SessionUser = {
   sellerId: number | null; sellerStatus: string | null; staff: boolean;
 };
 
-export async function createSession(userId: number, ip: string | null, ua: string | null) {
+function deviceLabel(ua: string | null) {
+  const value = ua ?? "";
+  const platform = /iphone|ipad|ipod/i.test(value) ? "iPhone یا iPad" : /android/i.test(value) ? "Android" : /windows/i.test(value) ? "Windows" : /macintosh|mac os/i.test(value) ? "Mac" : /linux/i.test(value) ? "Linux" : "دستگاه ناشناس";
+  const browser = /edg\//i.test(value) ? "Edge" : /firefox\//i.test(value) ? "Firefox" : /chrome\//i.test(value) ? "Chrome" : /safari\//i.test(value) ? "Safari" : "مرورگر وب";
+  return `${browser} · ${platform}`;
+}
+
+export async function createSession(userId: number, ip: string | null, ua: string | null, notifyOnNewLogin = false) {
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 7);
   await db.insert(sessions).values({ id: sha(token), userId, expiresAt, ip, userAgent: ua?.slice(0, 300) });
   const c = await cookies();
   c.set(COOKIE, token, { httpOnly: true, sameSite: "lax", path: "/", expires: expiresAt, secure: process.env.COOKIE_SECURE === "true" });
+  if (notifyOnNewLogin) await db.insert(notifications).values({ userId, title: "ورود جدید به حساب", body: `ورود جدید از ${deviceLabel(ua)} ثبت شد. اگر این ورود متعلق به شما نیست، نشست‌های دیگر را در بخش امنیت حساب پایان دهید.`, link: "/customer/security" });
+}
+
+export async function currentSessionDigest() {
+  const token = (await cookies()).get(COOKIE)?.value;
+  return token && /^[a-f0-9]{64}$/.test(token) ? sha(token) : null;
 }
 
 export async function destroySession() {

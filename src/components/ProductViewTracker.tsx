@@ -2,12 +2,14 @@
 import { useEffect, useState } from "react";
 import { Eye } from "lucide-react";
 import { api } from "./client";
+import { trackAnalyticsEvent } from "@/lib/analytics-client";
 
 const faNum = (value: number) => value.toLocaleString("fa-IR");
 
 export function ProductViewTracker({ productId, showCount }: { productId: number; showCount: boolean }) {
   const [count, setCount] = useState(0);
   useEffect(() => {
+    trackAnalyticsEvent("product_view", productId, `/products/${productId}`);
     let sessionId = sessionStorage.getItem("product-view-session");
     if (!sessionId) {
       sessionId = typeof crypto !== "undefined" && "randomUUID" in crypto

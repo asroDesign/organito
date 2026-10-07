@@ -53,7 +53,7 @@ export default async function OrderPrint({ params }: { params: Promise<{ id: str
           </div>
           {!sellerView ? (
             <table className="h-fit w-full border-collapse text-[12px]"><tbody>
-              {[["جمع اقلام", o.itemsSubtotal], ["ارسال فروشندگان", o.sellerShippingTotal], ["ارسال انبار مرکزی", o.centralShipping], ...(o.festivalDiscount ? [["تخفیف جشنواره", -o.festivalDiscount]] : []), ...(o.codeDiscount ? [[`کد تخفیف ${o.discountCode ?? ""}`, -o.codeDiscount]] : []), [`مالیات (${faNum(s.taxRate)}٪)`, o.tax]].map(([k, v]) => <tr key={k as string}><td className={cell}>{k}</td><td className={`${cell} text-left`}>{faNum(v as number)}</td></tr>)}
+              {[["جمع اقلام", o.itemsSubtotal], ["ارسال فروشندگان", o.sellerShippingTotal], ["ارسال انبار مرکزی", o.centralShipping], ...(o.festivalDiscount ? [["تخفیف جشنواره", -o.festivalDiscount]] : []), ...(o.variantDiscount ? [["تخفیف زمان‌دار تنوع‌ها", -o.variantDiscount]] : []), ...(o.codeDiscount ? [[`کد تخفیف ${o.discountCode ?? ""}`, -o.codeDiscount]] : []), [`مالیات (${faNum(s.taxRate)}٪)`, o.tax]].map(([k, v]) => <tr key={k as string}><td className={cell}>{k}</td><td className={`${cell} text-left`}>{faNum(v as number)}</td></tr>)}
               <tr className="bg-slate-100 font-black"><td className={cell}>مبلغ قابل پرداخت</td><td className={`${cell} text-left`}>{faNum(o.total)} تومان</td></tr>
             </tbody></table>
           ) : <div className="rounded-lg border border-slate-400 p-3 text-xs">این برگه فقط اقلام متعلق به فروشگاه شما را نمایش می‌دهد.</div>}

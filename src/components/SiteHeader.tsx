@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeCheck, ChevronDown, Flame, Headphones, LayoutDashboard, Menu, PackageSearch, RotateCcw, ShoppingCart, Truck, User } from "lucide-react";
+import { BadgeCheck, ChevronDown, Flame, Headphones, LayoutDashboard, Menu, RotateCcw, ShoppingCart, Truck, User } from "lucide-react";
 import { getUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { LiveSearch } from "./LiveSearch";
@@ -9,14 +9,25 @@ import { CartCount } from "./client";
 import { Countdown } from "./Countdown";
 import { currencyUnit } from "@/lib/util";
 import { SiteBrand } from "./SiteBrand";
+import { getSiteMenu } from "@/lib/site-menus";
+import { SiteNavMenus, type PublicMenuItem } from "./SiteNavMenus";
+import { ThemeToggle } from "./ThemeToggle";
 
 export async function SiteHeader() {
-  const [u, fests, cats, st] = await Promise.all([getUser(), activeFestivals(), categoriesWithCounts(), getSettings()]);
+  const [u, fests, cats, st, headerMenu, mobileMenu] = await Promise.all([getUser(), activeFestivals(), categoriesWithCounts(), getSettings(), getSiteMenu("header").catch(() => null), getSiteMenu("mobile").catch(() => null)]);
   const popular = ["عسل آویشن", "زعفران", "روغن زیتون", "گردو", "دمنوش"];
   const mv = !!st.multiVendor;
   const panel = u ? (u.sellerId ? "/seller" : u.staff ? "/admin" : "/customer") : "/login";
   const fest = fests[0];
   const roots = cats.filter((c) => !c.parent_id);
+  const fallbackMenu: PublicMenuItem[] = [
+    { id: -1, label: "تخفیف‌ها و جشنواره", href: "/shop?sort=discount", targetBlank: false, children: [] },
+    { id: -2, label: "پرفروش‌ترین‌ها", href: "/shop?sort=best", targetBlank: false, children: [] },
+    { id: -3, label: "جدیدترین‌ها", href: "/shop?sort=new", targetBlank: false, children: [] },
+    { id: -4, label: `مجله ${st.siteName}`, href: "/blog", targetBlank: false, children: [] },
+    { id: -5, label: "سفارش ویژه", href: "/customer/supply", targetBlank: false, children: [] },
+    ...(mv && !!st.allowSellerSignup ? [{ id: -6, label: "تولیدکننده شوید", href: "/login?seller=1", targetBlank: false, children: [] }] : []),
+  ];
   return (
     <>
       <div className="hidden bg-emerald-950 text-[11px] text-emerald-100 md:block">
@@ -45,6 +56,8 @@ export async function SiteHeader() {
           </Link>
           <div className="hidden flex-1 md:block"><LiveSearch popular={popular} /></div>
           <nav className="mr-auto flex items-center gap-1 md:mr-0">
+            <ThemeToggle />
+            <SiteNavMenus mode="mobileOnly" headerItems={headerMenu?.items ?? []} mobileItems={mobileMenu?.items ?? []} fallbackItems={mobileMenu?.enabled === false ? [] : headerMenu?.enabled === false ? [] : fallbackMenu} showMobile={mobileMenu?.enabled !== false && headerMenu?.enabled !== false}/>
             <Link href={u ? "/customer/tracking" : "/login"} className="hidden items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 lg:flex"><Truck className="h-5 w-5" />پیگیری سفارش</Link>
             <Link href="/cart" className="relative rounded-xl p-2.5 text-slate-700 hover:bg-slate-100" aria-label="سبد خرید"><ShoppingCart className="h-6 w-6" /><CartCount /></Link>
             <Link href={panel} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50">
@@ -70,12 +83,7 @@ export async function SiteHeader() {
               </div>
             </div>
             <span className="h-5 w-px bg-slate-200" />
-            <Link href="/shop?sort=discount" className="flex items-center gap-1 rounded-lg px-3 py-3 font-medium text-rose-600 hover:bg-rose-50"><Flame className="h-4 w-4" />تخفیف‌ها و جشنواره</Link>
-            <Link href="/shop?sort=best" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">پرفروش‌ترین‌ها</Link>
-            <Link href="/shop?sort=new" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">جدیدترین‌ها</Link>
-            <Link href="/blog" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">مجله {st.siteName}</Link>
-            <Link href="/customer/supply" className="flex items-center gap-1 rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700"><PackageSearch className="h-4 w-4" />سفارش ویژه</Link>
-            {mv && !!st.allowSellerSignup && <Link href="/login?seller=1" className="rounded-lg px-3 py-3 text-slate-600 hover:text-emerald-700">تولیدکننده شوید</Link>}
+            <SiteNavMenus mode="desktopOnly" headerItems={headerMenu?.items ?? []} mobileItems={mobileMenu?.items ?? []} fallbackItems={headerMenu?.enabled === false ? [] : fallbackMenu}/>
             <Link href="/contact" className="mr-auto flex items-center gap-1 py-3 text-xs text-slate-500"><Headphones className="h-4 w-4" />پشتیبانی <span dir="ltr">{st.supportPhone}</span></Link>
           </div>
         </div>

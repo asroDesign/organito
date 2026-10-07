@@ -17,7 +17,7 @@ const normalizePhone = (value: unknown) => str(value, 30)
   .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)))
   .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
   .replace(/\D/g, "").replace(/^0098/, "0").replace(/^98/, "0").replace(/^9/, "09");
-const smsConfigured = async () => { const s = await getSettings(); return !!s.smsApiKey || (s.smsProvider === "kavenegar" ? !!process.env.KAVENEGAR_API_KEY : !!process.env.SMSIR_API_KEY); };
+const smsConfigured = async () => { const s = await getSettings(); if (s.smsProvider === "ippanel") return !!(s.smsApiKey || process.env.IPPANEL_API_KEY) && !!(s.smsSender || process.env.IPPANEL_SENDER_NUMBER); return s.smsProvider === "melipayamak" ? !!(s.smsUsername || process.env.MELIPAYAMAK_USERNAME) && !!(s.smsPassword || process.env.MELIPAYAMAK_PASSWORD) : !!s.smsApiKey || (s.smsProvider === "kavenegar" ? !!process.env.KAVENEGAR_API_KEY : s.smsProvider === "ghasedak" ? !!process.env.GHASEDAK_API_KEY : s.smsProvider === "mediana" ? !!process.env.MEDIANA_API_KEY : !!process.env.SMSIR_API_KEY); };
 
 async function assertProduct(id: number) {
   const [p] = await db.select({ id: products.id, nameFa: products.nameFa, status: products.status, ownerSellerId: products.ownerSellerId, slug: products.slug }).from(products).where(eq(products.id, id));
@@ -204,6 +204,7 @@ export const communityRoutes: Route[] = [
       throw new HttpError(400, `کد وارد شده صحیح نیست (${(4 - otp.attempts).toLocaleString("fa-IR")} تلاش باقی مانده)`);
     }
     let [u] = await db.select().from(users).where(eq(users.phone, phone));
+    const isNewUser = !u;
     const s = await getSettings();
     if (!u) {
       const name = str(b.name, 100);
@@ -225,7 +226,7 @@ export const communityRoutes: Route[] = [
     }
     if (!u.isActive) throw new HttpError(403, "حساب کاربری شما غیرفعال است");
     await db.update(otpCodes).set({ used: true }).where(eq(otpCodes.id, otp.id));
-    await createSession(u.id, m.ip, m.ua);
+    await createSession(u.id, m.ip, m.ua, !isNewUser);
     await audit(db, { userId: u.id, ...m }, "auth.login_otp", "user", u.id);
     const [sl] = await db.select({ id: sellers.id }).from(sellers).where(eq(sellers.userId, u.id));
     return { ok: true, redirect: u.role === "customer" ? "/customer" : sl ? "/seller" : "/admin" };

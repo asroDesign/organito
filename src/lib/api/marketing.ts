@@ -1,10 +1,12 @@
-import { eq } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, lt, gt, lte, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { carrierRates, carriers, discountCodes, festivals, users } from "@/db/schema";
+import { carrierRates, carriers, discountCodes, festivals, users, variantScheduledDiscounts, productVariants, products } from "@/db/schema";
 import { requireApi } from "../auth";
 import { audit } from "../audit";
 import { editShipmentInfo } from "../services/orders";
 import { HttpError, int, slugify, str } from "../util";
+import { applicableQuantityTier, quantityTierPrice } from "../quantity-pricing";
+import { safeDiscountPercent } from "../marketing";
 import { body, idParam, type Route } from "./router";
 
 const ids = (v: unknown) => (Array.isArray(v) ? v : String(v ?? "").split(/[\s,،]+/)).map((x) => Math.floor(Number(x))).filter((x) => x > 0).slice(0, 500);
@@ -13,6 +15,15 @@ function date(v: unknown, endOfDay = false): Date | null {
   if (!s) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new HttpError(400, "تاریخ نامعتبر");
   return new Date(`${s}T${endOfDay ? "23:59:59" : "00:00:00"}+03:30`);
+}
+function dateTime(v: unknown): Date {
+  const s = str(v, 24);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s)) throw new HttpError(400, "تاریخ و ساعت تهران نامعتبر است");
+  const result = new Date(`${s}:00+03:30`);
+  if (!Number.isFinite(result.getTime())) throw new HttpError(400, "تاریخ و ساعت تهران نامعتبر است");
+  const tehranLocal = new Date(result.getTime() + 210 * 60_000).toISOString().slice(0, 16);
+  if (tehranLocal !== s) throw new HttpError(400, "تاریخ و ساعت تهران نامعتبر است");
+  return result;
 }
 
 export const marketingRoutes: Route[] = [
@@ -127,6 +138,59 @@ export const marketingRoutes: Route[] = [
     if (Object.keys(b).length === 1 && "isActive" in b) await db.update(festivals).set({ isActive: b.isActive === true }).where(eq(festivals.id, id));
     else await db.update(festivals).set({ ...parseFestival(b), slug: old.slug }).where(eq(festivals.id, id));
     await audit(db, { userId: u.id, ...m }, "festival.update", "festival", id, old, b);
+    return { ok: true };
+  } },
+
+  // ----- scheduled discounts for central inventory variants -----
+  { method: "GET", pattern: "admin/variant-discounts/variants", handler: async (req) => {
+    await requireApi("MARKETING_MANAGE");
+    const q = str(req.nextUrl.searchParams.get("q"), 100).trim();
+    if (q.length < 2) return [];
+    const rows = await db.select({ variant: productVariants, product: products }).from(productVariants)
+      .innerJoin(products, eq(products.id, productVariants.productId))
+      .where(and(eq(products.source, "central"), eq(products.status, "active"), eq(productVariants.isActive, true), eq(productVariants.isSellable, true), eq(productVariants.inquiryOnly, false), sql`${productVariants.deletedAt} is null`, or(ilike(products.nameFa, `%${q}%`), ilike(products.sku, `%${q}%`), ilike(productVariants.title, `%${q}%`))))
+      .orderBy(products.nameFa, productVariants.title).limit(40);
+    return rows.map(({ variant, product }) => ({ id: variant.id, productId: product.id, productName: product.nameFa, sku: variant.sku, title: variant.title, price: Number(variant.price ?? product.basePrice), cost: Number(variant.costPrice ?? product.avgCost), quantityPriceTiers: variant.quantityPriceTiers ?? [] }));
+  } },
+  { method: "GET", pattern: "admin/variant-discounts", handler: async () => {
+    await requireApi("MARKETING_MANAGE");
+    const rows = await db.select({ discount: variantScheduledDiscounts, variant: productVariants, product: products }).from(variantScheduledDiscounts)
+      .innerJoin(productVariants, eq(productVariants.id, variantScheduledDiscounts.variantId))
+      .innerJoin(products, eq(products.id, productVariants.productId))
+      .orderBy(desc(variantScheduledDiscounts.startsAt), desc(variantScheduledDiscounts.id)).limit(200);
+    return rows.map(({ discount, variant, product }) => ({ ...discount, productName: product.nameFa, sku: variant.sku, variantTitle: variant.title }));
+  } },
+  { method: "POST", pattern: "admin/variant-discounts", handler: async (req, _p, meta) => {
+    const user = await requireApi("MARKETING_MANAGE"), b = await body(req);
+    const variantId = int(b.variantId, 1), title = str(b.title, 120), discountPercent = int(b.discountPercent, 1, 90);
+    const startsAt = dateTime(b.startsAt), endsAt = dateTime(b.endsAt);
+    if (!title) throw new HttpError(400, "عنوان تخفیف الزامی است");
+    if (endsAt <= startsAt) throw new HttpError(400, "پایان تخفیف باید بعد از شروع آن باشد");
+    const [created] = await db.transaction(async (tx) => {
+      const [row] = await tx.select({ variant: productVariants, product: products }).from(productVariants).innerJoin(products, eq(products.id, productVariants.productId))
+        .where(and(eq(productVariants.id, variantId), sql`${productVariants.deletedAt} is null`, eq(productVariants.isActive, true), eq(productVariants.isSellable, true), eq(productVariants.inquiryOnly, false), eq(products.source, "central"), eq(products.status, "active"))).for("update", { of: productVariants });
+      if (!row) throw new HttpError(404, "تنوع مرکزیِ فعال و قابل فروش پیدا نشد");
+      const price = Number(row.variant.price ?? row.product.basePrice), cost = Number(row.variant.costPrice ?? row.product.avgCost);
+      const tiers = row.variant.quantityPriceTiers ?? [];
+      const safeMax = Math.min(safeDiscountPercent(price, cost, 90), ...tiers.map((tier) => safeDiscountPercent(quantityTierPrice(price, tier), cost, 90)));
+      if (discountPercent > safeMax) throw new HttpError(400, `حداکثر تخفیف امن این تنوع ${safeMax.toLocaleString("fa-IR")}٪ است تا قیمت از بهای خرید و قیمت‌های تعدادی پایین‌تر نرود`);
+      const overlaps = await tx.select({ id: variantScheduledDiscounts.id }).from(variantScheduledDiscounts).where(and(
+        eq(variantScheduledDiscounts.variantId, variantId), eq(variantScheduledDiscounts.isActive, true),
+        lt(variantScheduledDiscounts.startsAt, endsAt), gt(variantScheduledDiscounts.endsAt, startsAt),
+      )).limit(1);
+      if (overlaps.length) throw new HttpError(409, "برای این تنوع در این بازه تخفیف فعال یا زمان‌بندی‌شده‌ای وجود دارد");
+      return tx.insert(variantScheduledDiscounts).values({ variantId, title, discountPercent, startsAt, endsAt, createdBy: user.id }).returning();
+    });
+    await audit(db, { userId: user.id, ...meta }, "variant_discount.create", "variant_scheduled_discount", created.id, null, created);
+    return created;
+  } },
+  { method: "POST", pattern: "admin/variant-discounts/:id", handler: async (req, p, meta) => {
+    const user = await requireApi("MARKETING_MANAGE"), id = idParam(p.id), b = await body(req);
+    const [old] = await db.select().from(variantScheduledDiscounts).where(eq(variantScheduledDiscounts.id, id));
+    if (!old) throw new HttpError(404, "تخفیف تنوع پیدا نشد");
+    if (typeof b.isActive !== "boolean") throw new HttpError(400, "وضعیت فعال‌سازی نامعتبر است");
+    await db.update(variantScheduledDiscounts).set({ isActive: b.isActive, updatedAt: new Date() }).where(eq(variantScheduledDiscounts.id, id));
+    await audit(db, { userId: user.id, ...meta }, "variant_discount.toggle", "variant_scheduled_discount", id, old, { isActive: b.isActive });
     return { ok: true };
   } },
 ];

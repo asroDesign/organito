@@ -1,13 +1,14 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { MapPin, CalendarDays, Sprout, BadgeCheck, FlaskConical, Package, Thermometer, Hourglass, FileText, Microscope, ListChecks, MessageSquareText, MessageCircleQuestion, Store, Leaf, Star, Plus, Minus, CheckCircle2 } from "lucide-react";
 import { db } from "@/db";
-import { categories, productAnswers, productImages, productQuestions, products, productVariants, reviews, sellerOffers, sellers, users } from "@/db/schema";
+import { brands, categories, productAnswers, productImages, productQuestions, products, productVariants, reviews, sellerOffers, sellers, users } from "@/db/schema";
 import { getUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
-import { activeFestivals, festivalFor } from "@/lib/marketing";
+import { activeFestivals, activeVariantDiscounts, festivalFor, safeDiscountPercent } from "@/lib/marketing";
+import { quantityTierPrice } from "@/lib/quantity-pricing";
 import { listShopProducts } from "@/lib/queries";
 import { stripHtml, toSafeHtml } from "@/lib/html";
 import { RichContent } from "@/components/RichContent";
@@ -17,6 +18,10 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { BuyBox } from "@/components/BuyBox";
 import { Gallery } from "@/components/Gallery";
 import { ProductViewTracker } from "@/components/ProductViewTracker";
+import { ProductPriceHistory } from "@/components/ProductPriceHistory";
+import { FavoriteButton } from "@/components/CustomerSelfService";
+import { ProductCompareButton } from "@/components/ProductCompareButton";
+import { ProductAlerts } from "@/components/ProductAlerts";
 import { ProductCard } from "@/components/ProductCard";
 import { AnswerForm, QuestionForm, ReviewForm, ReviewImages, RoleBadge, Stars, VoteButtons } from "@/components/Community";
 
@@ -42,7 +47,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!row) notFound();
   const p = row.p;
   const u = await getUser();
-  const [imgs, variants, offers, fests, related, s, revs, qs] = await Promise.all([
+  const [imgs, variants, offers, fests, related, s, revs, qs, brandPage] = await Promise.all([
     db.select().from(productImages).where(eq(productImages.productId, p.id)).orderBy(productImages.sortOrder),
     db.select().from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true), isNull(productVariants.deletedAt))),
     db.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId))
@@ -54,11 +59,23 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       .where(and(eq(reviews.productId, p.id), u ? or(eq(reviews.status, "approved"), eq(reviews.userId, u.id)) : eq(reviews.status, "approved"))).orderBy(desc(reviews.helpful), desc(reviews.createdAt)),
     db.select({ q: productQuestions, name: users.name }).from(productQuestions).innerJoin(users, eq(users.id, productQuestions.userId))
       .where(and(eq(productQuestions.productId, p.id), u ? or(eq(productQuestions.status, "approved"), eq(productQuestions.userId, u.id)) : eq(productQuestions.status, "approved"))).orderBy(desc(productQuestions.createdAt)),
+    db.select({ slug: brands.slug }).from(brands).where(and(eq(brands.isActive, true), sql`lower(regexp_replace(btrim(${brands.name}), '\\s+', ' ', 'g')) = lower(regexp_replace(btrim(${p.brand}), '\\s+', ' ', 'g'))`)).limit(1).then((r) => r[0]),
   ]);
   const answers = qs.length ? await db.select({ a: productAnswers, name: users.name }).from(productAnswers).innerJoin(users, eq(users.id, productAnswers.userId))
     .where(and(inArray(productAnswers.questionId, qs.map((x) => x.q.id)), u ? or(eq(productAnswers.status, "approved"), eq(productAnswers.userId, u.id)) : eq(productAnswers.status, "approved"))).orderBy(productAnswers.createdAt) : [];
   const mv = !!s.multiVendor;
   const fest = festivalFor(fests, p.id, p.categoryId);
+  const scheduledDiscounts = await activeVariantDiscounts(db, variants.map((v) => v.id));
+  const variantPromotions = Object.fromEntries(variants.map((variant) => {
+    const scheduled = p.source === "central" ? scheduledDiscounts.get(variant.id) : undefined;
+    const useScheduled = !!scheduled && scheduled.discountPercent >= (fest?.discountPercent ?? 0);
+    const requestedPct = useScheduled ? scheduled!.discountPercent : fest?.discountPercent ?? 0;
+    const price = Number(variant.price ?? p.basePrice), cost = Number(variant.costPrice ?? p.avgCost);
+    const safePct = p.source === "central" ? Math.min(safeDiscountPercent(price, cost, requestedPct), ...(variant.quantityPriceTiers ?? []).map((tier) => safeDiscountPercent(quantityTierPrice(price, tier), cost, requestedPct))) : requestedPct;
+    return [variant.id, requestedPct > 0 ? { title: useScheduled ? scheduled!.title : fest!.title, pct: safePct, endsAt: (useScheduled ? scheduled!.endsAt : fest!.endsAt).toISOString(), kind: useScheduled ? "variant" : "festival" } : null];
+  }).filter((entry) => entry[1] !== null));
+  const baseFestivalPct = fest ? (p.source === "central" ? Math.min(safeDiscountPercent(p.basePrice, p.avgCost, fest.discountPercent), ...(p.quantityPriceTiers ?? []).map((tier) => safeDiscountPercent(quantityTierPrice(p.basePrice, tier), p.avgCost, fest.discountPercent))) : fest.discountPercent) : 0;
+  const baseFestival = fest && baseFestivalPct > 0 ? { title: fest.title, pct: baseFestivalPct, color: fest.color, endsAt: fest.endsAt.toISOString() } : null;
   const offerViews = offers.map(({ o, s: sl }) => ({ id: o.id, sellerId: sl.id, shopName: sl.shopName, rating: sl.rating, city: o.shipCity ?? sl.city, price: o.salePrice ?? o.price, listPrice: o.price, available: o.stock - o.reserved, shippingCost: o.shippingCost, prepDays: o.prepDays, warranty: o.warranty, isBuyBox: o.isBuyBox, condition: o.condition }))
     .sort((a, b) => Number(b.isBuyBox) - Number(a.isBuyBox) || a.price - b.price)
     .map((o, i) => (mv ? o : { ...o, sellerId: 0, shopName: s.siteName, city: "", rating: 0, id: o.id, isBuyBox: i === 0 }));
@@ -75,7 +92,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const crossSells = byId(p.crossSellProductIds ?? []).filter((r) => r.id !== p.id).slice(0, 5);
   const visibleSpecs = [...(p.specs ?? [])].filter((sp) => !sp.hidden).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const specGroups = Array.from(new Set(visibleSpecs.map((sp) => sp.group || "مشخصات اصلی")));
-  const nav: [string, string, typeof FileText][] = [["desc", "معرفی محصول", FileText], ["review", "بررسی تخصصی", Microscope], ["specs", "مشخصات و شناسنامه", ListChecks], ["reviews", `دیدگاه‌ها (${faNum(approved.length)})`, MessageSquareText], ["qa", `پرسش و پاسخ (${faNum(qs.filter((x) => x.q.status === "approved").length)})`, MessageCircleQuestion], ...(mv && offerViews.length ? [["sellers", "فروشندگان", Store] as [string, string, typeof FileText]] : [])];
+  const inquiryProduct = p.inquiryOnly || variants.some((variant) => variant.inquiryOnly);
+  const nav: [string, string, typeof FileText][] = [["desc", "معرفی محصول", FileText], ["review", "بررسی تخصصی", Microscope], ["specs", "مشخصات و شناسنامه", ListChecks], ["reviews", `دیدگاه‌ها (${faNum(approved.length)})`, MessageSquareText], ["qa", `پرسش و پاسخ (${faNum(qs.filter((x) => x.q.status === "approved").length)})`, MessageCircleQuestion], ...(mv && offerViews.length && !inquiryProduct ? [["sellers", "فروشندگان", Store] as [string, string, typeof FileText]] : [])];
   const jsonLd = { "@context": "https://schema.org", "@type": "Product", name: p.nameFa, sku: p.sku, brand: { "@type": "Brand", name: p.brand }, description: stripHtml(p.shortDesc), ...(approved.length ? { aggregateRating: { "@type": "AggregateRating", ratingValue: avg.toFixed(1), reviewCount: approved.length } } : {}) };
   return (
     <>
@@ -85,10 +103,10 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-6 pb-28 lg:pb-10">
         <nav className="text-xs text-slate-500"><Link href="/">خانه</Link> / <Link href="/shop">فروشگاه</Link>{row.cat && <> / <Link href={`/shop?cat=${row.cat.id}`}>{row.cat.name}</Link></>} / <span className="text-emerald-800">{p.nameFa}</span></nav>
         <div className="grid gap-8 lg:grid-cols-[1fr_1fr_380px]">
-          <div className="lg:sticky lg:top-40 lg:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? s.organicBadgeLabel : undefined} /></div>
+          <div className="lg:sticky lg:top-40 lg:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? s.organicBadgeLabel : undefined} actions={<>{(!p.inquiryOnly && !variants.some((v) => v.inquiryOnly)) && <ProductPriceHistory productId={p.id}/>}<FavoriteButton productId={p.id}/><ProductCompareButton productId={p.id}/></>} /></div>
           <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2 text-xs">
-              <Link href={`/shop?brand=${encodeURIComponent(p.brand)}`} className="rounded-full bg-emerald-50 px-3 py-1 font-bold text-emerald-800 ring-1 ring-emerald-200">🌿 {p.brand}</Link>
+              <Link href={brandPage ? `/brands/${brandPage.slug}` : `/shop?brand=${encodeURIComponent(p.brand)}`} className="rounded-full bg-emerald-50 px-3 py-1 font-bold text-emerald-800 ring-1 ring-emerald-200">🌿 {p.brand}</Link>
               {row.cat && <Link href={`/shop?cat=${row.cat.id}`} className="rounded-full bg-amber-50 px-3 py-1 font-bold text-amber-800 ring-1 ring-amber-200">{row.cat.name}</Link>}
               {org.origin && <span className="flex items-center gap-1 rounded-full bg-white px-3 py-1 ring-1 ring-slate-200"><MapPin className="h-3 w-3" />{org.origin}</span>}
             </div>
@@ -111,10 +129,11 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
           </div>
           <div className="lg:sticky lg:top-40 lg:self-start">
             {p.deliveryEstimateEnabled && <div className="mb-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><b>زمان تحویل مورد انتظار</b><span className="mr-2">حدود {faNum(p.deliveryMinDays)} تا {faNum(p.deliveryMaxDays)} روز کاری پس از ثبت سفارش</span></div>}
-            <BuyBox product={{ id: p.id, nameFa: p.nameFa, basePrice: p.basePrice, source: p.source, available: p.onHand - p.reserved, active: p.status === "active" || (p.status === "out_of_stock" && p.allowBackorder), allowBackorder: p.allowBackorder, partNumber: p.partNumber }}
-              options={p.options} purchaseOptions={p.purchaseOptions ?? []} variants={variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: v.price, compareAtPrice: v.compareAtPrice, available: v.onHand - v.reserved, isSellable: v.isSellable }))} offers={offerViews}
-              festival={fest ? { title: fest.title, pct: fest.discountPercent, color: fest.color, endsAt: fest.endsAt.toISOString() } : null}
-              multiVendor={mv} siteName={s.siteName} freeShippingOver={s.freeShippingOver} returnDays={s.returnDays} compareAt={p.compareAtPrice} />
+            <BuyBox product={{ id: p.id, nameFa: p.nameFa, basePrice: p.inquiryOnly ? 0 : p.basePrice, source: p.source, available: p.onHand - p.reserved, active: p.status === "active" || (p.status === "out_of_stock" && p.allowBackorder), allowBackorder: p.allowBackorder, inquiryOnly: p.inquiryOnly, partNumber: p.partNumber, inventoryUnit: p.inventoryBaseUnit, quantityPriceTiers: p.quantityPriceTiers ?? [] }}
+              options={p.options} purchaseOptions={p.purchaseOptions ?? []} variants={variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: p.inquiryOnly || v.inquiryOnly ? 0 : v.price, compareAtPrice: p.inquiryOnly || v.inquiryOnly ? 0 : v.compareAtPrice, available: v.onHand - v.reserved, isSellable: v.isSellable, inquiryOnly: p.inquiryOnly || v.inquiryOnly, inventoryUnit: v.inventoryUnit, quantityPriceTiers: p.inquiryOnly ? [] : v.quantityPriceTiers ?? [] }))} offers={p.inquiryOnly ? [] : offerViews}
+              festival={baseFestival} variantPromotions={variantPromotions}
+              multiVendor={mv} siteName={s.siteName} freeShippingOver={s.freeShippingOver} returnDays={s.returnDays} compareAt={p.compareAtPrice} customer={u ? { name: u.name, phone: u.phone } : null} />
+            {(!p.inquiryOnly && !variants.some((v) => v.inquiryOnly)) && <div className="mt-4"><ProductAlerts productId={p.id} productName={p.nameFa} phone={u?.phone} variants={variants.map((v) => ({ id: v.id, title: v.title, available: v.onHand - v.reserved }))}/></div>}
           </div>
         </div>
 
@@ -196,7 +215,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             </div>
           </section>
 
-          {mv && offerViews.length > 0 && (
+          {mv && offerViews.length > 0 && !inquiryProduct && (
             <section id="sellers" className="scroll-mt-44 rounded-[2rem] bg-white p-6 ring-1 ring-emerald-900/5">
               <h2 className="mb-4 text-xl font-black text-emerald-950">مقایسه فروشندگان</h2>
               <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-sm">

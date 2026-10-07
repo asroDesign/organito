@@ -2,7 +2,7 @@ import Link from "next/link";
 import { desc, eq, sql } from "drizzle-orm";
 import { Boxes, AlertTriangle, Coins } from "lucide-react";
 import { db } from "@/db";
-import { inventoryConsignmentLots, inventoryParties, productVariants, products, stockMovements } from "@/db/schema";
+import { inventoryConsignmentLots, inventoryParties, inventoryWarehouses, productVariants, products, stockMovements } from "@/db/schema";
 import { requirePage } from "@/lib/auth";
 import { paginationParams } from "@/lib/pagination";
 import { Card, PageHeader, Stat, Table, Td } from "@/components/ui";
@@ -10,8 +10,9 @@ import { Pagination } from "@/components/Pagination";
 import { InventoryProductPicker } from "@/components/InventoryProductPicker";
 import { InventoryRepackPicker } from "@/components/InventoryRepackPicker";
 import { faNum, jdate, toman } from "@/lib/util";
+import { InventoryWarehousesClient } from "@/components/InventoryWarehousesClient";
 
-export default async function Inventory({ searchParams }: { searchParams: Promise<{ page?: string; pageSize?: string }> }) {
+export default async function Inventory({ searchParams }: { searchParams: Promise<{ page?: string; pageSize?: string; movementPage?: string; movementPageSize?: string }> }) {
   await requirePage({ perm: "INVENTORY_MANAGE" });
   const sp = await searchParams;
   const list = await db.select().from(products).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa);
@@ -34,7 +35,11 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
   const { pageSize } = paginationParams(sp);
   const page = Math.min(paginationParams(sp).page, Math.max(1, Math.ceil(choices.length / pageSize)));
   const visibleChoices = choices.slice((page - 1) * pageSize, page * pageSize);
-  const moves = await db.select({ m: stockMovements, name: products.nameFa, variant: productVariants.title, unit: productVariants.inventoryUnit, baseUnit: products.inventoryBaseUnit }).from(stockMovements).innerJoin(products, eq(products.id, stockMovements.productId)).leftJoin(productVariants, eq(productVariants.id, stockMovements.variantId)).orderBy(desc(stockMovements.createdAt)).limit(35);
+  const movementTotalRows = await db.select({ total: sql<number>`count(*)::int` }).from(stockMovements);
+  const movementTotal = Number(movementTotalRows[0]?.total ?? 0);
+  const movementPagination = paginationParams({ page: sp.movementPage, pageSize: sp.movementPageSize });
+  const movementPage = Math.min(movementPagination.page, Math.max(1, Math.ceil(movementTotal / movementPagination.pageSize)));
+  const moves = await db.select({ m: stockMovements, name: products.nameFa, variant: productVariants.title, unit: productVariants.inventoryUnit, baseUnit: products.inventoryBaseUnit, warehouse: inventoryWarehouses.name }).from(stockMovements).innerJoin(products, eq(products.id, stockMovements.productId)).leftJoin(productVariants, eq(productVariants.id, stockMovements.variantId)).leftJoin(inventoryWarehouses, eq(inventoryWarehouses.id, stockMovements.warehouseId)).orderBy(desc(stockMovements.createdAt), desc(stockMovements.id)).limit(movementPagination.pageSize).offset((movementPage - 1) * movementPagination.pageSize);
   const value = choices.reduce((sum, row) => sum + Math.max(0, row.onHand - row.consignmentOwners.reduce((qty, owner) => qty + owner.quantity, 0)) * row.unitCost, 0);
   const low = choices.filter((row) => (row.onHand - row.reserved) * row.baseUnitAmount <= row.lowStockThreshold);
   const repackProducts = list.map((p) => ({ productId: p.id, name: p.nameFa, baseUnit: p.inventoryBaseUnit, variants: variants.filter((x) => x.p.id === p.id && x.v.isActive).map(({ v }) => ({ id: v.id, title: v.title, sku: v.sku, inventoryUnit: v.inventoryUnit, baseUnitAmount: v.baseUnitAmount, onHand: v.onHand, reserved: v.reserved })) })).filter((p) => p.variants.length > 1);
@@ -60,10 +65,12 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
       <Card title="بسته‌بندی / تبدیل فله به تنوع آماده فروش" className="mt-6">
         <InventoryRepackPicker products={repackProducts} />
       </Card>
+      <section className="mt-8"><h2 className="mb-3 text-lg font-extrabold">مدیریت چند انبار</h2><InventoryWarehousesClient /></section>
       <h2 className="mb-3 mt-8 text-lg font-extrabold">گردش موجودی (Stock Movements)</h2>
-      <Table head={["تاریخ", "کالا / تنوع", "نوع", "مقدار و واحد", "بهای واحد", "مرجع"]}>
-          {moves.map(({ m, name, variant, unit, baseUnit }) => <tr key={m.id}><Td>{jdate(m.createdAt, true)}</Td><Td>{name}{variant ? ` · ${variant}` : ""}</Td><Td>{({ purchase_in: "رسید خرید", consignment_in: "دریافت امانی", adjust_out: "تعدیل خروج", sale_out: "خروج فروش / ارسال", reserve: "رزرو سفارش", release: "آزادسازی رزرو", backorder_receive: "ورود تأمین سفارش", central_pos_sale: "فروش حضوری انبار مرکزی", pos_sale: "فروش حضوری تأمین‌کننده", repack_out: "مصرف در بسته‌بندی", repack_in: "تولید بسته‌بندی" } as Record<string, string>)[m.type] ?? m.type}</Td><Td>{faNum(m.qty)} {unit ?? baseUnit}</Td><Td>{toman(m.unitCost)}</Td><Td>{m.refType} {m.refId ?? ""}</Td></tr>)}
+      <Table head={["تاریخ", "کالا / تنوع", "انبار", "نوع", "مقدار و واحد", "بهای واحد", "مرجع"]}>
+          {moves.map(({ m, name, variant, unit, baseUnit, warehouse }) => <tr key={m.id}><Td>{jdate(m.createdAt, true)}</Td><Td>{name}{variant ? ` · ${variant}` : ""}</Td><Td>{warehouse ?? "انبار مرکزی"}</Td><Td>{({ purchase_in: "رسید خرید", consignment_in: "دریافت امانی", adjust_out: "تعدیل خروج", sale_out: "خروج فروش / ارسال", reserve: "رزرو سفارش", release: "آزادسازی رزرو", backorder_receive: "ورود تأمین سفارش", central_pos_sale: "فروش حضوری انبار مرکزی", pos_sale: "فروش حضوری تأمین‌کننده", repack_out: "مصرف در بسته‌بندی", repack_in: "تولید بسته‌بندی", warehouse_transfer_out: "انتقال خروج", warehouse_transfer_in: "انتقال ورود" } as Record<string, string>)[m.type] ?? m.type}</Td><Td>{faNum(m.qty)} {unit ?? baseUnit}</Td><Td>{toman(m.unitCost)}</Td><Td>{m.refType} {m.refId ?? ""}</Td></tr>)}
       </Table>
+      <Pagination page={movementPage} pageSize={movementPagination.pageSize} total={movementTotal} pageKey="movementPage" pageSizeKey="movementPageSize" />
     </>
   );
 }

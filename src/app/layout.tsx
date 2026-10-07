@@ -6,6 +6,8 @@ import { siteBase } from "@/lib/seo";
 import { setCurrencyUnit } from "@/lib/util";
 import { CurrencyInitializer } from "@/components/CurrencyInitializer";
 import { AttributionTracker } from "@/components/AttributionTracker";
+import { AnalyticsTracker } from "@/components/AnalyticsTracker";
+import { ProductCompareDock } from "@/components/ProductCompareDock";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +20,10 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const s = await getSettings();
   setCurrencyUnit(s.currency);
+  const defaultTheme = ["light", "dark", "system"].includes(s.appearanceMode) ? s.appearanceMode : "light";
+  const palette = ["sunshine", "forest", "ocean"].includes(s.appearancePalette) ? s.appearancePalette : "sunshine";
   return (
-    <html lang="fa" dir="rtl">
+    <html lang="fa" dir="rtl" data-default-theme={defaultTheme} data-theme="light" data-palette={palette} suppressHydrationWarning>
       <head>
         {/* Yektanet analytics — keep it first inside the head so it runs before everything else. */}
         <script
@@ -39,11 +43,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             `,
           }}
         />
+        <script id="appearance-init" dangerouslySetInnerHTML={{ __html: `try{var r=document.documentElement;var p=localStorage.getItem("organo-color-mode");var d=r.dataset.defaultTheme;var m=(p==="light"||p==="dark")?p:(d==="light"||d==="dark")?d:(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");r.dataset.theme=m;}catch(e){document.documentElement.dataset.theme=document.documentElement.dataset.defaultTheme==="dark"?"dark":"light";}` }} />
         <link rel="preconnect" href="https://cdn.jsdelivr.net" />
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" />
       </head>
       <body className="bg-leaf-pattern min-h-screen text-slate-900 antialiased">
-        <CurrencyInitializer currency={s.currency}><AttributionTracker />{children}<Toaster /></CurrencyInitializer>
+        <CurrencyInitializer currency={s.currency}><AttributionTracker /><AnalyticsTracker />{children}<ProductCompareDock /><Toaster /></CurrencyInitializer>
       </body>
     </html>
   );

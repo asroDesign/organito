@@ -5,10 +5,10 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ReactNode } from "react";
 import {
-  LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, Menu, X, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage, Heart, AlertTriangle, ChevronDown,
+  LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, Menu, X, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage, Heart, AlertTriangle, ChevronDown, Award, Tags, Film, PhoneCall, ChartNoAxesCombined,
 } from "lucide-react";
 
-const ICONS = { LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage, Heart, AlertTriangle };
+const ICONS = { LayoutDashboard, Package, Store, ShoppingBag, Search, Warehouse, Calculator, LifeBuoy, MessageSquare, Users, Settings, ShieldCheck, Truck, Wallet, FolderTree, Tag, User, MapPin, BadgePercent, Flame, ClipboardList, FileText, FileImage, Heart, AlertTriangle, Award, Tags, Film, PhoneCall, ChartNoAxesCombined };
 export type NavItem = { href: string; label: string; icon: keyof typeof ICONS };
 export type NavGroup = { label: string; icon: keyof typeof ICONS; items: NavItem[] };
 

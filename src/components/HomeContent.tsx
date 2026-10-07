@@ -66,7 +66,7 @@ case "hero": return (<section  className="relative overflow-hidden">
           </div>
           {block.options?.showSearch !== false && <div data-builder-interactive><VehicleFinder makes={makes} /></div>}
         </div>
-        <svg viewBox="0 0 1440 60" className="relative block w-full text-[#faf7ef]" preserveAspectRatio="none"><path fill="currentColor" d="M0,40 C360,90 1080,-10 1440,40 L1440,60 L0,60 Z" /></svg>
+        <svg viewBox="0 0 1440 60" className="home-hero-wave relative block w-full text-[#faf7ef]" preserveAspectRatio="none"><path fill="currentColor" d="M0,40 C360,90 1080,-10 1440,40 L1440,60 L0,60 Z" /></svg>
       </section>);
 case "trust": return (<section  className="-mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
           {(sectionBlock("trust")?.title || sectionBlock("trust")?.body) && <div className="col-span-full"><Title title={sectionBlock("trust")?.title || "مزیت‌های خرید"} sub={sectionBlock("trust")?.body || undefined} /></div>}

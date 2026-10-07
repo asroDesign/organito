@@ -1,7 +1,7 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { customerAddresses, customerFavorites, customerWalletEntries, customerWallets, customerWalletWithdrawals, loyaltyPointEntries, products, users } from "@/db/schema";
-import { requireApi } from "../auth";
+import { customerAddresses, customerFavorites, customerWalletEntries, customerWallets, customerWalletWithdrawals, loyaltyPointEntries, products, users, sessions } from "@/db/schema";
+import { currentSessionDigest, requireApi } from "../auth";
 import { audit } from "../audit";
 import { HttpError, int, str } from "../util";
 import { body, idParam, type Route } from "./router";
@@ -9,7 +9,37 @@ import { getSettings } from "../settings";
 
 const phone = (v: unknown) => str(v, 30).replace(/[۰-۹]/g, d => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/\D/g, "");
 
+function sessionDevice(ua: string | null) {
+  const value = ua ?? "";
+  const platform = /iphone|ipad|ipod/i.test(value) ? "iPhone یا iPad" : /android/i.test(value) ? "Android" : /windows/i.test(value) ? "Windows" : /macintosh|mac os/i.test(value) ? "Mac" : /linux/i.test(value) ? "Linux" : "دستگاه ناشناس";
+  const browser = /edg\//i.test(value) ? "Edge" : /firefox\//i.test(value) ? "Firefox" : /chrome\//i.test(value) ? "Chrome" : /safari\//i.test(value) ? "Safari" : "مرورگر وب";
+  return `${browser} · ${platform}`;
+}
+
+function maskedIp(ip: string | null) {
+  if (!ip) return "نامشخص";
+  if (ip === "::1" || ip === "127.0.0.1" || ip === "local" || ip.startsWith("::ffff:127.")) return "شبکه محلی";
+  if (ip.includes(".")) return `${ip.split(".").slice(0, 2).join(".")}.***.***`;
+  if (ip.includes(":")) return "IPv6 پنهان";
+  return "نامشخص";
+}
+
 export const customerRoutes: Route[] = [
+  { method: "GET", pattern: "customer/sessions", handler: async () => {
+    const u = await requireApi(), currentId = await currentSessionDigest(), now = new Date();
+    const rows = await db.select().from(sessions).where(and(eq(sessions.userId, u.id), gt(sessions.expiresAt, now))).orderBy(desc(sessions.createdAt)).limit(30);
+    return rows.map((row) => ({ id: row.id, device: sessionDevice(row.userAgent), ip: maskedIp(row.ip), createdAt: row.createdAt, expiresAt: row.expiresAt, current: row.id === currentId }));
+  } },
+  { method: "DELETE", pattern: "customer/sessions/:id", handler: async (_req, p, meta) => {
+    const u = await requireApi(), id = p.id;
+    if (!/^[a-f0-9]{64}$/i.test(id)) throw new HttpError(400, "شناسه نشست معتبر نیست");
+    if (id === await currentSessionDigest()) throw new HttpError(400, "برای خروج از این دستگاه از دکمه خروج استفاده کنید");
+    const [old] = await db.select().from(sessions).where(and(eq(sessions.id, id), eq(sessions.userId, u.id)));
+    if (!old) throw new HttpError(404, "نشست فعال پیدا نشد");
+    await db.delete(sessions).where(and(eq(sessions.id, id), eq(sessions.userId, u.id)));
+    await audit(db, { userId: u.id, ...meta }, "auth.session_revoke", "session", null, { device: sessionDevice(old.userAgent), ip: maskedIp(old.ip) }, { revoked: true });
+    return { ok: true };
+  } },
   { method: "GET", pattern: "customer/addresses", handler: async () => { const u=await requireApi(); return db.select().from(customerAddresses).where(eq(customerAddresses.userId,u.id)).orderBy(customerAddresses.id); } },
   { method: "POST", pattern: "customer/addresses", handler: async (req,_p,m) => { const u=await requireApi(), b=await body(req);const receiverName=str(b.receiverName,100),receiverPhone=phone(b.receiverPhone),city=str(b.city,80),address=str(b.address,600);if(receiverName.length<2||!/^09\d{9}$/.test(receiverPhone)||!city||address.length<8)throw new HttpError(400,"نام، موبایل، شهر و نشانی کامل را وارد کنید");const isDefault=b.isDefault===true;return db.transaction(async tx=>{if(isDefault)await tx.update(customerAddresses).set({isDefault:false,updatedAt:new Date()}).where(eq(customerAddresses.userId,u.id));const [row]=await tx.insert(customerAddresses).values({userId:u.id,title:str(b.title,80)||"خانه",receiverName,receiverPhone,city,address,postalCode:str(b.postalCode,20)||null,latitude:str(b.latitude,40)||null,longitude:str(b.longitude,40)||null,isDefault}).returning();await audit(tx,{userId:u.id,...m},"customer.address.create","customer_address",row.id,null,row);return row;}); } },
   { method: "PUT", pattern: "customer/addresses/:id", handler: async (req,p,m) => {const u=await requireApi(),id=idParam(p.id),b=await body(req),receiverName=str(b.receiverName,100),receiverPhone=phone(b.receiverPhone),city=str(b.city,80),address=str(b.address,600);if(receiverName.length<2||!/^09\d{9}$/.test(receiverPhone)||!city||address.length<8)throw new HttpError(400,"نام، موبایل، شهر و نشانی کامل را وارد کنید");const [old]=await db.select().from(customerAddresses).where(and(eq(customerAddresses.id,id),eq(customerAddresses.userId,u.id)));if(!old)throw new HttpError(404,"آدرس پیدا نشد");const isDefault=b.isDefault===true;return db.transaction(async tx=>{if(isDefault)await tx.update(customerAddresses).set({isDefault:false,updatedAt:new Date()}).where(eq(customerAddresses.userId,u.id));const [row]=await tx.update(customerAddresses).set({title:str(b.title,80)||"خانه",receiverName,receiverPhone,city,address,postalCode:str(b.postalCode,20)||null,latitude:str(b.latitude,40)||null,longitude:str(b.longitude,40)||null,isDefault,updatedAt:new Date()}).where(eq(customerAddresses.id,id)).returning();await audit(tx,{userId:u.id,...m},"customer.address.update","customer_address",id,old,row);return row;}); } },

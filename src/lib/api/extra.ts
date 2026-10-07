@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, categories, detailAccounts, discountCodes, incompleteCarts, journalLines, media, products, productVariants, sellers, smsTemplates, ticketDepartments, tickets, users, centralLoyaltyMembers } from "@/db/schema";
+import { accounts, categories, detailAccounts, discountCodes, incompleteCarts, journalLines, media, products, productVariants, productPriceHistory, sellers, smsTemplates, ticketDepartments, tickets, users, centralLoyaltyMembers } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword, verifyPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal } from "../accounting";
@@ -32,14 +32,20 @@ export const extraRoutes: Route[] = [
     const u = await requireApi("PRODUCTS_EDIT"), b = await body(req), productId = int(b.productId, 1);
     const cost = int(b.cost ?? 0, 0, 1_000_000_000_000), price = int(b.price ?? 0, 0, 1_000_000_000_000), sale = int(b.sale ?? 0, 0, 1_000_000_000_000);
     const variantId = b.variantId ? int(b.variantId, 1) : null;
-    const [product] = await db.select().from(products).where(eq(products.id, productId));
-    if (!product) throw new HttpError(404, "محصول پیدا نشد");
-    if (variantId) {
-      const [variant] = await db.select().from(productVariants).where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId), isNull(productVariants.deletedAt)));
-      if (!variant) throw new HttpError(404, "تنوع محصول پیدا نشد");
-      await db.update(productVariants).set({ costPrice: cost, price, compareAtPrice: sale }).where(eq(productVariants.id, variantId));
-    } else await db.update(products).set({ basePrice: price, avgCost: cost, compareAtPrice: sale, updatedAt: new Date() }).where(eq(products.id, productId));
-    await audit(db, { userId: u.id, ...m }, "product.price_quick_update", "product", productId, { avgCost: product.avgCost, basePrice: product.basePrice, compareAtPrice: product.compareAtPrice }, { cost, price, sale, variantId });
+    await db.transaction(async (tx) => {
+      const [product] = await tx.select().from(products).where(eq(products.id, productId)).for("update");
+      if (!product) throw new HttpError(404, "محصول پیدا نشد");
+      if (variantId) {
+        const [variant] = await tx.select().from(productVariants).where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId), isNull(productVariants.deletedAt))).for("update");
+        if (!variant) throw new HttpError(404, "تنوع محصول پیدا نشد");
+        await tx.update(productVariants).set({ costPrice: cost, price, compareAtPrice: sale }).where(eq(productVariants.id, variantId));
+        if ((variant.price ?? product.basePrice) !== price || (variant.compareAtPrice ?? 0) !== sale) await tx.insert(productPriceHistory).values({ productId, scope: "variant", variantId, price, referencePrice: sale, source: "quick_price_edit", changedBy: u.id });
+      } else {
+        await tx.update(products).set({ basePrice: price, avgCost: cost, compareAtPrice: sale, updatedAt: new Date() }).where(eq(products.id, productId));
+        if (product.basePrice !== price || product.compareAtPrice !== sale) await tx.insert(productPriceHistory).values({ productId, scope: "product", price, referencePrice: sale, source: "quick_price_edit", changedBy: u.id });
+      }
+      await audit(tx, { userId: u.id, ...m }, "product.price_quick_update", "product", productId, { avgCost: product.avgCost, basePrice: product.basePrice, compareAtPrice: product.compareAtPrice }, { cost, price, sale, variantId });
+    });
     return { ok: true };
   } },
   // ---------- cart recovery ----------
@@ -162,7 +168,8 @@ export const extraRoutes: Route[] = [
     if (event !== "manual" && !SMS_EVENTS[event]) throw new HttpError(400, "رویداد نامعتبر");
     const text = str(b.body, 600), title = str(b.title, 100);
     if (!text || !title) throw new HttpError(400, "عنوان و متن الگو الزامی است");
-    const [t] = await db.insert(smsTemplates).values({ event, title, body: text, patternId: str(b.patternId, 40) || null, variables: extractVars(text), isActive: b.isActive !== false }).returning();
+    const parameterMap = b.parameterMap && typeof b.parameterMap === "object" && !Array.isArray(b.parameterMap) ? Object.fromEntries(Object.entries(b.parameterMap as Record<string, unknown>).map(([k,v]) => [str(k,40), str(v,40)]).filter(([k,v]) => !!k && !!v)) : {};
+    const [t] = await db.insert(smsTemplates).values({ event, title, body: text, patternId: str(b.patternId, 40) || null, variables: extractVars(text), parameterMap, isActive: b.isActive !== false }).returning();
     await audit(db, { userId: u.id, ...m }, "sms.template_create", "sms_template", t.id, null, { event, title });
     return t;
   } },
@@ -180,7 +187,8 @@ export const extraRoutes: Route[] = [
     }
     const text = b.body !== undefined ? str(b.body, 600) || t.body : t.body;
     const event = b.event !== undefined && (SMS_EVENTS[String(b.event)] || b.event === "manual") ? String(b.event) : t.event;
-    const patch = { title: str(b.title, 100) || t.title, body: text, variables: extractVars(text), event: t.isSystem ? t.event : event, patternId: b.patternId !== undefined ? str(b.patternId, 40) || null : t.patternId, isActive: b.isActive !== undefined ? b.isActive === true : t.isActive };
+    const parameterMap = b.parameterMap && typeof b.parameterMap === "object" && !Array.isArray(b.parameterMap) ? Object.fromEntries(Object.entries(b.parameterMap as Record<string, unknown>).map(([k,v]) => [str(k,40), str(v,40)]).filter(([k,v]) => !!k && !!v)) : t.parameterMap;
+    const patch = { title: str(b.title, 100) || t.title, body: text, variables: extractVars(text), event: t.isSystem ? t.event : event, patternId: b.patternId !== undefined ? str(b.patternId, 40) || null : t.patternId, parameterMap, isActive: b.isActive !== undefined ? b.isActive === true : t.isActive };
     await db.update(smsTemplates).set(patch).where(eq(smsTemplates.id, id));
     await audit(db, { userId: u.id, ...m }, "sms.template_update", "sms_template", id, { isActive: t.isActive, body: t.body }, patch);
     return { ok: true };
