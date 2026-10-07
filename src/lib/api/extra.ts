@@ -82,8 +82,10 @@ export const extraRoutes: Route[] = [
     let code: string | undefined, discountCodeId: number | undefined;
     if (action === "discount") {
       const value = int(b.percent ?? 10, 1, 50);
+      const productIds = [...new Set(row.items.map((item) => item.productId).filter((productId) => Number.isInteger(productId) && productId > 0))];
+      if (!productIds.length) throw new HttpError(400, "محصول معتبری برای محدودکردن کد تخفیف در این سبد پیدا نشد");
       code = `CART${randomBytes(4).toString("hex").toUpperCase()}`;
-      const [createdCode] = await db.insert(discountCodes).values({ code, title: "تخفیف تکمیل سبد خرید", type: "percent", value, maxDiscount: 300000, minOrder: 0, startsAt: new Date(), endsAt: new Date(Date.now() + 7 * 86400000), usageLimit: 1, perUserLimit: 1, customerId: row.customerId, targetPhone: row.phone, isActive: true }).returning({ id: discountCodes.id });
+      const [createdCode] = await db.insert(discountCodes).values({ code, title: `تخفیف تکمیل سبد خرید (${value}٪)`, type: "percent", value, maxDiscount: 300000, minOrder: 0, startsAt: new Date(), endsAt: new Date(Date.now() + 7 * 86400000), usageLimit: 1, perUserLimit: 1, customerId: row.customerId, targetPhone: row.phone, productIds, isActive: true }).returning({ id: discountCodes.id });
       discountCodeId = createdCode.id;
     }
     // This is an explicit, one-to-one recovery message initiated by an authorized admin.
