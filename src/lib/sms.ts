@@ -224,7 +224,15 @@ export async function sendSms(event: string, phone: string, vars: Record<string,
       const patternVars = Object.fromEntries(tpl.variables.filter((name) => dynamicVars[name] !== undefined).map((name) => [name, dynamicVars[name]]));
       out.push(await deliver(event, phone, s.smsProvider, tpl.patternId, body, patternVars, s.smsProvider === "melipayamak" ? s.smsPassword : s.smsApiKey, { ...normalizeParameterMap(s.smsirParameterMap), ...(tpl.parameterMap ?? {}) }, s.smsSender, s.smsUsername));
     }
-    return { status: out.join(","), body };
+    const statuses = out;
+    const status = statuses.every((value) => value === "sent")
+      ? "sent"
+      : statuses.every((value) => value === "simulated")
+        ? "simulated"
+        : statuses.every((value) => value === "failed")
+          ? "failed"
+          : "partial";
+    return { status, body };
   } catch {
     return { status: "error" };
   }

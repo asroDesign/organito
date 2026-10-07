@@ -32,7 +32,7 @@ async function readinessChecks(): Promise<ReadinessCheck[]> {
   checks.push({ key: "node", label: "نسخهٔ Node.js", state: nodeSupported ? "ready" : "blocked", detail: `Node.js ${process.versions.node}${!nodeSupported ? "؛ برای این مسیر به نسخهٔ ۲۰٫۹ یا بالاتر نیاز است" : ""}` });
   checks.push({ key: "environment", label: "محیط اجرا", state: process.env.NODE_ENV === "production" ? "ready" : "warning", detail: process.env.NODE_ENV === "production" ? "production" : "محیط فعلی production نیست؛ اجرای آپدیت غیرفعال می‌ماند" });
   let keyOk = false;
-  try { if (publicKey()) keyOk = createPublicKey(publicKey()).asymmetricKeyType === "ed25519"; } catch { /* Invalid key is reported without exposing its value. */ }
+  try { if (publicKey()) keyOk = createPublicKey(publicKey().replace(/\\n/g, "\n")).asymmetricKeyType === "ed25519"; } catch { /* Invalid key is reported without exposing its value. */ }
   checks.push({ key: "signing-key", label: "کلید عمومی ناشر", state: keyOk ? "ready" : "blocked", detail: keyOk ? "کلید Ed25519 معتبر است" : "کلید Ed25519 معتبر روی سرور تنظیم نشده است" });
   checks.push({ key: "apply-enabled", label: "اجازهٔ اجرای پنلی", state: process.env.UPDATE_APPLY_ENABLED === "true" ? "ready" : "warning", detail: process.env.UPDATE_APPLY_ENABLED === "true" ? "فعال" : "برای جلوگیری از اجرای ناخواسته خاموش است" });
   try { await db.execute(sql`select 1`); checks.push({ key: "database", label: "اتصال پایگاه داده", state: "ready", detail: "اتصال و پاسخ پایگاه داده برقرار است" }); }

@@ -10,7 +10,9 @@ function revivePostDates<T extends { createdAt: Date; updatedAt: Date; published
 }
 
 const readBlogIndex = unstable_cache(async () => {
-  const all = await db.select().from(blogPosts).where(and(eq(blogPosts.status, "published"), lte(blogPosts.publishedAt, new Date()))).orderBy(desc(blogPosts.publishedAt));
+  const rows = await db.select({ post: blogPosts, author: users.name, authorAvatar: users.avatarMediaId }).from(blogPosts).leftJoin(users, eq(users.id, blogPosts.authorId))
+    .where(and(eq(blogPosts.status, "published"), lte(blogPosts.publishedAt, new Date()))).orderBy(desc(blogPosts.publishedAt));
+  const all = rows.map(({ post, author, authorAvatar }) => ({ ...post, author, authorAvatar }));
   const tagNames = Array.from(new Set(all.flatMap((post) => post.tags)));
   const savedTags = tagNames.length ? await db.select({ name: blogTags.name, slug: blogTags.slug }).from(blogTags).where(inArray(blogTags.name, tagNames)).orderBy(blogTags.name) : [];
   const savedNames = new Set(savedTags.map((tag) => tag.name));
@@ -25,7 +27,7 @@ export async function getPublishedBlogIndex() {
 
 export async function getPublishedBlogPost(slug: string) {
   const row = await unstable_cache(async () => {
-    const [row] = await db.select({ post: blogPosts, author: users.name }).from(blogPosts).leftJoin(users, eq(users.id, blogPosts.authorId))
+    const [row] = await db.select({ post: blogPosts, author: users.name, authorAvatar: users.avatarMediaId }).from(blogPosts).leftJoin(users, eq(users.id, blogPosts.authorId))
       .where(and(eq(blogPosts.slug, slug), eq(blogPosts.status, "published"), lte(blogPosts.publishedAt, new Date()))).limit(1);
     return row ?? null;
   }, ["public-blog-post-v1", slug], { tags: [PUBLIC_BLOG_TAG], revalidate: 300 })();

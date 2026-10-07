@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, lt, gt, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, ilike, isNull, lt, gt, lte, or, sql, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { carrierRates, carriers, discountCodes, festivals, users, variantScheduledDiscounts, productVariants, products } from "@/db/schema";
 import { requireApi } from "../auth";
@@ -8,6 +8,7 @@ import { HttpError, int, slugify, str } from "../util";
 import { applicableQuantityTier, quantityTierPrice } from "../quantity-pricing";
 import { safeDiscountPercent } from "../marketing";
 import { body, idParam, type Route } from "./router";
+import { validPhone } from "../commerce-common";
 
 const ids = (v: unknown) => (Array.isArray(v) ? v : String(v ?? "").split(/[\s,،]+/)).map((x) => Math.floor(Number(x))).filter((x) => x > 0).slice(0, 500);
 function date(v: unknown, endOfDay = false): Date | null {
@@ -27,6 +28,22 @@ function dateTime(v: unknown): Date {
 }
 
 export const marketingRoutes: Route[] = [
+  { method: "GET", pattern: "admin/discounts/customers", handler: async (req) => {
+    await requireApi("MARKETING_MANAGE");
+    const q = str(req.nextUrl.searchParams.get("q"), 100).trim();
+    if (q.length < 2) return [];
+    return db.select({ id: users.id, name: users.name, phone: users.phone }).from(users)
+      .where(and(eq(users.role, "customer"), eq(users.isActive, true), or(ilike(users.name, `%${q}%`), ilike(users.phone, `%${q}%`))!))
+      .orderBy(users.name).limit(30);
+  } },
+  { method: "GET", pattern: "admin/discounts/products", handler: async (req) => {
+    await requireApi("MARKETING_MANAGE");
+    const q = str(req.nextUrl.searchParams.get("q"), 100).trim();
+    if (q.length < 2) return [];
+    return db.select({ id: products.id, name: products.nameFa, sku: products.sku, brand: products.brand, categoryId: products.categoryId })
+      .from(products).where(and(eq(products.status, "active"), isNull(products.deletedAt), or(ilike(products.nameFa, `%${q}%`), ilike(products.sku, `%${q}%`), ilike(products.partNumber, `%${q}%`))!))
+      .orderBy(products.nameFa).limit(40);
+  } },
   // ----- carriers -----
   { method: "POST", pattern: "admin/carriers", handler: async (req, _p, m) => {
     const u = await requireApi("SHIPMENTS_MANAGE");
@@ -200,19 +217,29 @@ async function parseDiscount(b: Record<string, unknown>) {
   if (code.length < 3) throw new HttpError(400, "کد تخفیف حداقل ۳ کاراکتر (حروف انگلیسی/عدد)");
   const type = b.type === "fixed" ? "fixed" : "percent";
   const value = int(b.value, 1, type === "percent" ? 100 : 1_000_000_000);
-  let customerId: number | null = null;
-  const phone = str(b.customerPhone, 20);
-  if (phone) {
-    const [c] = await db.select().from(users).where(eq(users.phone, phone));
-    if (!c) throw new HttpError(400, "مشتری با این شماره یافت نشد");
-    customerId = c.id;
+  let customerId: number | null = null, targetPhone: string | null = null;
+  if (b.customerId !== undefined && b.customerId !== null && b.customerId !== "") {
+    const id = int(b.customerId, 1);
+    const [customer] = await db.select({ id: users.id, phone: users.phone }).from(users).where(and(eq(users.id, id), eq(users.role, "customer"), eq(users.isActive, true)));
+    if (!customer) throw new HttpError(400, "مشتری انتخاب‌شده فعال نیست یا پیدا نشد");
+    customerId = customer.id;
+    targetPhone = customer.phone;
+  } else if (str(b.customerPhone, 30)) {
+    targetPhone = validPhone(b.customerPhone);
+    const [customer] = await db.select({ id: users.id }).from(users).where(and(eq(users.phone, targetPhone), eq(users.role, "customer"), eq(users.isActive, true)));
+    customerId = customer?.id ?? null;
+  }
+  const productIds = ids(b.productIds), categoryIds = ids(b.categoryIds);
+  if (productIds.length) {
+    const active = await db.select({ id: products.id }).from(products).where(and(inArray(products.id, productIds), eq(products.status, "active"), isNull(products.deletedAt)));
+    if (active.length !== productIds.length) throw new HttpError(400, "یکی از محصولات انتخاب‌شده فعال نیست یا پیدا نشد");
   }
   const startsAt = date(b.startsAt), endsAt = date(b.endsAt, true);
   if (startsAt && endsAt && endsAt < startsAt) throw new HttpError(400, "تاریخ پایان قبل از شروع است");
   return {
     code, title: str(b.title, 120) || code, type, value, maxDiscount: int(b.maxDiscount ?? 0), minOrder: int(b.minOrder ?? 0), startsAt, endsAt,
-    usageLimit: b.usageLimit ? int(b.usageLimit, 1, 10_000_000) : null, perUserLimit: int(b.perUserLimit ?? 1, 0, 1000), customerId,
-    productIds: ids(b.productIds), categoryIds: ids(b.categoryIds), isActive: b.isActive !== false,
+    usageLimit: b.usageLimit ? int(b.usageLimit, 1, 10_000_000) : null, perUserLimit: int(b.perUserLimit ?? 1, 0, 1000), customerId, targetPhone,
+    productIds, categoryIds, isActive: b.isActive !== false,
   };
 }
 

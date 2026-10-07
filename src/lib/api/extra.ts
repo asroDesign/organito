@@ -76,8 +76,7 @@ export const extraRoutes: Route[] = [
     }
     const action = str(b.action, 20);
     if (action !== "reminder" && action !== "discount") throw new HttpError(400, "نوع پیام نامعتبر است");
-    const [customer] = row.customerId ? await db.select({ smsConsent: users.smsConsent }).from(users).where(eq(users.id, row.customerId)) : [];
-    if (!customer?.smsConsent) throw new HttpError(403, "مشتری اجازه دریافت پیامک تبلیغاتی نداده است");
+    if (!/^09\d{9}$/.test(row.phone)) throw new HttpError(400, "شماره موبایل مشتری معتبر نیست");
     const settingsRow = await import("../settings").then((x) => x.getSettings());
     const url = `${settingsRow.siteUrl.replace(/\/$/, "")}/cart`;
     let code: string | undefined, discountCodeId: number | undefined;
@@ -87,8 +86,10 @@ export const extraRoutes: Route[] = [
       const [createdCode] = await db.insert(discountCodes).values({ code, title: "تخفیف تکمیل سبد خرید", type: "percent", value, maxDiscount: 300000, minOrder: 0, startsAt: new Date(), endsAt: new Date(Date.now() + 7 * 86400000), usageLimit: 1, perUserLimit: 1, customerId: row.customerId, targetPhone: row.phone, isActive: true }).returning({ id: discountCodes.id });
       discountCodeId = createdCode.id;
     }
-    const result = await sendSms(action === "discount" ? "cart_discount" : "cart_reminder", row.phone, { name: row.customerName, url, ...(code ? { code } : {}) });
-    const sent = result.status === "sent" || result.status === "simulated";
+    // This is an explicit, one-to-one recovery message initiated by an authorized admin.
+    // It is not a marketing campaign, so customer campaign consent does not gate it.
+    const result = await sendSms(action === "discount" ? "cart_discount" : "cart_reminder", row.phone, { name: row.customerName, url, ...(code ? { code } : {}) }, true);
+    const sent = result.status === "sent" || result.status === "simulated" || result.status === "partial";
     await db.update(incompleteCarts).set({ lastSmsType: action, lastSmsStatus: result.status, lastSmsAt: sent ? new Date() : row.lastSmsAt, discountCodeId: discountCodeId ?? row.discountCodeId, updatedAt: new Date() }).where(eq(incompleteCarts.id, id));
     await audit(db, { userId: u.id, ...m }, `incomplete_cart.sms_${action}`, "incomplete_cart", id, null, { phone: row.phone, status: result.status, discountCodeId });
     return { status: result.status, code };
