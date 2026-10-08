@@ -102,9 +102,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       {(p.productFaqs ?? []).length > 0 && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: p.productFaqs.map((faq) => ({ "@type": "Question", name: faq.question, acceptedAnswer: { "@type": "Answer", text: faq.answer } })) }).replace(/</g, "\\u003c") }} />}
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-6 pb-28 lg:pb-10">
         <nav className="text-xs text-slate-500"><Link href="/">خانه</Link> / <Link href="/shop">فروشگاه</Link>{row.cat && <> / <Link href={`/shop?cat=${row.cat.id}`}>{row.cat.name}</Link></>} / <span className="text-emerald-800">{p.nameFa}</span></nav>
-        <div className="grid gap-8 lg:grid-cols-[1fr_1fr_380px]">
-          <div className="lg:sticky lg:top-40 lg:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? s.organicBadgeLabel : undefined} actions={<>{(!p.inquiryOnly && !variants.some((v) => v.inquiryOnly)) && <ProductPriceHistory productId={p.id}/>}<FavoriteButton productId={p.id}/><ProductCompareButton productId={p.id}/></>} /></div>
-          <div className="space-y-5">
+        <div className="grid min-w-0 gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,380px)]">
+          <div className="min-w-0 lg:sticky lg:top-40 lg:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? s.organicBadgeLabel : undefined} actions={<>{(!p.inquiryOnly && !variants.some((v) => v.inquiryOnly)) && <ProductPriceHistory productId={p.id}/>}<FavoriteButton productId={p.id}/><ProductCompareButton productId={p.id}/></>} /></div>
+          <div className="min-w-0 space-y-5">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Link href={brandPage ? `/brands/${brandPage.slug}` : `/shop?brand=${encodeURIComponent(p.brand)}`} className="rounded-full bg-emerald-50 px-3 py-1 font-bold text-emerald-800 ring-1 ring-emerald-200">🌿 {p.brand}</Link>
               {row.cat && <Link href={`/shop?cat=${row.cat.id}`} className="rounded-full bg-amber-50 px-3 py-1 font-bold text-amber-800 ring-1 ring-amber-200">{row.cat.name}</Link>}
@@ -127,7 +127,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             )}
             {visibleSpecs.length > 0 && <ul className="grid gap-1.5 text-sm sm:grid-cols-2">{visibleSpecs.slice(0, 6).map((sp) => <li key={sp.k} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-lime-500" /><span className="text-slate-500">{sp.k}:</span><b className="text-slate-700">{sp.v}</b></li>)}</ul>}
           </div>
-          <div className="lg:sticky lg:top-40 lg:self-start">
+          <div className="min-w-0 lg:sticky lg:top-40 lg:self-start">
             {p.deliveryEstimateEnabled && <div className="mb-3 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><b>زمان تحویل مورد انتظار</b><span className="mr-2">حدود {faNum(p.deliveryMinDays)} تا {faNum(p.deliveryMaxDays)} روز کاری پس از ثبت سفارش</span></div>}
             <BuyBox product={{ id: p.id, nameFa: p.nameFa, basePrice: p.inquiryOnly ? 0 : p.basePrice, source: p.source, available: p.onHand - p.reserved, active: p.status === "active" || (p.status === "out_of_stock" && p.allowBackorder), allowBackorder: p.allowBackorder, inquiryOnly: p.inquiryOnly, partNumber: p.partNumber, inventoryUnit: p.inventoryBaseUnit, quantityPriceTiers: p.quantityPriceTiers ?? [] }}
               options={p.options} purchaseOptions={p.purchaseOptions ?? []} variants={variants.map((v) => ({ id: v.id, title: v.title, attrs: v.attrs, price: p.inquiryOnly || v.inquiryOnly ? 0 : v.price, compareAtPrice: p.inquiryOnly || v.inquiryOnly ? 0 : v.compareAtPrice, available: v.onHand - v.reserved, isSellable: v.isSellable, inquiryOnly: p.inquiryOnly || v.inquiryOnly, inventoryUnit: v.inventoryUnit, quantityPriceTiers: p.inquiryOnly ? [] : v.quantityPriceTiers ?? [] }))} offers={p.inquiryOnly ? [] : offerViews}

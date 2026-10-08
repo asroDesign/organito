@@ -26,8 +26,8 @@ export function Gallery({ ids, alt, videoId, badge, actions }: { ids: number[]; 
   }, [zoom, slides.length]);
 
   return (
-    <div className="space-y-3">
-      <div className="product-gallery-surface group relative aspect-square overflow-hidden rounded-[2rem] bg-gradient-to-b from-[#f3efe2] to-white ring-1 ring-emerald-900/10">
+    <div className="min-w-0 space-y-3">
+      <div className="product-gallery-surface group relative block aspect-square w-full min-w-0 overflow-hidden rounded-[2rem] bg-gradient-to-b from-[#f3efe2] to-white ring-1 ring-emerald-900/10">
         {!current ? <div className="grid h-full place-items-center text-7xl">🌿</div>
           : current.type === "video" ? <video key={current.id} src={`/api/media/${current.id}`} controls playsInline preload="metadata" className="h-full w-full bg-black object-contain" />
           : <><img src={`/api/media/${current.id}?w=960`} srcSet={imageSrcSet(current.id)} sizes="(max-width: 1024px) 100vw, 50vw" alt={alt} decoding="async" className="h-full w-full cursor-zoom-in object-contain p-2 transition duration-300 group-hover:scale-[1.02]" onClick={() => setZoom(true)} />

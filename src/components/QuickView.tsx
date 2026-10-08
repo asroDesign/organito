@@ -49,7 +49,7 @@ function QuickViewModal({ id, onClose }: { id: number; onClose: () => void }) {
   const facts = p ? ([[MapPin, "خاستگاه", org.origin], [CalendarDays, "برداشت", org.harvest], [Sprout, "روش تولید", org.method], [BadgeCheck, data?.store.certificationLabel ?? "گواهی", p.certifiedOrganic ? org.certificate : undefined]] as const).filter(([, , v]) => v) : [];
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-emerald-950/60 p-3 backdrop-blur-sm sm:items-center sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} role="dialog" aria-modal="true" dir="rtl">
-      <div className="qv-in relative my-6 w-full max-w-5xl overflow-hidden rounded-[2rem] bg-[#faf7ef] shadow-2xl ring-1 ring-emerald-900/10">
+      <div className="qv-in relative my-auto w-full max-w-5xl overflow-hidden rounded-[2rem] bg-[#faf7ef] shadow-2xl ring-1 ring-emerald-900/10">
         <button onClick={onClose} aria-label="بستن" className="absolute left-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-full bg-white text-slate-500 shadow ring-1 ring-emerald-900/10 transition hover:rotate-90 hover:text-emerald-700"><X className="h-5 w-5" /></button>
         {!data || !p ? (
           <div className="grid h-96 place-items-center">{err ? <div className="text-sm text-rose-600">{err}</div> : <Loader2 className="h-9 w-9 animate-spin text-emerald-600" />}</div>

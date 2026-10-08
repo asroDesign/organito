@@ -11,7 +11,7 @@ export function OfferEditor({ productId, initial, label }: { productId: number; 
       <button className="btn-sm" onClick={() => setOpen(true)}>{label}</button>
       {open && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-lg rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-scroll-panel w-full max-w-lg rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex justify-between"><b>{label}</b><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             <p className="mb-3 text-xs text-amber-700">تغییر بیش از ۲۰٪ قیمت یا وضعیت کالا نیازمند تأیید مجدد مدیر است.</p>
             <JsonForm url="/api/seller/offers" extra={{ productId }} submit="ذخیره پیشنهاد" onDone={() => setOpen(false)} fields={[

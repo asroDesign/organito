@@ -38,7 +38,7 @@ export function ManualPaymentForm({ orderId, amount, bankInfo }: { orderId: numb
       <button className="btn-ghost" onClick={() => setOpen(true)}><Receipt className="h-4 w-4" />پرداخت کارت به کارت / حواله</button>
       {open && (
         <div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-slate-900/50 p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-scroll-panel w-full max-w-lg space-y-4 rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between"><b>ثبت فیش کارت به کارت / حواله</b><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             <div className="rounded-xl bg-emerald-50 p-3 text-sm leading-7">مبلغ <b>{amount.toLocaleString("fa-IR")} {currencyUnit()}</b> را به حساب زیر واریز و مشخصات را ثبت کنید:<div className="mt-1 font-bold">{bankInfo}</div></div>
             <PayFields f={f} setF={setF} withMethod methods={METHODS.slice(0, 2)} />
@@ -75,7 +75,7 @@ export function AdminRecordPayment({ orderId, amount }: { orderId: number; amoun
       <button className="btn-primary" onClick={() => setOpen(true)}><CreditCard className="h-4 w-4" />ثبت پرداخت / تغییر وضعیت به پرداخت‌شده</button>
       {open && (
         <div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-slate-900/50 p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-lg space-y-4 rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-scroll-panel w-full max-w-lg space-y-4 rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between"><b>ثبت پرداخت سفارش — {amount.toLocaleString("fa-IR")} {currencyUnit()}</b><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             <PayFields f={f} setF={setF} withMethod />
             <p className="text-xs text-slate-500">با ثبت، وضعیت سفارش «پرداخت‌شده» می‌شود، سند حسابداری صادر و سهم فروشندگان به کیف پول در انتظار منتقل می‌شود. اطلاعات در فاکتور چاپ می‌شود.</p>

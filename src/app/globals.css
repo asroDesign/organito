@@ -21,6 +21,11 @@
 
 html { font-family: "Vazirmatn", ui-sans-serif, system-ui, sans-serif; }
 body { font-feature-settings: "ss01"; }
+.modal-scroll-panel {
+  max-height: min(94vh, calc(100dvh - 2rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 
 @layer components {
   .btn-primary { @apply inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-l from-emerald-600 to-emerald-700 shadow-emerald-600/25 px-4 py-2 text-sm font-bold text-amber-950 shadow-sm transition hover:from-emerald-700 hover:to-emerald-800 disabled:cursor-not-allowed disabled:opacity-60; }

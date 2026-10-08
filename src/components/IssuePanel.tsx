@@ -36,7 +36,7 @@ export function IssuePanel({ shipmentId, issue, canIssue, packageCount = 1 }: { 
       {active?.status === "delivered" && <div className="mt-1.5 text-slate-500">تحویل‌گیرنده: <b className="text-slate-700">{active.receiverName}</b></div>}
       {open && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-900/50 p-4" onClick={() => setOpen(null)}>
-          <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 text-sm" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-scroll-panel w-full max-w-md space-y-3 rounded-2xl bg-white p-5 text-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between"><b>{open === "create" ? `صدور حواله خروج — مرسوله #${shipmentId}` : `ثبت تحویل کالا طبق حواله ${active?.number}`}</b><button onClick={() => setOpen(null)}><X className="h-5 w-5" /></button></div>
             {open === "create" ? (
               <>

@@ -24,7 +24,7 @@ export function SmsTemplateEditor({ events, label, initial = {}, small, provider
       <button className={small ? "btn-sm" : "btn-primary"} onClick={() => setOpen(true)}>{label}</button>
       {open && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-xl space-y-3 rounded-2xl bg-white p-5 text-sm" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-scroll-panel w-full max-w-xl space-y-3 rounded-2xl bg-white p-5 text-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between"><b>{f.id ? "ویرایش الگو" : "الگوی پیامک جدید"}</b><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             <label className="block">رویداد
               <select disabled={f.isSystem} value={f.event} onChange={(e) => setF({ ...f, event: e.target.value })} className="input mt-1">{events.map(([k, t]) => <option key={k} value={k}>{t} ({k})</option>)}</select></label>

@@ -43,7 +43,7 @@ export function DocReviewButtons({ docId, hasFile }: { docId: number; hasFile: b
       </div>
       {rej && (
         <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-900/50 p-4" onClick={() => setRej(false)}>
-          <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 text-sm" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-scroll-panel w-full max-w-md space-y-3 rounded-2xl bg-white p-5 text-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between"><b>رد مدرک</b><button onClick={() => setRej(false)}><X className="h-5 w-5" /></button></div>
             <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="دلیل رد (برای تأمین‌کننده ارسال می‌شود)" className="input min-h-20" />
             <label className="flex items-center gap-2 text-rose-700"><input type="checkbox" checked={restrict} onChange={(e) => setRestrict(e.target.checked)} />دسترسی تأمین‌کننده تا اصلاح مدرک محدود شود</label>

@@ -55,7 +55,7 @@ export function ReviewForm({ productId, loggedIn, productName }: { productId: nu
       <button onClick={() => setOpen(true)} className="btn-primary"><Star className="h-4 w-4" />ثبت دیدگاه</button>
       {open && (
         <div className="fixed inset-0 z-[90] flex items-start justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpen(false); }}>
-          <div className="qv-in my-8 w-full max-w-2xl space-y-5 rounded-[2rem] bg-white p-6">
+          <div className="modal-scroll-panel qv-in my-auto w-full max-w-2xl space-y-5 rounded-[2rem] bg-white p-6">
             <div className="flex items-start justify-between"><div><b className="text-lg text-emerald-950">دیدگاه شما درباره</b><div className="text-sm text-slate-500">{productName}</div></div><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             <div className="flex flex-col items-center gap-1 rounded-2xl bg-[#faf7ef] p-4">
               <div className="flex gap-1" dir="ltr" onMouseLeave={() => setHover(0)}>{[1, 2, 3, 4, 5].map((i) => <button key={i} type="button" onMouseEnter={() => setHover(i)} onClick={() => setRating(i)}><Star className={`h-9 w-9 transition ${(hover || rating) >= i ? "fill-amber-400 text-amber-400" : "text-slate-300"}`} /></button>)}</div>

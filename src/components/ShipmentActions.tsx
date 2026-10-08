@@ -48,7 +48,7 @@ export function ShipmentInfoEditor({ id, base, carriers, initial }: { id: number
       <button className="btn-sm" onClick={() => setOpen(true)}><Pencil className="h-3 w-3" />ویرایش اطلاعات ارسال</button>
       {open && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/40 p-4" onClick={() => setOpen(false)}>
-          <div className="w-full max-w-md space-y-3 rounded-2xl bg-white p-5 text-sm" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-scroll-panel w-full max-w-md space-y-3 rounded-2xl bg-white p-5 text-sm" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between"><b>ویرایش اطلاعات ارسال مرسوله #{id}</b><button onClick={() => setOpen(false)}><X className="h-5 w-5" /></button></div>
             <label className="block">شرکت پستی<select value={f.carrierId} onChange={(e) => setF({ ...f, carrierId: Number(e.target.value) })} className="input mt-1"><option value="">— بدون تغییر —</option>{carriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
             <label className="block">کد رهگیری<input value={f.trackingNumber} onChange={(e) => setF({ ...f, trackingNumber: e.target.value })} dir="ltr" className="input mt-1" /></label>
