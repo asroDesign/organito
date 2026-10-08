@@ -1,5 +1,4 @@
 const SESSION_COOKIE = "org_analytics_session=";
-const CONSENT_COOKIE = "org_analytics_consent=";
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function cookieValue(header: string | null, name: string) {
@@ -7,7 +6,6 @@ function cookieValue(header: string | null, name: string) {
 }
 
 export function analyticsSessionFromCookie(header: string | null) {
-  if (cookieValue(header, CONSENT_COOKIE) !== "accepted") return null;
   const value = cookieValue(header, SESSION_COOKIE);
   return SESSION_ID.test(value) ? value : null;
 }
