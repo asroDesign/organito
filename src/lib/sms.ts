@@ -52,6 +52,33 @@ function mappedParameters(vars: Record<string, string | number>, parameterMap: s
   return Object.fromEntries(Object.entries(vars).map(([name, value]) => [mapping[name] || name, String(value)]));
 }
 
+/** Pattern providers receive `url` as a path, while `link` is always a public HTTPS URL. */
+function normalizePatternLinks(vars: Record<string, string | number>, siteUrl: string) {
+  let base: URL;
+  try { base = new URL(siteUrl); } catch { base = new URL("https://localhost"); }
+  base.protocol = "https:";
+  base.username = "";
+  base.password = "";
+
+  return Object.fromEntries(Object.entries(vars).map(([name, value]) => {
+    if (name.toLowerCase() !== "url" && name.toLowerCase() !== "link") return [name, value];
+    try {
+      const raw = String(value).trim();
+      const hasProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(raw);
+      const looksLikeHost = /^(?:[\w-]+\.)+[a-z]{2,}(?::\d+)?(?:[/?#]|$)/i.test(raw);
+      const target = new URL(looksLikeHost && !hasProtocol ? `https://${raw}` : raw, base);
+      target.username = "";
+      target.password = "";
+      if (name.toLowerCase() === "url") return [name, `${target.pathname}${target.search}${target.hash}` || "/"];
+      target.protocol = "https:";
+      return [name, target.toString()];
+    } catch {
+      const path = String(value).replace(/^https?:\/\/[^/]+/i, "");
+      return [name, name.toLowerCase() === "url" ? (path.startsWith("/") ? path : `/${path}`) : `https://${path.replace(/^\/+/, "")}`];
+    }
+  }));
+}
+
 function ippanelPhone(phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (/^09\d{9}$/.test(digits)) return `+98${digits.slice(1)}`;
@@ -189,14 +216,14 @@ export function extractVars(body: string) {
   return Array.from(new Set(Array.from(body.matchAll(/\{(\w+)\}/g)).map((m) => m[1])));
 }
 
-async function deliver(event: string, phone: string, provider: string, patternId: string | null, body: string, vars: Record<string, string | number>, configuredKey = "", parameterMap: string | Record<string, string> = "", senderNumber = "", configuredUsername = "") {
+async function deliver(event: string, phone: string, provider: string, patternId: string | null, body: string, vars: Record<string, string | number>, configuredKey = "", parameterMap: string | Record<string, string> = "", senderNumber = "", configuredUsername = "", siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "https://localhost") {
   let attempts = 0;
   const clientReferenceId = randomUUID();
   let last = { ok: false, simulated: false, response: "" };
   while (attempts < 3) {
     attempts++;
     try {
-      last = await callProvider(provider, phone, patternId, body, vars, configuredKey, parameterMap, clientReferenceId, senderNumber, configuredUsername);
+      last = await callProvider(provider, phone, patternId, body, patternId ? normalizePatternLinks(vars, siteUrl) : vars, configuredKey, parameterMap, clientReferenceId, senderNumber, configuredUsername);
       if (last.ok) break;
     } catch (e) {
       last = { ok: false, simulated: false, response: (e as Error).message };
@@ -222,7 +249,7 @@ export async function sendSms(event: string, phone: string, vars: Record<string,
       const dynamicVars: Record<string, string | number> = { ...vars, shop: s.siteName };
       body = siteBrandText(renderTemplate(tpl.body, dynamicVars), s.siteName);
       const patternVars = Object.fromEntries(tpl.variables.filter((name) => dynamicVars[name] !== undefined).map((name) => [name, dynamicVars[name]]));
-      out.push(await deliver(event, phone, s.smsProvider, tpl.patternId, body, patternVars, s.smsProvider === "melipayamak" ? s.smsPassword : s.smsApiKey, { ...normalizeParameterMap(s.smsirParameterMap), ...(tpl.parameterMap ?? {}) }, s.smsSender, s.smsUsername));
+      out.push(await deliver(event, phone, s.smsProvider, tpl.patternId, body, patternVars, s.smsProvider === "melipayamak" ? s.smsPassword : s.smsApiKey, { ...normalizeParameterMap(s.smsirParameterMap), ...(tpl.parameterMap ?? {}) }, s.smsSender, s.smsUsername, s.siteUrl));
     }
     const statuses = out;
     const status = statuses.every((value) => value === "sent")
@@ -246,7 +273,7 @@ export async function sendTemplateTo(templateId: number, phones: string[], vars:
   for (const phone of phones) {
     const dynamicVars: Record<string, string | number> = { ...vars, shop: s.siteName };
     const patternVars = Object.fromEntries(tpl.variables.filter((name) => dynamicVars[name] !== undefined).map((name) => [name, dynamicVars[name]]));
-    const st = await deliver(`manual:${tpl.event}`, phone, s.smsProvider, tpl.patternId, siteBrandText(renderTemplate(tpl.body, dynamicVars), s.siteName), patternVars, s.smsProvider === "melipayamak" ? s.smsPassword : s.smsApiKey, { ...normalizeParameterMap(s.smsirParameterMap), ...(tpl.parameterMap ?? {}) }, s.smsSender, s.smsUsername);
+    const st = await deliver(`manual:${tpl.event}`, phone, s.smsProvider, tpl.patternId, siteBrandText(renderTemplate(tpl.body, dynamicVars), s.siteName), patternVars, s.smsProvider === "melipayamak" ? s.smsPassword : s.smsApiKey, { ...normalizeParameterMap(s.smsirParameterMap), ...(tpl.parameterMap ?? {}) }, s.smsSender, s.smsUsername, s.siteUrl);
     if (st === "failed") failed++; else sent++;
   }
   return { sent, failed };
@@ -256,7 +283,7 @@ export async function retryLog(logId: number) {
   const [l] = await db.select().from(smsLogs).where(eq(smsLogs.id, logId));
   if (!l || l.status !== "failed" || !/^09\d{9}$/.test(l.phone)) return null;
   const s = await getSettings();
-  return deliver(l.event, l.phone, s.smsProvider, null, siteBrandText(l.body, s.siteName), {}, s.smsProvider === "melipayamak" ? s.smsPassword : s.smsApiKey, s.smsirParameterMap, s.smsSender, s.smsUsername);
+  return deliver(l.event, l.phone, s.smsProvider, null, siteBrandText(l.body, s.siteName), {}, s.smsProvider === "melipayamak" ? s.smsPassword : s.smsApiKey, s.smsirParameterMap, s.smsSender, s.smsUsername, s.siteUrl);
 }
 
 export { maskPhone };
@@ -271,7 +298,7 @@ export async function sendDirectSms(event: string, phone: string, body: string, 
   if (eventTemplate?.isActive && eventTemplate.patternId) {
     const dynamicVars: Record<string, string | number> = { ...vars, shop: settings.siteName };
     const patternVars = Object.fromEntries(eventTemplate.variables.filter((name) => dynamicVars[name] !== undefined).map((name) => [name, dynamicVars[name]]));
-    const result = await deliver(event, phone, provider, eventTemplate.patternId, body, patternVars, provider === "melipayamak" ? settings.smsPassword : settings.smsApiKey, { ...normalizeParameterMap(settings.smsirParameterMap), ...(eventTemplate.parameterMap ?? {}) }, settings.smsSender, settings.smsUsername);
+    const result = await deliver(event, phone, provider, eventTemplate.patternId, body, patternVars, provider === "melipayamak" ? settings.smsPassword : settings.smsApiKey, { ...normalizeParameterMap(settings.smsirParameterMap), ...(eventTemplate.parameterMap ?? {}) }, settings.smsSender, settings.smsUsername, settings.siteUrl);
     return result;
   }
   let status: "sent" | "simulated" | "failed" = "failed", response = "";
