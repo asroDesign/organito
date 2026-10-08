@@ -16,7 +16,7 @@ export async function getSiteMenu(placement: "header" | "footer" | "mobile") {
     const node = nodes.get(row.id)!;
     const parent = row.parentId ? nodes.get(row.parentId) : undefined;
     if (parent && parent.id !== node.id) parent.children.push(node);
-    else roots.push(node);
+    else if (row.parentId === null) roots.push(node);
   }
   return { enabled: true, items: roots } as SiteMenuData;
 }

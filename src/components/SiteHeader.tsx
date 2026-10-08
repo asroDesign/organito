@@ -57,7 +57,7 @@ export async function SiteHeader() {
           <div className="hidden flex-1 md:block"><LiveSearch popular={popular} /></div>
           <nav className="mr-auto flex items-center gap-1 md:mr-0">
             <ThemeToggle />
-            <SiteNavMenus mode="mobileOnly" headerItems={headerMenu?.items ?? []} mobileItems={mobileMenu?.items ?? []} fallbackItems={mobileMenu?.enabled === false ? [] : headerMenu?.enabled === false ? [] : fallbackMenu} showMobile={mobileMenu?.enabled !== false && headerMenu?.enabled !== false}/>
+            <SiteNavMenus mode="mobileOnly" headerItems={headerMenu?.items ?? []} mobileItems={mobileMenu?.items ?? []} fallbackItems={mobileMenu?.enabled === false ? [] : fallbackMenu} showMobile={mobileMenu?.enabled !== false}/>
             <Link href={u ? "/customer/tracking" : "/login"} className="hidden items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-slate-600 hover:bg-slate-100 lg:flex"><Truck className="h-5 w-5" />پیگیری سفارش</Link>
             <Link href="/cart" className="relative rounded-xl p-2.5 text-slate-700 hover:bg-slate-100" aria-label="سبد خرید"><ShoppingCart className="h-6 w-6" /><CartCount /></Link>
             <Link href={panel} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:border-emerald-300 hover:bg-emerald-50">
