@@ -43,7 +43,7 @@ export function trackAnalyticsEvent(eventType: AnalyticsEventType, productId?: n
   void fetch("/api/analytics/events", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-csrf": "1" },
-    body: JSON.stringify({ eventId, eventType, pageKey: key, productId }),
+    body: JSON.stringify({ eventId, eventType, pageKey: key, productId, pathname: path.split(/[?#]/)[0] }),
     keepalive: true,
   }).catch(() => undefined);
 }

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { after } from "next/server";
 import { sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -22,10 +23,20 @@ export const analyticsRoutes: Route[] = [
     if (productId !== null && (!Number.isSafeInteger(productId) || productId < 1)) throw new HttpError(400, "شناسه محصول معتبر نیست");
     if ((eventType === "product_view" || eventType === "add_to_cart") && productId === null) throw new HttpError(400, "برای این رویداد محصول لازم است");
     if (eventType === "checkout_started" && pageKey !== "cart") throw new HttpError(400, "رویداد شروع پرداخت باید از سبد خرید ثبت شود");
+    // Store a stable opaque page identity, never the URL or its query parameters.
+    let storedPageKey = pageKey;
+    if (eventType === "page_view" && typeof b.pathname === "string") {
+      let pathname: string;
+      try { pathname = decodeURIComponent(b.pathname.split(/[?#]/)[0]).normalize("NFC").replace(/\/+$/, "") || "/"; }
+      catch { throw new HttpError(400, "مسیر صفحه معتبر نیست"); }
+      const family = pathname === "/" ? "home" : /^\/shop(?:\/|$)/.test(pathname) ? "shop" : pathname === "/cart" ? "cart" : /^\/blog(?:\/|$)/.test(pathname) ? "blog" : /^\/products\/[^/]+$/.test(pathname) ? "product" : null;
+      if (pathname.length > 2048 || family !== pageKey) throw new HttpError(400, "مسیر صفحه معتبر نیست");
+      storedPageKey = `${pageKey}:${createHash("sha256").update(pathname).digest("hex")}`;
+    }
     const attribution = analyticsSourceFromCookie(req.headers.get("cookie"));
     after(async () => {
       try {
-        await db.insert(analyticsEvents).values({ eventId, sessionId, eventType, pageKey, productId, ...attribution })
+        await db.insert(analyticsEvents).values({ eventId, sessionId, eventType, pageKey: storedPageKey, productId, ...attribution })
           .onConflictDoNothing({ target: analyticsEvents.eventId });
         // Keep the pseudonymous funnel window finite. The random 1-in-16 cleanup
         // avoids running retention writes on every page transition.
@@ -34,7 +45,7 @@ export const analyticsRoutes: Route[] = [
           await db.execute(sql`update orders set analytics_session_id = null where created_at < now() - interval '90 days' and analytics_session_id is not null`);
         }
       } catch (error) {
-        console.error("Failed to save consent-based analytics event", { eventType, error });
+        console.error("Failed to save analytics event", { eventType, error });
       }
     });
     return { ok: true };
