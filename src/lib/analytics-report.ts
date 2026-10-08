@@ -19,16 +19,18 @@ export async function getAnalyticsReport(search: { from?: string; to?: string })
         bool_or(event_type = 'checkout_started') as checkout_started
       from analytics_events where created_at >= ${startAt} and created_at < ${endAt} and expires_at > now()
       group by session_id
-    ), purchases as (
-      select distinct analytics_session_id as session_id from orders
-      where payment_status = 'paid' and status <> 'cancelled' and analytics_session_id is not null and created_at >= ${startAt} and created_at < ${endAt}
     )
-    select count(*) filter (where visited)::int as visits,
-      count(*) filter (where viewed_product)::int as product_views,
-      count(*) filter (where added_to_cart)::int as add_to_cart,
-      count(*) filter (where checkout_started)::int as checkouts,
-      (select count(*)::int from purchases) as purchases
-    from metrics`),
+    select
+      (select count(*)::int from metrics where visited) as visits,
+      (select count(*)::int from metrics where viewed_product) as product_views,
+      (select count(*)::int from metrics where added_to_cart) as add_to_cart,
+      (select count(*)::int from metrics where checkout_started) as checkouts,
+      (select count(distinct analytics_session_id)::int from orders where payment_status = 'paid' and status <> 'cancelled' and analytics_session_id is not null and created_at >= ${startAt} and created_at < ${endAt}) as purchases,
+      (select count(*)::int from analytics_events where event_type = 'page_view' and created_at >= ${startAt} and created_at < ${endAt} and expires_at > now()) as page_views,
+      (select count(*)::int from analytics_events where event_type = 'product_view' and created_at >= ${startAt} and created_at < ${endAt} and expires_at > now()) as product_view_events,
+      (select count(*)::int from analytics_events where event_type = 'add_to_cart' and created_at >= ${startAt} and created_at < ${endAt} and expires_at > now()) as add_to_cart_events,
+      (select count(*)::int from analytics_events where event_type = 'checkout_started' and created_at >= ${startAt} and created_at < ${endAt} and expires_at > now()) as checkout_events,
+      (select count(*)::int from orders where payment_status = 'paid' and status <> 'cancelled' and created_at >= ${startAt} and created_at < ${endAt}) as paid_orders`),
     db.execute(sql`with activity as (
       select session_id, coalesce(nullif(min(source), ''), 'direct') as source,
         bool_or(event_type = 'page_view') as visited,
@@ -54,15 +56,15 @@ export async function getAnalyticsReport(search: { from?: string; to?: string })
       select to_char(date_trunc('day', created_at at time zone 'Asia/Tehran'), 'YYYY-MM-DD'), 'purchase', analytics_session_id
       from orders where payment_status = 'paid' and status <> 'cancelled' and analytics_session_id is not null and created_at >= ${startAt} and created_at < ${endAt}
     )
-    select day, count(distinct session_id) filter (where event_type = 'page_view')::int as visits,
-      count(distinct session_id) filter (where event_type = 'product_view')::int as product_views,
-      count(distinct session_id) filter (where event_type = 'add_to_cart')::int as add_to_cart,
-      count(distinct session_id) filter (where event_type = 'checkout_started')::int as checkouts,
-      count(distinct session_id) filter (where event_type = 'purchase')::int as purchases
+    select day, count(*) filter (where event_type = 'page_view')::int as visits,
+      count(*) filter (where event_type = 'product_view')::int as product_views,
+      count(*) filter (where event_type = 'add_to_cart')::int as add_to_cart,
+      count(*) filter (where event_type = 'checkout_started')::int as checkouts,
+      count(*) filter (where event_type = 'purchase')::int as purchases
     from funnel_events group by day order by day`),
     db.execute(sql`select e.product_id as id, coalesce(p.name_fa, 'محصول حذف‌شده') as name,
-      count(distinct e.session_id) filter (where e.event_type = 'product_view')::int as views,
-      count(distinct e.session_id) filter (where e.event_type = 'add_to_cart')::int as carts
+      count(*) filter (where e.event_type = 'product_view')::int as views,
+      count(*) filter (where e.event_type = 'add_to_cart')::int as carts
     from analytics_events e left join products p on p.id = e.product_id
     where e.product_id is not null and e.event_type in ('product_view','add_to_cart') and e.created_at >= ${startAt} and e.created_at < ${endAt} and e.expires_at > now()
     group by e.product_id,p.name_fa order by carts desc,views desc limit 10`),
@@ -71,6 +73,7 @@ export async function getAnalyticsReport(search: { from?: string; to?: string })
   return {
     from, to,
     funnel: { visits: Number(funnel?.visits ?? 0), productViews: Number(funnel?.product_views ?? 0), addToCart: Number(funnel?.add_to_cart ?? 0), checkouts: Number(funnel?.checkouts ?? 0), purchases: Number(funnel?.purchases ?? 0) },
+    events: { pageViews: Number(funnel?.page_views ?? 0), productViews: Number(funnel?.product_view_events ?? 0), addToCart: Number(funnel?.add_to_cart_events ?? 0), checkouts: Number(funnel?.checkout_events ?? 0), paidOrders: Number(funnel?.paid_orders ?? 0) },
     sources: (sourceRows.rows as Record<string, unknown>[]).map((row) => ({ source: String(row.source ?? "direct"), visits: Number(row.visits ?? 0), productViews: Number(row.product_views ?? 0), addToCart: Number(row.add_to_cart ?? 0), checkouts: Number(row.checkouts ?? 0), purchases: Number(row.purchases ?? 0) })),
     daily: (dailyRows.rows as Record<string, unknown>[]).map((row) => ({ day: String(row.day), visits: Number(row.visits ?? 0), productViews: Number(row.product_views ?? 0), addToCart: Number(row.add_to_cart ?? 0), checkouts: Number(row.checkouts ?? 0), purchases: Number(row.purchases ?? 0) })),
     products: (productRows.rows as Record<string, unknown>[]).map((row) => ({ id: Number(row.id), name: String(row.name), views: Number(row.views ?? 0), carts: Number(row.carts ?? 0) })),
