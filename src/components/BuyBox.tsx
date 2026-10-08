@@ -37,16 +37,32 @@ export function BuyBox({ product, variants, offers, options = [], purchaseOption
     if (own.some((c) => c.available > 0) || own.length) return own.length ? own : list.slice(0, 1);
     const best = list.filter((c) => c.available > 0).sort((a, b) => Number(b.buyBox) - Number(a.buyBox) || a.price - b.price)[0] ?? list[0];
     return best ? [best] : [];
-  }, [product, variants, offers, multiVendor, siteName]);
+  }, [product, variants, offers, multiVendor, siteName, options.length]);
 
   const sellableVariants = variants.filter((v) => v.isSellable);
   const hasOpts = options.length > 0 && sellableVariants.length > 0;
-  const firstVar = sellableVariants.find((v) => v.available > 0) ?? sellableVariants[0];
+  const variantPriceAfterDiscount = (variant: VariantView) => {
+    const tier = applicableQuantityTier(variant.quantityPriceTiers ?? [], 1);
+    return fp(quantityTierPrice(variant.price, tier), variantPromotions[variant.id]?.pct ?? festival?.pct ?? 0);
+  };
+  const orderedVariants = [...sellableVariants].sort((a, b) => variantPriceAfterDiscount(a) - variantPriceAfterDiscount(b) || a.price - b.price || a.id - b.id);
+  const firstVar = orderedVariants.find((variant) => !variant.inquiryOnly && (variant.available > 0 || product.allowBackorder))
+    ?? orderedVariants.find((variant) => !variant.inquiryOnly)
+    ?? orderedVariants[0];
   const [sel, setSel] = useState<Record<string, string>>(firstVar?.attrs ?? {});
   const matched = hasOpts ? sellableVariants.find((v) => options.every((o) => v.attrs[o.name] === sel[o.name])) : undefined;
   const sellers = all.filter((c) => c.kind === "offer" || c.kind === "central");
   const variantChoices = all.filter((c) => c.kind === "variant");
-  const initial = (hasOpts && matched ? `v:${matched.id}` : undefined) ?? (all.find((c) => c.available > 0) ?? all[0])?.key ?? "";
+  const purchasableChoices = all.filter((choice) => !product.inquiryOnly && !choice.variant?.inquiryOnly && (choice.available > 0 || (product.allowBackorder && choice.kind !== "offer")));
+  const choicePriceAfterDiscount = (choice: Choice) => {
+    const tier = choice.variant
+      ? applicableQuantityTier(choice.variant.quantityPriceTiers ?? [], 1)
+      : choice.kind === "central" ? applicableQuantityTier(product.quantityPriceTiers ?? [], 1) : null;
+    const price = choice.kind === "offer" ? choice.price : quantityTierPrice(choice.price, tier);
+    return fp(price, choice.kind === "variant" && choice.id !== null ? variantPromotions[choice.id]?.pct ?? festival?.pct ?? 0 : festival?.pct ?? 0);
+  };
+  const cheapestChoice = [...(purchasableChoices.length ? purchasableChoices : all)].sort((a, b) => choicePriceAfterDiscount(a) - choicePriceAfterDiscount(b) || a.price - b.price || a.key.localeCompare(b.key))[0];
+  const initial = (hasOpts && matched ? `v:${matched.id}` : undefined) ?? cheapestChoice?.key ?? "";
   const [key, setKey] = useState(initial);
   const cur = all.find((c) => c.key === (hasOpts && matched ? `v:${matched.id}` : key)) ?? (hasOpts && !matched ? undefined : all[0]);
   const selectedPromotion = cur?.kind === "variant" && cur.id !== null ? variantPromotions?.[cur.id] ?? (festival ? { title: festival.title, pct: festival.pct, endsAt: festival.endsAt, kind: "festival" as const, color: festival.color } : null) : festival;
