@@ -24,6 +24,7 @@ export const CHART: { code: string; name: string; level: string; type: string; p
   { code: "4102", name: "درآمد کمیسیون مارکت‌پلیس", level: "subsidiary", type: "revenue", parent: "4" },
   { code: "4103", name: "درآمد حمل", level: "subsidiary", type: "revenue", parent: "4" },
   { code: "4104", name: "فروش تأمین سفارشی", level: "subsidiary", type: "revenue", parent: "4" },
+  { code: "4105", name: "مازاد موجودی ناشی از تعدیل", level: "subsidiary", type: "revenue", parent: "4" },
   { code: "5", name: "هزینه‌ها", level: "group", type: "expense" },
   { code: "5101", name: "بهای تمام‌شده کالای فروش‌رفته", level: "subsidiary", type: "expense", parent: "5" },
   { code: "5201", name: "هزینه حمل و گمرک", level: "subsidiary", type: "expense", parent: "5" },

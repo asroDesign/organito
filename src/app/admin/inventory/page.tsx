@@ -7,7 +7,6 @@ import { requirePage } from "@/lib/auth";
 import { paginationParams } from "@/lib/pagination";
 import { Card, PageHeader, Stat, Table, Td } from "@/components/ui";
 import { Pagination } from "@/components/Pagination";
-import { InventoryProductPicker } from "@/components/InventoryProductPicker";
 import { InventoryRepackPicker } from "@/components/InventoryRepackPicker";
 import { faNum, jdate, toman } from "@/lib/util";
 import { InventoryWarehousesClient } from "@/components/InventoryWarehousesClient";
@@ -16,9 +15,8 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
   await requirePage({ perm: "INVENTORY_MANAGE" });
   const sp = await searchParams;
   const list = await db.select().from(products).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa);
-  const parties = await db.select({ id: inventoryParties.id, name: inventoryParties.name }).from(inventoryParties).where(eq(inventoryParties.enabled, true)).orderBy(inventoryParties.name);
   const variants = await db.select({ v: productVariants, p: products }).from(productVariants).innerJoin(products, eq(products.id, productVariants.productId)).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa, productVariants.title);
-  const consignmentRows = await db.select({ lot: inventoryConsignmentLots, party: inventoryParties.name }).from(inventoryConsignmentLots).innerJoin(inventoryParties, eq(inventoryParties.id, inventoryConsignmentLots.partyId)).where(sql`${inventoryConsignmentLots.remainingQty} > 0`);
+  const consignmentRows = await db.select({ lot: inventoryConsignmentLots, party: inventoryParties.name }).from(inventoryConsignmentLots).innerJoin(inventoryParties, eq(inventoryParties.id, inventoryConsignmentLots.partyId)).where(sql`${inventoryConsignmentLots.remainingQty} > 0 and ${inventoryConsignmentLots.warehouseId} is null`);
   const consignmentByStock = new Map<string, { name: string; quantity: number }[]>();
   for (const { lot, party } of consignmentRows) {
     const key = lot.variantId === null ? `p:${lot.productId}` : `v:${lot.variantId}`;
@@ -59,7 +57,7 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
           <Pagination page={page} pageSize={pageSize} total={choices.length} />
         </div>
         <Card title="ثبت رسید خرید / تعدیل">
-          <InventoryProductPicker items={choices} parties={parties} />
+          <p className="mb-4 text-sm leading-7 text-slate-500">چندین کالا و تنوع را در یک صورتحساب خرید، دریافت امانی یا تعدیل ثبت کنید.</p><Link className="btn-primary w-full" href="/admin/inventory/documents">ثبت و پیگیری صورتحساب‌های انبار</Link>
         </Card>
       </div>
       <Card title="بسته‌بندی / تبدیل فله به تنوع آماده فروش" className="mt-6">
@@ -68,7 +66,7 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
       <section className="mt-8"><h2 className="mb-3 text-lg font-extrabold">مدیریت چند انبار</h2><InventoryWarehousesClient /></section>
       <h2 className="mb-3 mt-8 text-lg font-extrabold">گردش موجودی (Stock Movements)</h2>
       <Table head={["تاریخ", "کالا / تنوع", "انبار", "نوع", "مقدار و واحد", "بهای واحد", "مرجع"]}>
-          {moves.map(({ m, name, variant, unit, baseUnit, warehouse }) => <tr key={m.id}><Td>{jdate(m.createdAt, true)}</Td><Td>{name}{variant ? ` · ${variant}` : ""}</Td><Td>{warehouse ?? "انبار مرکزی"}</Td><Td>{({ purchase_in: "رسید خرید", consignment_in: "دریافت امانی", adjust_out: "تعدیل خروج", sale_out: "خروج فروش / ارسال", reserve: "رزرو سفارش", release: "آزادسازی رزرو", backorder_receive: "ورود تأمین سفارش", central_pos_sale: "فروش حضوری انبار مرکزی", pos_sale: "فروش حضوری تأمین‌کننده", repack_out: "مصرف در بسته‌بندی", repack_in: "تولید بسته‌بندی", warehouse_transfer_out: "انتقال خروج", warehouse_transfer_in: "انتقال ورود" } as Record<string, string>)[m.type] ?? m.type}</Td><Td>{faNum(m.qty)} {unit ?? baseUnit}</Td><Td>{toman(m.unitCost)}</Td><Td>{m.refType} {m.refId ?? ""}</Td></tr>)}
+          {moves.map(({ m, name, variant, unit, baseUnit, warehouse }) => <tr key={m.id}><Td>{jdate(m.createdAt, true)}</Td><Td>{name}{variant ? ` · ${variant}` : ""}</Td><Td>{warehouse ?? "انبار مرکزی"}</Td><Td>{({ purchase_in: "رسید خرید", consignment_in: "دریافت امانی", adjust_in: "تعدیل ورود", adjust_out: "تعدیل خروج", sale_out: "خروج فروش / ارسال", reserve: "رزرو سفارش", release: "آزادسازی رزرو", backorder_receive: "ورود تأمین سفارش", central_pos_sale: "فروش حضوری انبار مرکزی", pos_sale: "فروش حضوری تأمین‌کننده", repack_out: "مصرف در بسته‌بندی", repack_in: "تولید بسته‌بندی", warehouse_transfer_out: "انتقال خروج", warehouse_transfer_in: "انتقال ورود" } as Record<string, string>)[m.type] ?? m.type}</Td><Td>{faNum(m.qty)} {unit ?? baseUnit}</Td><Td>{toman(m.unitCost)}</Td><Td>{m.refType === "inventory_document" && m.refId ? <Link className="text-amber-700 underline" href={`/print/inventory-document/${m.refId}`}>مشاهده سند {faNum(m.refId)}</Link> : <>{m.refType} {m.refId ?? ""}</>}</Td></tr>)}
       </Table>
       <Pagination page={movementPage} pageSize={movementPagination.pageSize} total={movementTotal} pageKey="movementPage" pageSizeKey="movementPageSize" />
     </>

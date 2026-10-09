@@ -25,8 +25,8 @@ export async function consumeConsignmentLots(tx: DB, productId: number, variantI
   if (quantity <= 0) return [];
   const rows = await tx.select().from(inventoryConsignmentLots)
     .where(variantId === null
-      ? sql`${inventoryConsignmentLots.productId} = ${productId} and ${inventoryConsignmentLots.variantId} is null and ${inventoryConsignmentLots.remainingQty} > 0`
-      : sql`${inventoryConsignmentLots.productId} = ${productId} and ${inventoryConsignmentLots.variantId} = ${variantId} and ${inventoryConsignmentLots.remainingQty} > 0`)
+      ? sql`${inventoryConsignmentLots.productId} = ${productId} and ${inventoryConsignmentLots.variantId} is null and ${inventoryConsignmentLots.remainingQty} > 0 and ${inventoryConsignmentLots.warehouseId} is null`
+      : sql`${inventoryConsignmentLots.productId} = ${productId} and ${inventoryConsignmentLots.variantId} = ${variantId} and ${inventoryConsignmentLots.remainingQty} > 0 and ${inventoryConsignmentLots.warehouseId} is null`)
     .orderBy(asc(inventoryConsignmentLots.createdAt), asc(inventoryConsignmentLots.id)).for("update");
   let remaining = quantity;
   const out: ConsignmentChunk[] = [];

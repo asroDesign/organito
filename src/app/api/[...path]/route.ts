@@ -1,3 +1,4 @@
+import { inventoryDocumentRoutes } from "@/lib/api/inventory-documents";
 import type { NextRequest } from "next/server";
 import { dispatch } from "@/lib/api/router";
 import { commerceRoutes } from "@/lib/api/commerce";
@@ -32,7 +33,7 @@ import { ensureSeeded } from "@/lib/seed";
 import { expireStaleOrders } from "@/lib/services/orders";
 
 export const dynamic = "force-dynamic";
-const routes = [...homeBuilderRoutes, ...mediaLibraryRoutes, ...contentRoutes, ...siteMenuRoutes, ...productInquiryRoutes, ...analyticsRoutes, ...commerceRoutes, ...crmRoutes, ...centralPosRoutes, ...sellerPosRoutes, ...communityRoutes, ...customerRoutes, ...affiliateRoutes, ...brandRoutes, ...storyRoutes, ...formRoutes, ...pickupRoutes, ...productImportRoutes, ...fxPricingRoutes, ...trashRoutes, ...kycRoutes, ...warehouseRoutes, ...gatewayRoutes, ...paymentRoutes, ...marketingRoutes, ...extraRoutes, ...publicRoutes, ...staffRoutes];
+const routes = [...inventoryDocumentRoutes, ...homeBuilderRoutes, ...mediaLibraryRoutes, ...contentRoutes, ...siteMenuRoutes, ...productInquiryRoutes, ...analyticsRoutes, ...commerceRoutes, ...crmRoutes, ...centralPosRoutes, ...sellerPosRoutes, ...communityRoutes, ...customerRoutes, ...affiliateRoutes, ...brandRoutes, ...storyRoutes, ...formRoutes, ...pickupRoutes, ...productImportRoutes, ...fxPricingRoutes, ...trashRoutes, ...kycRoutes, ...warehouseRoutes, ...gatewayRoutes, ...paymentRoutes, ...marketingRoutes, ...extraRoutes, ...publicRoutes, ...staffRoutes];
 
 type Ctx = { params: Promise<{ path: string[] }> };
 async function handle(req: NextRequest, ctx: Ctx) {

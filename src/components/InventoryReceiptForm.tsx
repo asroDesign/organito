@@ -23,7 +23,7 @@ export function InventoryReceiptForm({ productId, variantId, unit, parties, arch
     setBusy(true);
     try {
       await api(`/api/admin/inventory/${productId}`, "POST", {
-        variantId, qty, unitCost: Number(values.unitCost || 0), freight: Number(values.freight || 0), customs: Number(values.customs || 0), note: values.note,
+        variantId, qty, operationType: type, unitCost: Number(values.unitCost || 0), freight: Number(values.freight || 0), customs: Number(values.customs || 0), note: values.note,
         ...(isReceipt ? { receiptType: type, partyId: Number(values.partyId), invoiceNumber: values.invoiceNumber, paymentLocation: values.paymentLocation, paymentTrackingNumber: values.paymentTrackingNumber, paidAmount: Number(values.paidAmount || 0) } : {}),
       });
       toast(type === "consignment" ? "رسید امانی ثبت شد" : type === "purchase" ? "فاکتور خرید و رسید انبار ثبت شد" : "تعدیل موجودی ثبت شد");

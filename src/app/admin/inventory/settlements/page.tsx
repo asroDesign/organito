@@ -32,7 +32,7 @@ export default async function InventorySettlements() {
     </div>
     <Card title="رسیدهای خرید و امانی اخیر">
       <Table head={["تاریخ", "شماره داخلی / فاکتور", "نوع", "صاحب کالا", "کالا / تنوع", "مقدار", "جمع", "پرداخت اولیه / پیگیری"]} empty={!receipts.length}>
-        {receipts.map(({ receipt: r, party, product, variant }) => <tr key={r.id}><Td>{jdate(r.createdAt, true)}</Td><Td>{r.number}<div className="text-xs text-slate-500">{r.invoiceNumber || "بدون شماره فاکتور"}</div></Td><Td>{r.type === "consignment" ? "امانی" : "خرید"}</Td><Td>{party}</Td><Td>{product}{variant ? ` · ${variant}` : ""}</Td><Td>{faNum(r.quantity)}</Td><Td>{toman(r.total)}</Td><Td>{r.paymentLocation || "—"}{r.paidAmount > 0 && <div className="text-xs text-slate-500">{toman(r.paidAmount)} · {r.paymentTrackingNumber || "بدون پیگیری"}</div>}</Td></tr>)}
+        {receipts.map(({ receipt: r, party, product, variant }) => <tr key={r.id}><Td>{jdate(r.createdAt, true)}</Td><Td>{r.documentId?<Link href={`/print/inventory-document/${r.documentId}`} className="text-amber-700 underline">{r.number} · صورتحساب</Link>:r.number}<div className="text-xs text-slate-500">{r.invoiceNumber || "بدون شماره فاکتور"}</div></Td><Td>{r.type === "consignment" ? "امانی" : "خرید"}</Td><Td>{party}</Td><Td>{product}{variant ? ` · ${variant}` : ""}</Td><Td>{faNum(r.quantity)}</Td><Td>{toman(r.total)}</Td><Td>{r.paymentLocation || "—"}{r.paidAmount > 0 && <div className="text-xs text-slate-500">{toman(r.paidAmount)} · {r.paymentTrackingNumber || "بدون پیگیری"}</div>}</Td></tr>)}
       </Table>
     </Card>
     <Card title="پرداخت‌ها و تسویه‌های ثبت‌شده" className="mt-6">

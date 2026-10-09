@@ -612,7 +612,7 @@ export const stockMovements = pgTable("stock_movements", {
 });
 
 export const inventoryWarehouses = pgTable("inventory_warehouses", {
-  id: serial("id").primaryKey(), name: text("name").notNull(), code: text("code").notNull().unique(), address: text("address"), enabled: boolean("enabled").notNull().default(true), isDefault: boolean("is_default").notNull().default(false), createdAt: created(), updatedAt: updated(),
+  id: serial("id").primaryKey(), name: text("name").notNull(), code: text("code").notNull().unique(), address: text("address"), sellerId: integer("seller_id"), enabled: boolean("enabled").notNull().default(true), isDefault: boolean("is_default").notNull().default(false), createdAt: created(), updatedAt: updated(),
 });
 
 export const inventoryWarehouseStock = pgTable("inventory_warehouse_stock", {
@@ -649,6 +649,7 @@ export const inventoryParties = pgTable("inventory_parties", {
 
 /** One inventory receipt line, linked to its invoice and accounting entry. */
 export const inventoryReceipts = pgTable("inventory_receipts", {
+  documentId: integer("document_id"),
   id: serial("id").primaryKey(),
   number: text("number").notNull().unique(),
   type: text("type").notNull().default("purchase"),
@@ -672,6 +673,7 @@ export const inventoryReceipts = pgTable("inventory_receipts", {
 
 /** Remaining consignment quantity by owner and exact product variant. */
 export const inventoryConsignmentLots = pgTable("inventory_consignment_lots", {
+  warehouseId: integer("warehouse_id"), // null denotes the primary warehouse
   id: serial("id").primaryKey(),
   receiptId: integer("receipt_id").notNull(),
   partyId: integer("party_id").notNull(),
@@ -1447,3 +1449,30 @@ export const returnRequests = pgTable("return_requests", {
   adminNote: text("admin_note"), refundReference: text("refund_reference"), refundMethod: text("refund_method"), createdBy: integer("created_by").notNull(), processedBy: integer("processed_by"),
   createdAt: created(), processedAt: timestamp("processed_at",{withTimezone:true}),
 },t=>[uniqueIndex("return_sale_unique").on(t.kind,t.saleId)]);
+
+
+export type InventoryDocumentItem = {
+  productId: number; variantId: number | null; title: string; sku: string; unit: string;
+  quantity: number; unitCost: number; freight: number; customs: number; total: number;
+  receivedQuantity?: number; acceptedQuantity?: number; discrepancyNote?: string;
+  consignments?: { receiptId: number; partyId: number; quantity: number; unitCost: number }[];
+};
+export const inventoryDocuments = pgTable("inventory_documents", {
+  id: serial("id").primaryKey(), number: text("number").notNull().unique(),
+  type: text("type").notNull(), status: text("status").notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(), payloadHash: text("payload_hash").notNull(),
+  partyId: integer("party_id"), partyName: text("party_name"), invoiceNumber: text("invoice_number"),
+  fromWarehouseId: integer("from_warehouse_id"), toWarehouseId: integer("to_warehouse_id"),
+  fromWarehouseName: text("from_warehouse_name"), toWarehouseName: text("to_warehouse_name"),
+  responsibleName: text("responsible_name"), responsiblePhone: text("responsible_phone"),
+  documentDate: timestamp("document_date", { withTimezone: true }).notNull().defaultNow(),
+  items: jsonb("items").$type<InventoryDocumentItem[]>().notNull().default([]),
+  subtotal: money("subtotal").notNull().default(0), freight: money("freight").notNull().default(0),
+  customs: money("customs").notNull().default(0), total: money("total").notNull().default(0),
+  paidAmount: money("paid_amount").notNull().default(0), paymentLocation: text("payment_location"),
+  paymentTrackingNumber: text("payment_tracking_number"), note: text("note"),
+  journalEntryId: integer("journal_entry_id"), paymentJournalEntryId: integer("payment_journal_entry_id"),
+  receivedJournalEntryId: integer("received_journal_entry_id"), createdBy: integer("created_by"),
+  receivedBy: integer("received_by"), receivedAt: timestamp("received_at", { withTimezone: true }),
+  receiptHash: text("receipt_hash"), receiptNote: text("receipt_note"), createdAt: created(),
+}, (t) => [index("inventory_documents_created").on(t.createdAt), index("inventory_documents_invoice").on(t.invoiceNumber)]);

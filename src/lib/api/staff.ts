@@ -1,6 +1,7 @@
+import { createInventoryDocument } from "../services/inventory-documents";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, inventoryParties, inventorySupplierPayments, journalLines, orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications, inventoryWarehouses, inventoryWarehouseStock, inventoryWarehouseTransfers, productVariants, products, stockMovements } from "@/db/schema";
+import { accounts, inventoryParties, inventorySupplierPayments, journalLines, orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications, inventoryWarehouses, inventoryWarehouseStock, productVariants, products, sellerOffers, stockMovements } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal, reverseJournal } from "../accounting";
@@ -15,6 +16,7 @@ import { sellerQuote, staffSupplyAction, type SupplyAction } from "../services/s
 import { body, idParam, type Route } from "./router";
 import { assertSellerAllowed } from "../services/kyc";
 import { ensureInventoryPartyDetail } from "../services/inventory-accounting";
+import { ensurePrimaryWarehouse } from "../services/warehouse-stock-report";
 
 async function requireSeller() {
   const u = await requireApi();
@@ -25,17 +27,33 @@ async function requireSeller() {
 export const staffRoutes: Route[] = [
   { method: "GET", pattern: "admin/inventory/warehouses", handler: async () => {
     await requireApi("INVENTORY_MANAGE");
-    const [warehouses, stock, productRows, variantRows] = await Promise.all([
+    await db.transaction(tx=>ensurePrimaryWarehouse(tx));
+    const approvedSellers=await db.select().from(sellers).where(and(eq(sellers.status,"approved"),eq(sellers.restricted,false)));
+    const knownLocations=await db.select({sellerId:inventoryWarehouses.sellerId}).from(inventoryWarehouses).where(sql`${inventoryWarehouses.sellerId} is not null`);
+    const knownSellerIds=new Set(knownLocations.map(row=>row.sellerId));
+    const missingLocations=approvedSellers.filter(seller=>!knownSellerIds.has(seller.id));
+    if(missingLocations.length)await db.insert(inventoryWarehouses).values(missingLocations.map(seller=>({name:`انبار تأمین‌کننده · ${seller.shopName}`,code:`SUP-${seller.id}`,address:seller.city,sellerId:seller.id,enabled:true,isDefault:false}))).onConflictDoNothing();
+    const [warehouses, stock, productRows, variantRows, parties, offers] = await Promise.all([
       db.select().from(inventoryWarehouses).orderBy(inventoryWarehouses.isDefault, inventoryWarehouses.name),
       db.select().from(inventoryWarehouseStock),
       db.select({ product: products }).from(products).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa),
-      db.select({ variant: productVariants, productName: products.nameFa, baseUnit: products.inventoryBaseUnit }).from(productVariants).innerJoin(products, eq(products.id, productVariants.productId)).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa, productVariants.title),
+      db.select({ variant: productVariants, productName: products.nameFa, baseUnit: products.inventoryBaseUnit, avgCost: products.avgCost }).from(productVariants).innerJoin(products, eq(products.id, productVariants.productId)).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa, productVariants.title),
+      db.select({ id: inventoryParties.id, name: inventoryParties.name }).from(inventoryParties).where(eq(inventoryParties.enabled, true)).orderBy(inventoryParties.name),
+      db.select({ offer: sellerOffers, seller: sellers, product: products }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId)).innerJoin(products, eq(products.id, sellerOffers.productId)).where(and(eq(sellerOffers.status, "approved"), eq(sellers.status, "approved"), eq(sellers.restricted, false), eq(products.source,"central"), sql`${products.status} <> 'deleted'`)),
     ]);
+    const supplierWarehouses = warehouses.filter(w => w.sellerId);
+    const variantProductIds = new Set(variantRows.filter(({variant}) => !variant.deletedAt).map(({variant})=>variant.productId));
+    const supplierOffers = offers.filter(({product})=>!variantProductIds.has(product.id));
+    const supplierStock = supplierOffers.map(({offer}) => { const warehouse=supplierWarehouses.find(w=>w.sellerId===offer.sellerId); return warehouse ? {id:-offer.id,warehouseId:warehouse.id,productId:offer.productId,variantId:null,onHand:offer.stock,reserved:offer.reserved} : null; }).filter(Boolean);
     const items = [
-      ...variantRows.filter(({ variant }) => !variant.deletedAt).map(({ variant, productName, baseUnit }) => ({ productId: variant.productId, variantId: variant.id, label: `${productName} · ${variant.title}`, sku: variant.sku, unit: variant.inventoryUnit || baseUnit, centralAvailable: variant.onHand - variant.reserved })),
-      ...productRows.filter(({ product }) => !variantRows.some(({ variant }) => variant.productId === product.id && !variant.deletedAt)).map(({ product }) => ({ productId: product.id, variantId: null, label: product.nameFa, sku: product.sku, unit: product.inventoryBaseUnit, centralAvailable: product.onHand - product.reserved })),
+      ...variantRows.filter(({ variant }) => !variant.deletedAt).map(({ variant, productName, baseUnit, avgCost }) => ({ productId: variant.productId, variantId: variant.id, label: `${productName} · ${variant.title}`, sku: variant.sku, unit: variant.inventoryUnit || baseUnit, unitCost: variant.costPrice ?? avgCost, centralAvailable: variant.onHand - variant.reserved })),
+      ...productRows.filter(({ product }) => !variantRows.some(({ variant }) => variant.productId === product.id)).map(({ product }) => ({ productId: product.id, variantId: null, label: product.nameFa, sku: product.sku, unit: product.inventoryBaseUnit, unitCost: product.avgCost, centralAvailable: product.onHand - product.reserved })),
     ];
-    return { warehouses, stock, items };
+    const centralItemKeys=new Set(items.map(item=>`${item.productId}:${item.variantId??0}`));
+    const supplierItems = supplierOffers.filter(({product})=>!centralItemKeys.has(`${product.id}:0`)).map(({offer,product})=>({productId:product.id,variantId:null,label:product.nameFa,sku:product.sku,unit:product.inventoryBaseUnit,unitCost:offer.costPrice??product.avgCost,centralAvailable:offer.stock-offer.reserved}));
+    const mainWarehouse=warehouses.find(w=>w.isDefault);
+    const centralStock=mainWarehouse?[...variantRows.filter(({variant})=>!variant.deletedAt||variant.onHand!==0||variant.reserved!==0).map(({variant})=>({id:-variant.id,warehouseId:mainWarehouse.id,productId:variant.productId,variantId:variant.id,onHand:variant.onHand,reserved:variant.reserved})),...productRows.filter(({product})=>!variantRows.some(({variant})=>variant.productId===product.id&&!variant.deletedAt)).map(({product})=>({id:-1_000_000-product.id,warehouseId:mainWarehouse.id,productId:product.id,variantId:null,onHand:product.onHand,reserved:product.reserved}))]:[];
+    return { warehouses, stock:[...centralStock,...stock.filter(row=>!supplierWarehouses.some(w=>w.id===row.warehouseId)),...supplierStock], items:[...items,...supplierItems], parties };
   } },
   { method: "POST", pattern: "admin/inventory/warehouses", handler: async (req, _p, meta) => {
     const user = await requireApi("INVENTORY_MANAGE"), b = await body(req), name = str(b.name, 100), code = str(b.code, 20).toUpperCase().replace(/[^A-Z0-9_-]/g, ""), address = str(b.address, 300);
@@ -54,57 +72,8 @@ export const staffRoutes: Route[] = [
     return row;
   } },
   { method: "POST", pattern: "admin/inventory/warehouses/transfers", handler: async (req, _p, meta) => {
-    const user = await requireApi("INVENTORY_MANAGE"), b = await body(req), fromId = int(b.fromWarehouseId, 1), toId = int(b.toWarehouseId, 1), productId = int(b.productId, 1), variantId = b.variantId ? int(b.variantId, 1) : null, quantity = int(b.quantity, 1, 100000), note = str(b.note, 300);
-    if (fromId === toId) throw new HttpError(400, "مبدأ و مقصد انتقال باید متفاوت باشند");
-    return db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(99126)`);
-      const [from] = await tx.select().from(inventoryWarehouses).where(eq(inventoryWarehouses.id, fromId));
-      const [to] = await tx.select().from(inventoryWarehouses).where(eq(inventoryWarehouses.id, toId));
-      if (!from?.enabled || !to?.enabled) throw new HttpError(400, "انبار مبدأ یا مقصد غیرفعال است");
-      const [product] = await tx.select().from(products).where(and(eq(products.id, productId), eq(products.source, "central")));
-      if (!product) throw new HttpError(404, "کالای انبار مرکزی پیدا نشد");
-      let unitCost = product.avgCost;
-      if (variantId) {
-        const [variant] = await tx.select().from(productVariants).where(and(eq(productVariants.id, variantId), eq(productVariants.productId, productId))).for("update");
-        if (!variant || variant.deletedAt) throw new HttpError(404, "تنوع کالا پیدا نشد");
-        unitCost = variant.costPrice ?? product.avgCost;
-        if (from.isDefault) {
-          if (variant.onHand - variant.reserved < quantity) throw new HttpError(409, `موجودی آزاد انبار اصلی ${variant.onHand - variant.reserved} است`);
-          await tx.update(productVariants).set({ onHand: sql`${productVariants.onHand} - ${quantity}` }).where(eq(productVariants.id, variantId));
-        } else {
-          const [stock] = await tx.select().from(inventoryWarehouseStock).where(and(eq(inventoryWarehouseStock.warehouseId, fromId), eq(inventoryWarehouseStock.productId, productId), eq(inventoryWarehouseStock.variantId, variantId))).for("update");
-          if (!stock || stock.onHand - stock.reserved < quantity) throw new HttpError(409, "موجودی آزاد انبار مبدأ کافی نیست");
-          await tx.update(inventoryWarehouseStock).set({ onHand: stock.onHand - quantity, updatedAt: new Date() }).where(eq(inventoryWarehouseStock.id, stock.id));
-        }
-        if (to.isDefault) await tx.update(productVariants).set({ onHand: sql`${productVariants.onHand} + ${quantity}` }).where(eq(productVariants.id, variantId));
-        else {
-          await tx.insert(inventoryWarehouseStock).values({ warehouseId: toId, productId, variantId, onHand: 0, reserved: 0 }).onConflictDoNothing();
-          await tx.update(inventoryWarehouseStock).set({ onHand: sql`${inventoryWarehouseStock.onHand} + ${quantity}`, updatedAt: new Date() }).where(and(eq(inventoryWarehouseStock.warehouseId, toId), eq(inventoryWarehouseStock.variantId, variantId)));
-        }
-      } else {
-        const [base] = await tx.select().from(products).where(eq(products.id, productId)).for("update");
-        if (from.isDefault) {
-          if (base.onHand - base.reserved < quantity) throw new HttpError(409, `موجودی آزاد انبار اصلی ${base.onHand - base.reserved} است`);
-          await tx.update(products).set({ onHand: sql`${products.onHand} - ${quantity}` }).where(eq(products.id, productId));
-        } else {
-          const [stock] = await tx.select().from(inventoryWarehouseStock).where(and(eq(inventoryWarehouseStock.warehouseId, fromId), eq(inventoryWarehouseStock.productId, productId), sql`${inventoryWarehouseStock.variantId} is null`)).for("update");
-          if (!stock || stock.onHand - stock.reserved < quantity) throw new HttpError(409, "موجودی آزاد انبار مبدأ کافی نیست");
-          await tx.update(inventoryWarehouseStock).set({ onHand: stock.onHand - quantity, updatedAt: new Date() }).where(eq(inventoryWarehouseStock.id, stock.id));
-        }
-        if (to.isDefault) await tx.update(products).set({ onHand: sql`${products.onHand} + ${quantity}` }).where(eq(products.id, productId));
-        else {
-          await tx.insert(inventoryWarehouseStock).values({ warehouseId: toId, productId, variantId: null, onHand: 0, reserved: 0 }).onConflictDoNothing();
-          await tx.update(inventoryWarehouseStock).set({ onHand: sql`${inventoryWarehouseStock.onHand} + ${quantity}`, updatedAt: new Date() }).where(and(eq(inventoryWarehouseStock.warehouseId, toId), eq(inventoryWarehouseStock.productId, productId), sql`${inventoryWarehouseStock.variantId} is null`));
-        }
-      }
-      const [transfer] = await tx.insert(inventoryWarehouseTransfers).values({ fromWarehouseId: fromId, toWarehouseId: toId, productId, variantId, quantity, note: note || null, userId: user.id }).returning();
-      await tx.insert(stockMovements).values([
-        { productId, variantId, warehouseId: fromId, type: "warehouse_transfer_out", qty: -quantity, unitCost, refType: "warehouse_transfer", refId: transfer.id, note: `${from.name} ← خروج به ${to.name}${note ? ` · ${note}` : ""}`, userId: user.id },
-        { productId, variantId, warehouseId: toId, type: "warehouse_transfer_in", qty: quantity, unitCost, refType: "warehouse_transfer", refId: transfer.id, note: `${to.name} ← ورود از ${from.name}${note ? ` · ${note}` : ""}`, userId: user.id },
-      ]);
-      await audit(tx, { userId: user.id, ...meta }, "inventory.warehouse.transfer", "inventory_warehouse_transfer", transfer.id, null, { from: from.name, to: to.name, productId, variantId, quantity });
-      return { ok: true, transferId: transfer.id };
-    });
+    const user = await requireApi("INVENTORY_MANAGE"), b = await body(req);
+    return createInventoryDocument({ userId: user.id, ...meta }, { ...b, type: "transfer" });
   } },
   // ---------- products (seller or staff) ----------
   { method: "POST", pattern: "products", handler: async (req, _p, m) => {
@@ -290,13 +259,19 @@ export const staffRoutes: Route[] = [
     const qty = Math.trunc(Number(b.qty));
     if (!Number.isFinite(qty) || qty === 0 || Math.abs(qty) > 100000) throw new HttpError(400, "تعداد نامعتبر");
     const receiptType = String(b.receiptType ?? "");
-    if (qty > 0 && !["purchase", "consignment"].includes(receiptType)) throw new HttpError(400, "نوع رسید را انتخاب کنید");
-    const receipt = qty > 0 ? {
-      type: receiptType as "purchase" | "consignment", partyId: int(b.partyId, 1), invoiceNumber: str(b.invoiceNumber, 100),
+    const operationType = String(b.operationType ?? (receiptType || "adjust"));
+    const normalizedReceiptType = receiptType || operationType;
+    if (!["purchase", "consignment", "adjust"].includes(operationType)) throw new HttpError(400, "نوع عملیات انبار نامعتبر است");
+    if (operationType === "adjust" && receiptType) throw new HttpError(400, "برای تعدیل، نوع رسید خرید یا امانی ارسال نشود");
+    if (operationType !== "adjust" && qty < 0) throw new HttpError(400, "رسید خرید یا امانی باید با مقدار مثبت ثبت شود");
+    if (operationType !== "adjust" && !["purchase", "consignment"].includes(receiptType || operationType)) throw new HttpError(400, "نوع رسید را انتخاب کنید");
+    if (operationType !== "adjust" && receiptType && receiptType !== operationType) throw new HttpError(400, "نوع رسید با نوع عملیات مطابقت ندارد");
+    const receipt = qty > 0 && operationType !== "adjust" ? {
+      type: normalizedReceiptType as "purchase" | "consignment", partyId: int(b.partyId, 1), invoiceNumber: str(b.invoiceNumber, 100),
       paymentLocation: str(b.paymentLocation, 120), paymentTrackingNumber: str(b.paymentTrackingNumber, 100), paidAmount: int(b.paidAmount ?? 0, 0, 1_000_000_000_000),
     } : undefined;
     if (qty > 0 && receiptType === "purchase" && !receipt?.invoiceNumber) throw new HttpError(400, "شماره فاکتور خرید را وارد کنید");
-    await receiveStock({ userId: u.id, ...m }, idParam(p.id), qty, int(b.unitCost ?? 0), int(b.freight ?? 0), int(b.customs ?? 0), str(b.note, 300), b.variantId ? int(b.variantId, 1) : undefined, receipt);
+    await receiveStock({ userId: u.id, ...m }, idParam(p.id), qty, int(b.unitCost ?? 0), int(b.freight ?? 0), int(b.customs ?? 0), str(b.note, 300), b.variantId ? int(b.variantId, 1) : undefined, receipt, operationType === "adjust");
     return { ok: true };
   } },
   { method: "POST", pattern: "admin/journal", handler: async (req, _p, m) => {

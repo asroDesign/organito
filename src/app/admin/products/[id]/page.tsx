@@ -21,7 +21,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
     db.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId)).where(eq(sellerOffers.productId, id)),
     db.select().from(stockMovements).where(eq(stockMovements.productId, id)).orderBy(desc(stockMovements.createdAt)).limit(15),
     db.select().from(auditLogs).where(and(eq(auditLogs.entity, "product"), eq(auditLogs.entityId, String(id)))).orderBy(desc(auditLogs.createdAt)).limit(15),
-    db.select({ lot: inventoryConsignmentLots, party: inventoryParties.name }).from(inventoryConsignmentLots).innerJoin(inventoryParties, eq(inventoryParties.id, inventoryConsignmentLots.partyId)).where(and(eq(inventoryConsignmentLots.productId, id), sql`${inventoryConsignmentLots.remainingQty} > 0`)),
+    db.select({ lot: inventoryConsignmentLots, party: inventoryParties.name }).from(inventoryConsignmentLots).innerJoin(inventoryParties, eq(inventoryParties.id, inventoryConsignmentLots.partyId)).where(and(eq(inventoryConsignmentLots.productId, id), sql`${inventoryConsignmentLots.remainingQty} > 0 and ${inventoryConsignmentLots.warehouseId} is null`)),
   ]);
   const canApprove = u.permissions.includes("PRODUCTS_APPROVE");
   const stockQty = vars.length ? vars.reduce((sum, v) => sum + v.onHand * v.baseUnitAmount, 0) : p.onHand;

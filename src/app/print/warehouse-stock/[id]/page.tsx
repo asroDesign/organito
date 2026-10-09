@@ -1,0 +1,15 @@
+import Link from 'next/link';
+import { notFound } from 'next/navigation';
+import { getWarehouseStock } from '@/lib/services/warehouse-stock-report';
+import { requirePage } from '@/lib/auth';
+import { getSettings } from '@/lib/settings';
+import { faNum, jdate, toman } from '@/lib/util';
+import { PrintButton } from '@/components/PrintButton';
+export const metadata={title:'چاپ فهرست موجودی انبار'};
+export default async function Page({params,searchParams}:{params:Promise<{id:string}>;searchParams:Promise<{q?:string}>}){
+ await requirePage({perm:'INVENTORY_MANAGE'});
+ const {id}=await params;if(!/^\d+$/.test(id))notFound();
+ const {warehouse,rows}=await getWarehouseStock(Number(id),(await searchParams).q??'');
+ const settings=await getSettings();
+ return <><div className="no-print mx-auto mb-4 flex max-w-5xl justify-between"><Link href="/admin/inventory" className="btn-ghost">بازگشت به انبارداری</Link><PrintButton label="چاپ فهرست موجودی"/></div><main className="warehouse-stock-print" dir="rtl"><header><div><h1>{settings.siteName}</h1><h2>فهرست موجودی انبار</h2></div><div><b>{warehouse.name}</b><br/>کد انبار: <span dir="ltr">{warehouse.code}</span><br/>تاریخ گزارش: {jdate(new Date(),true)}</div></header><div className="summary">{faNum(rows.length)} ردیف کالا در این فهرست</div><table><thead><tr>{['ردیف','کالا / تنوع','شناسه','کد کالا','واحد','موجودی','رزرو','آزاد','بهای واحد'].map(x=><th key={x}>{x}</th>)}</tr></thead><tbody>{rows.map((row,i)=><tr key={`${row.productId}:${row.variantId??0}`}><td>{faNum(i+1)}</td><td>{row.label}</td><td>{faNum(row.productId)}</td><td dir="ltr">{row.sku}</td><td>{row.unit}</td><td>{faNum(row.onHand)}</td><td>{faNum(row.reserved)}</td><td>{faNum(row.onHand-row.reserved)}</td><td>{toman(row.unitCost)}</td></tr>)}</tbody></table>{!rows.length&&<p className="empty">برای این انبار موجودی ثبت نشده است.</p>}<footer>گزارش موجودی · {warehouse.name} · {faNum(rows.length)} قلم</footer></main><style>{`@page{size:A4 landscape;margin:12mm}.warehouse-stock-print{background:#fff!important;color:#111!important;max-width:1200px;margin:auto;padding:28px;font-size:11px;line-height:1.8}.warehouse-stock-print *{color:#111!important}.warehouse-stock-print header{display:flex;justify-content:space-between;align-items:start;border-bottom:2px solid #222;padding-bottom:14px;margin-bottom:16px}.warehouse-stock-print h1{font-size:20px;font-weight:900}.warehouse-stock-print h2{font-size:16px;font-weight:700}.warehouse-stock-print .summary{margin-bottom:12px;font-weight:700}.warehouse-stock-print table{width:100%;border-collapse:collapse}.warehouse-stock-print th,.warehouse-stock-print td{border:1px solid #888;padding:6px;text-align:right}.warehouse-stock-print th{background:#eee!important}.warehouse-stock-print tr{break-inside:avoid}.warehouse-stock-print thead{display:table-header-group}.warehouse-stock-print footer{margin-top:18px;border-top:1px solid #aaa;padding-top:8px;font-size:10px}.warehouse-stock-print .empty{text-align:center;padding:30px}@media print{.warehouse-stock-print{padding:0;max-width:none}}`}</style></>;
+}
