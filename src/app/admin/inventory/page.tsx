@@ -8,6 +8,7 @@ import { paginationParams } from "@/lib/pagination";
 import { Card, PageHeader, Stat, Table, Td } from "@/components/ui";
 import { Pagination } from "@/components/Pagination";
 import { InventoryRepackPicker } from "@/components/InventoryRepackPicker";
+import { InventoryProductPicker } from "@/components/InventoryProductPicker";
 import { faNum, jdate, toman } from "@/lib/util";
 import { InventoryWarehousesClient } from "@/components/InventoryWarehousesClient";
 
@@ -15,6 +16,7 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
   await requirePage({ perm: "INVENTORY_MANAGE" });
   const sp = await searchParams;
   const list = await db.select().from(products).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa);
+  const parties = await db.select({ id: inventoryParties.id, name: inventoryParties.name }).from(inventoryParties).where(eq(inventoryParties.enabled, true)).orderBy(inventoryParties.name);
   const variants = await db.select({ v: productVariants, p: products }).from(productVariants).innerJoin(products, eq(products.id, productVariants.productId)).where(sql`${products.source} = 'central' and ${products.status} <> 'deleted'`).orderBy(products.nameFa, productVariants.title);
   const consignmentRows = await db.select({ lot: inventoryConsignmentLots, party: inventoryParties.name }).from(inventoryConsignmentLots).innerJoin(inventoryParties, eq(inventoryParties.id, inventoryConsignmentLots.partyId)).where(sql`${inventoryConsignmentLots.remainingQty} > 0 and ${inventoryConsignmentLots.warehouseId} is null`);
   const consignmentByStock = new Map<string, { name: string; quantity: number }[]>();
@@ -57,7 +59,12 @@ export default async function Inventory({ searchParams }: { searchParams: Promis
           <Pagination page={page} pageSize={pageSize} total={choices.length} />
         </div>
         <Card title="ثبت رسید خرید / تعدیل">
-          <p className="mb-4 text-sm leading-7 text-slate-500">چندین کالا و تنوع را در یک صورتحساب خرید، دریافت امانی یا تعدیل ثبت کنید.</p><Link className="btn-primary w-full" href="/admin/inventory/documents">ثبت و پیگیری صورتحساب‌های انبار</Link>
+          <p className="mb-4 text-sm leading-7 text-slate-500">برای چند کالا یک صورتحساب مشترک ثبت کنید؛ برای یک قلم از فرم ثبت سریع استفاده کنید.</p>
+          <Link className="btn-primary w-full" href="/admin/inventory/documents">ثبت صورتحساب چندقلمی</Link>
+          <div className="mt-6 border-t border-slate-200 pt-5">
+            <h3 className="mb-3 text-sm font-bold">ثبت تکی و سریع</h3>
+            <InventoryProductPicker items={choices} parties={parties} />
+          </div>
         </Card>
       </div>
       <Card title="بسته‌بندی / تبدیل فله به تنوع آماده فروش" className="mt-6">
