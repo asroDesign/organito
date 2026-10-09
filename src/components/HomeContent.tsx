@@ -7,7 +7,7 @@ import { ProductCard } from "./ProductCard";
 import { BlogCard } from "./BlogCard";
 import { VehicleFinder } from "./VehicleFinder";
 import { Countdown } from "./Countdown";
-import { PublicSiteBlockContent } from "./PublicSiteBlockContent";
+import { SiteBlockContent } from "./SiteBlockContent";
 import { PageBlockFrame } from "./PageBlockFrame";
 import { siteBrandText } from "@/lib/brand";
 import { faNum } from "@/lib/util";
@@ -18,9 +18,9 @@ const CAT_STYLE = [
 
 export function HomeContent({ blocks, data }: { blocks: SitePageBlock[]; data: HomeData }) {
  const primary = blocks.findIndex(b => b.enabled !== false);
- return <main className="mx-auto flex w-full max-w-7xl flex-col gap-16 px-4 pb-16">{blocks.map((block,index) => block.type === "store_section" ? <PageBlockFrame key={block.id || index} block={block}><StoreSection block={block} data={data} primary={index === primary}/></PageBlockFrame> : <PublicSiteBlockContent key={block.id || index} block={block} primary={index === primary}/>)}</main>;
+ return <main className="mx-auto flex w-full max-w-7xl flex-col gap-16 px-4 pb-16">{blocks.map((block,index) => <PageBlockFrame key={block.id || index} block={block}>{block.type === "store_section" ? <StoreSection block={block} data={data} primary={index === primary}/> : <SiteBlockContent block={block} primary={index === primary}/>}</PageBlockFrame>)}</main>;
 }
-function StoreSection({ block, data, primary = false }: { block: SitePageBlock; data: HomeData; primary?: boolean }) {
+export function StoreSection({ block, data, primary = false }: { block: SitePageBlock; data: HomeData; primary?: boolean }) {
  const HeroTitle = primary ? "h1" : "h2";
  const { all, cats, makes, fests, farms, st, latestPosts } = data;
  const sectionBlock = (_id: string) => block;

@@ -1,3 +1,4 @@
+import "server-only";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import type { SitePageBlock } from "@/db/schema";
