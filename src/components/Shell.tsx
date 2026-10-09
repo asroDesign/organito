@@ -38,6 +38,7 @@ const ADMIN_GROUPS: { label: string; icon: NavItem["icon"]; items: (NavItem & { 
     { href: "/admin/blog", label: "وبلاگ و سئو", icon: "FileText", perm: ["PRODUCTS_EDIT", "BLOG_PUBLISH"] },
     { href: "/admin/home-builder", label: "صفحه‌ساز صفحه اصلی", icon: "LayoutDashboard", perm: "SETTINGS_MANAGE" },
     { href: "/admin/site-content", label: "صفحات محتوایی سایت", icon: "FileText", perm: "SETTINGS_MANAGE" },
+    { href: "/admin/footer-builder", label: "فوترساز سایت", icon: "LayoutDashboard", perm: "SETTINGS_MANAGE" },
     { href: "/admin/menus", label: "منوهای سایت", icon: "FolderTree", perm: "SETTINGS_MANAGE" },
     { href: "/admin/stories", label: "استوری‌های فروشگاه", icon: "Film", perm: "SETTINGS_MANAGE" },
     { href: "/admin/forms", label: "فرم‌های عمومی", icon: "ClipboardList", perm: "SETTINGS_MANAGE" },

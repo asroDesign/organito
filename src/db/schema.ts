@@ -1087,6 +1087,7 @@ export type SitePageBlock = {
     radius?: number; minHeight?: number; gap?: number;
     columns?: number; mobileColumns?: number;
     hideDesktop?: boolean; hideMobile?: boolean;
+    tabletColumns?: number; customCss?: string; customCssMobile?: string;
   };
   options?: {
     badge?: string; secondaryLabel?: string; secondaryHref?: string;
@@ -1094,8 +1095,9 @@ export type SitePageBlock = {
     autoplay?: boolean; interval?: number;
     limit?: number; categoryId?: number; productIds?: number[];
   };
-  type: "hero" | "text" | "features" | "image" | "cta" | "faq" | "grid" | "slider" | "store_section";
+  type: "hero" | "text" | "features" | "image" | "cta" | "faq" | "grid" | "slider" | "columns" | "store_section" | "form" | "shortcode";
   sectionId?: string;
+  formSlug?: string;
   title?: string;
   body?: string;
   mediaId?: number | null;
@@ -1103,6 +1105,7 @@ export type SitePageBlock = {
   buttonLabel?: string;
   href?: string;
   items?: SitePageBlockItem[];
+  columns?: { id: string; desktopSpan?: number; mobileOrder?: number; blocks: SitePageBlock[] }[];
 };
 export type HomeBuilderDocument = {
   title: string; metaTitle: string; metaDescription: string; blocks: SitePageBlock[];
@@ -1162,6 +1165,7 @@ export const siteMenuItems = pgTable("site_menu_items", {
   parentId: integer("parent_id"),
   label: text("label").notNull(),
   href: text("href"),
+  customHtml: text("custom_html"),
   groupTitle: text("group_title"),
   sortOrder: integer("sort_order").notNull().default(0),
   enabled: boolean("enabled").notNull().default(true),

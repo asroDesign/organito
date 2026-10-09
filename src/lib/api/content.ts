@@ -89,6 +89,8 @@ export const contentRoutes: Route[] = [
   { method: "GET", pattern: "admin/site-pages", handler: async () => { await requireApi("SETTINGS_MANAGE"); return db.select().from(contentPages).where(isNull(contentPages.deletedAt)).orderBy(desc(contentPages.updatedAt)); } },
   { method: "POST", pattern: "admin/site-pages", handler: async (req, _p, meta) => {
     const user = await requireApi("SETTINGS_MANAGE"), values = pageValues(await body(req));
+    const [conflict] = await db.select({ id: contentPages.id }).from(contentPages).where(eq(contentPages.slug, values.slug)).limit(1);
+    if (conflict) throw new HttpError(409, "این نشانی قبلاً برای صفحه‌ای استفاده شده است؛ نشانی دیگری انتخاب کنید");
     const [row] = await db.insert(contentPages).values({ ...values, createdBy: user.id }).returning();
     await audit(db, { userId: user.id, ...meta }, "site_page.create", "content_page", row.id, null, { title: row.title, slug: row.slug });
     return row;
@@ -100,13 +102,15 @@ export const contentRoutes: Route[] = [
     if (old.deletedAt) throw new HttpError(404, "صفحه پیدا نشد");
     if (old.slug === "home") throw new HttpError(400, "صفحه اصلی را از صفحه‌ساز پیشرفته مدیریت کنید");
     if (b.delete === true) {
-      if (["home", "about", "contact"].includes(old.slug)) throw new HttpError(409, "صفحه‌های اصلی درباره ما و تماس با ما قابل انتقال به زباله نیستند");
+      if (["home", "about", "contact", "terms"].includes(old.slug)) throw new HttpError(409, "صفحه‌های استاندارد درباره ما، تماس با ما و شرایط استفاده قابل انتقال به زباله نیستند");
       const now = new Date();
       await db.update(contentPages).set({ status: "draft", deletedAt: now, deletedBy: user.id, deletedFromStatus: old.status, updatedAt: now }).where(eq(contentPages.id, id));
       await audit(db, { userId: user.id, ...meta }, "site_page.trash", "content_page", id, { title: old.title, slug: old.slug, status: old.status }, { deletedAt: now });
       return { ok: true };
     }
     const values = pageValues(b);
+    const [conflict] = await db.select({ id: contentPages.id }).from(contentPages).where(eq(contentPages.slug, values.slug)).limit(1);
+    if (conflict && conflict.id !== id) throw new HttpError(409, "این نشانی قبلاً برای صفحه‌ای استفاده شده است؛ نشانی دیگری انتخاب کنید");
     const changed = JSON.stringify(pageDocument(old)) !== JSON.stringify(values);
     await db.transaction(async (tx) => {
       if (changed) await preservePageRevision(tx, old, user.id);

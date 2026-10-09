@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { contentPages } from "@/db/schema";
 import { getSettings } from "@/lib/settings";
@@ -13,12 +13,12 @@ const fallback: SitePageData = {
 };
 
 export async function generateMetadata() {
-  const [page] = await db.select().from(contentPages).where(eq(contentPages.slug, "contact"));
+  const [page] = await db.select().from(contentPages).where(and(eq(contentPages.slug, "contact"), eq(contentPages.status, "published"), isNull(contentPages.deletedAt)));
   return { title: page?.metaTitle || page?.title || fallback.title, description: page?.metaDescription || page?.summary || undefined };
 }
 
 export default async function Contact() {
-  const [row] = await db.select().from(contentPages).where(eq(contentPages.slug, "contact"));
+  const [row] = await db.select().from(contentPages).where(and(eq(contentPages.slug, "contact"), eq(contentPages.status, "published"), isNull(contentPages.deletedAt)));
   const settings = await getSettings();
   return <SitePageRenderer page={(row ?? fallback) as SitePageData} settings={settings} />;
 }

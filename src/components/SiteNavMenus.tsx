@@ -2,9 +2,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ChevronDown, ChevronLeft, Menu, X } from "lucide-react";
-export type PublicMenuItem = { id: number; label: string; href: string | null; targetBlank: boolean; children: PublicMenuItem[] };
+import { SiteMenuHtml } from "./SiteMenuHtml";
+export type PublicMenuItem = { id: number; label: string; href: string | null; customHtml?: string | null; targetBlank: boolean; children: PublicMenuItem[] };
 
 function MenuLink({ item, className = "" }: { item: PublicMenuItem; className?: string }) {
+  if (item.customHtml) return <SiteMenuHtml html={item.customHtml} label={item.label} className={className} />;
   if (!item.href) return <span className={className}>{item.label}</span>;
   if (/^https:\/\//i.test(item.href)) return <a href={item.href} target={item.targetBlank ? "_blank" : undefined} rel={item.targetBlank ? "noopener noreferrer" : undefined} className={className}>{item.label}</a>;
   return <Link href={item.href} target={item.targetBlank ? "_blank" : undefined} rel={item.targetBlank ? "noopener noreferrer" : undefined} className={className}>{item.label}</Link>;
@@ -36,5 +38,5 @@ export function SiteNavMenus({ headerItems, mobileItems, fallbackItems, mode = "
 
 function MobileItem({ item, close, depth }: { item: PublicMenuItem; close: () => void; depth: number }) {
   const [expanded, setExpanded] = useState(false);
-  return <div className="border-b border-slate-100 last:border-0" style={{ marginRight: depth * 14 }}><div className="flex items-center justify-between gap-2 py-2.5">{item.href ? <span onClick={close} className="flex-1"><MenuLink item={item} className="block text-sm font-medium text-slate-700"/></span> : <b className="text-sm text-slate-800">{item.label}</b>}{item.children.length > 0 && <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-label={`نمایش زیرمنوی ${item.label}`} className="rounded-lg p-1 text-slate-500"><ChevronDown className={`size-4 transition ${expanded ? "rotate-180" : ""}`}/></button>}</div>{expanded && item.children.map((child) => <MobileItem key={child.id} item={child} close={close} depth={depth + 1}/>)}</div>;
+  return <div className="border-b border-slate-100 last:border-0" style={{ marginRight: depth * 14 }}><div className="flex items-center justify-between gap-2 py-2.5">{item.href || item.customHtml ? <div onClick={close} className="flex-1"><MenuLink item={item} className="block text-sm font-medium text-slate-700"/></div> : <b className="text-sm text-slate-800">{item.label}</b>}{item.children.length > 0 && <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} aria-label={`نمایش زیرمنوی ${item.label}`} className="rounded-lg p-1 text-slate-500"><ChevronDown className={`size-4 transition ${expanded ? "rotate-180" : ""}`}/></button>}</div>{expanded && item.children.map((child) => <MobileItem key={child.id} item={child} close={close} depth={depth + 1}/>)}</div>;
 }

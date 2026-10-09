@@ -291,3 +291,48 @@ body { font-feature-settings: "ss01"; }
   [data-theme="dark"] .invoice-sheet [class~="bg-rose-100"] { background-color: #ffe4e6 !important; }
 }
 @import "leaflet/dist/leaflet.css";
+
+/* The builder's narrow canvas follows the mobile footer layout even on desktop. */
+.footer-preview-mobile .footer-builder section > .grid { grid-template-columns: minmax(0, 1fr); }
+
+/* Responsive nested containers used by the site page builder. */
+.site-builder-columns { display: grid; grid-template-columns: repeat(var(--builder-mobile-cols, 1), minmax(0, 1fr)); align-items: start; }
+.site-builder-column { min-width: 0; }
+@media (min-width: 640px) {
+  .site-builder-columns { grid-template-columns: repeat(var(--builder-tablet-cols, 2), minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  .site-builder-columns { grid-template-columns: repeat(var(--builder-desktop-cols, 3), minmax(0, 1fr)); }
+  .site-builder-column[data-builder-col-span="2"] { grid-column: span 2; }
+  .site-builder-column[data-builder-col-span="3"] { grid-column: span 3; }
+  .site-builder-column[data-builder-col-span="4"] { grid-column: span 4; }
+  .site-builder-column[data-builder-col-span="5"] { grid-column: span 5; }
+  .site-builder-column[data-builder-col-span="6"] { grid-column: span 6; }
+}
+
+/* Page and footer administration surfaces remain readable in either theme. */
+[data-theme="dark"] .site-content-manager .bg-white,
+[data-theme="dark"] .site-content-manager section.bg-white { background-color: #111c19 !important; color: #e2e8f0; }
+[data-theme="dark"] .site-content-manager .bg-slate-50,
+[data-theme="dark"] .site-content-manager .bg-slate-50\/60 { background-color: #17231e !important; }
+[data-theme="dark"] .site-content-manager .bg-amber-50,
+[data-theme="dark"] .site-content-manager .bg-amber-50\/70 { background-color: #302910 !important; }
+[data-theme="dark"] .site-content-manager .bg-emerald-50 { background-color: #10251d !important; }
+[data-theme="dark"] .site-content-manager .text-slate-900 { color: #f1f5f9 !important; }
+[data-theme="dark"] .site-content-manager .text-slate-600,
+[data-theme="dark"] .site-content-manager .text-slate-500 { color: #a8b8b0 !important; }
+[data-theme="dark"] .site-content-manager .text-amber-950,
+[data-theme="dark"] .site-content-manager .text-amber-900 { color: #fde68a !important; }
+[data-theme="dark"] .site-content-manager .text-emerald-950,
+[data-theme="dark"] .site-content-manager .text-emerald-900 { color: #a7f3d0 !important; }
+[data-theme="dark"] .site-content-preview { background-color: rgb(2 6 23 / .72) !important; }
+[data-theme="dark"] .site-content-preview > section { background-color: #0d1513 !important; color: #e2e8f0; }
+[data-theme="dark"] .site-content-preview header { border-color: #33443d !important; }
+[data-theme="dark"] .site-content-preview > section > div { background-color: #0d1513 !important; }
+[data-theme="dark"] .site-content-preview [class~="bg-white"] { background-color: #17231e !important; }
+[data-theme="dark"] .site-content-preview [class~="bg-stone-50"],
+[data-theme="dark"] .site-content-preview [class~="bg-slate-50"] { background-color: #111c19 !important; }
+[data-theme="dark"] .site-content-preview [class~="text-slate-900"] { color: #f1f5f9 !important; }
+[data-theme="dark"] .site-content-preview [class~="text-slate-600"],
+[data-theme="dark"] .site-content-preview [class~="text-slate-500"] { color: #a8b8b0 !important; }
+[data-theme="dark"] .site-content-preview [class~="bg-amber-50"] { background-color: #302910 !important; }
