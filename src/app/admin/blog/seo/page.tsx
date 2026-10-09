@@ -24,5 +24,14 @@ export default async function SeoSettingsPage() {
       { name: "blogSeoDescription", label: "توضیحات متا صفحه اصلی وبلاگ", type: "textarea", defaultValue: s.blogSeoDescription },
       { name: "blogSeoKeywords", label: "کلمات کلیدی وبلاگ", defaultValue: s.blogSeoKeywords },
     ]} /></Card>
+    <Card className="mt-5" title="دسترسی ربات‌های جست‌وجو (robots.txt)">
+      <p className="mb-4 text-sm leading-7 text-slate-600">این تنظیمات خروجی <code dir="ltr">/robots.txt</code> را کنترل می‌کنند. هر ربات یا مسیر را در یک خط بنویسید؛ مسیرها باید نسبی و با / شروع شوند. نشانی sitemap به‌صورت خودکار از دامنهٔ سایت ساخته می‌شود.</p>
+      <JsonForm url="/api/admin/settings" submit="ذخیره تنظیمات robots" resetOnDone={false} fields={[
+        { name: "robotsUserAgents", label: "نام ربات‌ها (هر خط یک مورد؛ برای همه از * استفاده کنید)", type: "textarea", defaultValue: s.robotsUserAgents },
+        { name: "robotsAllowPaths", label: "مسیرهای مجاز (هر خط یک مسیر)", type: "textarea", defaultValue: s.robotsAllowPaths },
+        { name: "robotsDisallowPaths", label: "مسیرهای غیرمجاز (هر خط یک مسیر)", type: "textarea", defaultValue: s.robotsDisallowPaths },
+        { name: "robotsSitemapEnabled", label: "نمایش آدرس sitemap.xml در robots.txt", type: "checkbox", defaultValue: Number(s.robotsSitemapEnabled) !== 0 },
+      ]} />
+    </Card>
   </>;
 }

@@ -395,6 +395,15 @@ export const staffRoutes: Route[] = [
         if (!Array.isArray(b[k])) throw new HttpError(400, "فهرست نوع محصولات نامعتبر است");
         v = (b[k] as Record<string, unknown>[]).map((x) => ({ name: str(x.name, 80), parameters: Array.isArray(x.parameters) ? [...new Set(x.parameters.map((p) => str(p, 80)).filter(Boolean))].slice(0, 40) : [] })).filter((x) => x.name).slice(0, 80);
         if (new Set((v as {name:string}[]).map((x) => x.name)).size !== (v as {name:string}[]).length) throw new HttpError(400, "نام نوع محصول تکراری است");
+      } else if (k === "robotsSitemapEnabled") v = b[k] === true || b[k] === 1 || b[k] === "1" ? 1 : 0;
+      else if (k === "robotsUserAgents") {
+        const agents = [...new Set(str(b[k], 2000).split(/\r?\n/).map((x) => x.trim()).filter(Boolean))];
+        if (agents.length > 30 || agents.some((x) => !/^(\*|[A-Za-z0-9._-]{1,80})$/.test(x))) throw new HttpError(400, "نام ربات نامعتبر است؛ هر ربات را در یک خط وارد کنید");
+        v = agents.join("\n") || "*";
+      } else if (k === "robotsAllowPaths" || k === "robotsDisallowPaths") {
+        const paths = [...new Set(str(b[k], 10000).split(/\r?\n/).map((x) => x.trim()).filter(Boolean))];
+        if (paths.length > 100 || paths.some((x) => x.length > 300 || !x.startsWith("/") || x.startsWith("//") || /[?#\s\u0000-\u001f]/.test(x))) throw new HttpError(400, "مسیر robots نامعتبر است؛ هر مسیر باید با / شروع شود و آدرس کامل نباشد");
+        v = paths.join("\n");
       } else v = typeof def === "number" ? int(b[k], 0, 1_000_000_000) : str(b[k], k === "footerScripts" ? 20000 : 1000);
       if (["invoiceWidth", "barcodeLabelWidth", "barcodeLabelHeight"].includes(k) && Number(v) < 20) throw new HttpError(400, "ابعاد چاپ باید دست‌کم ۲۰ میلی‌متر باشد");
       if (["invoiceFontSize", "barcodeFontSize"].includes(k) && (Number(v) < 6 || Number(v) > 40)) throw new HttpError(400, "اندازه فونت چاپ باید بین ۶ تا ۴۰ باشد");

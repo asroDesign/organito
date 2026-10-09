@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Keep generated metadata in <head> for every user agent (including Lighthouse
+  // and browser audits), instead of streaming it into <body> after the first HTML.
+  htmlLimitedBots: /.*/,
   // Lets the self-hosted update worker build into a temporary directory and
   // switch the production build only after compilation and migrations succeed.
   distDir: process.env.NEXT_DIST_DIR || ".next",
