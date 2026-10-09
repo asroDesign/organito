@@ -53,8 +53,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           }}
         />
         <script id="appearance-init" dangerouslySetInnerHTML={{ __html: `try{var r=document.documentElement;var p=localStorage.getItem("organo-color-mode");var d=r.dataset.defaultTheme;var m=(p==="light"||p==="dark")?p:(d==="light"||d==="dark")?d:(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");r.dataset.theme=m;}catch(e){document.documentElement.dataset.theme=document.documentElement.dataset.defaultTheme==="dark"?"dark":"light";}` }} />
-        <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-        <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" />
+        <link rel="preload" href="/fonts/Vazirmatn-wght.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </head>
       <body className="bg-leaf-pattern min-h-screen text-slate-900 antialiased">
         <CurrencyInitializer currency={s.currency}><AttributionTracker /><AnalyticsTracker />{children}<ProductCompareDock /><Toaster /></CurrencyInitializer>

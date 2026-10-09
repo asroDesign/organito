@@ -1,5 +1,14 @@
-@import "leaflet/dist/leaflet.css";
 @import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("/fonts/Vazirmatn-wght.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
 
 @theme {
   --font-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
@@ -290,8 +299,6 @@ body { font-feature-settings: "ss01"; }
   [data-theme="dark"] .invoice-sheet [class~="bg-rose-50"] { background-color: #fff1f2 !important; }
   [data-theme="dark"] .invoice-sheet [class~="bg-rose-100"] { background-color: #ffe4e6 !important; }
 }
-@import "leaflet/dist/leaflet.css";
-
 /* The builder's narrow canvas follows the mobile footer layout even on desktop. */
 .footer-preview-mobile .footer-builder section > .grid { grid-template-columns: minmax(0, 1fr); }
 

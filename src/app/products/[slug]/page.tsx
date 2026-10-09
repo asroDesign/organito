@@ -49,13 +49,14 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!row) notFound();
   const p = row.p;
   const u = await getUser();
+  const recommendationIds = [...new Set([...(p.relatedProductIds ?? []), ...(p.crossSellProductIds ?? [])])];
   const [imgs, variants, offers, fests, related, s, revs, qs, brandPage] = await Promise.all([
     db.select().from(productImages).where(eq(productImages.productId, p.id)).orderBy(productImages.sortOrder),
     db.select().from(productVariants).where(and(eq(productVariants.productId, p.id), eq(productVariants.isActive, true), isNull(productVariants.deletedAt))),
     db.select({ o: sellerOffers, s: sellers }).from(sellerOffers).innerJoin(sellers, eq(sellers.id, sellerOffers.sellerId))
       .where(and(eq(sellerOffers.productId, p.id), eq(sellerOffers.status, "approved"), eq(sellers.status, "approved"), eq(sellers.restricted, false))),
     activeFestivals(),
-    listShopProducts({}, 200),
+    listShopProducts(recommendationIds.length ? { ids: recommendationIds } : {}, recommendationIds.length || 6),
     getSettings(),
     db.select({ r: reviews, name: users.name }).from(reviews).innerJoin(users, eq(users.id, reviews.userId))
       .where(and(eq(reviews.productId, p.id), u ? or(eq(reviews.status, "approved"), eq(reviews.userId, u.id)) : eq(reviews.status, "approved"))).orderBy(desc(reviews.helpful), desc(reviews.createdAt)),
