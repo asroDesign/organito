@@ -12,14 +12,18 @@ export async function ensurePrimaryWarehouse(tx:DB){
   [warehouse]=await tx.select().from(inventoryWarehouses).where(eq(inventoryWarehouses.code,'MAIN')).for('update');
   if(warehouse)[warehouse]=await tx.update(inventoryWarehouses).set({name:'انبار مرکزی',enabled:true,isDefault:true,updatedAt:new Date()}).where(eq(inventoryWarehouses.id,warehouse.id)).returning();
   else [warehouse]=await tx.insert(inventoryWarehouses).values({name:'انبار مرکزی',code:'MAIN',enabled:true,isDefault:true}).returning();
+  await tx.execute(sql`update inventory_warehouse_stock ws set on_hand=p.on_hand,reserved=p.reserved,updated_at=now()
+   from products p where ws.warehouse_id=${warehouse.id} and ws.product_id=p.id and ws.variant_id is null and p.source='central' and p.status<>'deleted'
+   and not exists(select 1 from product_variants v where v.product_id=p.id and v.is_active and v.deleted_at is null)`);
   await tx.execute(sql`insert into inventory_warehouse_stock(warehouse_id,product_id,variant_id,on_hand,reserved)
    select ${warehouse.id},p.id,null,p.on_hand,p.reserved from products p
    where p.source='central' and p.status<>'deleted' and not exists(select 1 from product_variants v where v.product_id=p.id and v.is_active and v.deleted_at is null)
-   on conflict(warehouse_id,product_id) where variant_id is null do update set on_hand=excluded.on_hand,reserved=excluded.reserved,updated_at=now()`);
+   and not exists(select 1 from inventory_warehouse_stock ws where ws.warehouse_id=${warehouse.id} and ws.product_id=p.id and ws.variant_id is null)`);
+  await tx.execute(sql`update inventory_warehouse_stock ws set on_hand=v.on_hand,reserved=v.reserved,updated_at=now()
+   from product_variants v join products p on p.id=v.product_id where ws.warehouse_id=${warehouse.id} and ws.product_id=v.product_id and ws.variant_id=v.id and p.source='central' and p.status<>'deleted'`);
   await tx.execute(sql`insert into inventory_warehouse_stock(warehouse_id,product_id,variant_id,on_hand,reserved)
    select ${warehouse.id},v.product_id,v.id,v.on_hand,v.reserved from product_variants v join products p on p.id=v.product_id
-   where p.source='central' and p.status<>'deleted'
-   on conflict(warehouse_id,variant_id) where variant_id is not null do update set on_hand=excluded.on_hand,reserved=excluded.reserved,updated_at=now()`);
+   where p.source='central' and p.status<>'deleted' and not exists(select 1 from inventory_warehouse_stock ws where ws.warehouse_id=${warehouse.id} and ws.variant_id=v.id)`);
  }
  return warehouse;
 }
