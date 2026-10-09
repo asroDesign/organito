@@ -6,7 +6,7 @@ import { ArrowRight, PackageSearch, Tags } from "lucide-react";
 import { db } from "@/db";
 import { blogPosts, products } from "@/db/schema";
 import { getSettings } from "@/lib/settings";
-import { siteBase } from "@/lib/seo";
+import { seoMetadata, siteBase } from "@/lib/seo";
 import { listShopProducts } from "@/lib/queries";
 import { ProductCard } from "@/components/ProductCard";
 import { BlogCard } from "@/components/BlogCard";
@@ -22,9 +22,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const brand = await findBrand((await params).slug);
   if (!brand) return { title: "برند پیدا نشد" };
   const settings = await getSettings(), title = brand.seoTitle || `${brand.name} | ${settings.siteName}`, description = brand.metaDescription || brand.description?.replace(/<[^>]*>/g, " ").slice(0, 300) || `محصولات و راهنماهای برند ${brand.name}`;
-  const canonical = brand.canonicalUrl || new URL(`/brands/${brand.slug}`, siteBase(settings.siteUrl)).toString();
   const imageId = brand.bannerMediaId ?? brand.logoMediaId;
-  return { title, description, keywords: brand.seoKeywords, alternates: { canonical }, openGraph: { type: "website", title, description, url: canonical, images: imageId ? [`/api/media/${imageId}`] : undefined }, twitter: { card: "summary_large_image", title, description, images: imageId ? [`/api/media/${imageId}`] : undefined } };
+  return seoMetadata(settings, { title, description, keywords: brand.seoKeywords, path: `/brands/${brand.slug}`, canonical: brand.canonicalUrl, imageId });
 }
 
 export default async function BrandPage({ params }: { params: Promise<{ slug: string }> }) {

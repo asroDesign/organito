@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getPublicBrandIndex } from "@/lib/public-brand-cache";
 import { getSettings } from "@/lib/settings";
-import { siteBase } from "@/lib/seo";
+import { seoMetadata } from "@/lib/seo";
 import { Img } from "@/components/ui";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
@@ -10,7 +10,8 @@ import { Tags } from "lucide-react";
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
-  return { title: `برندهای محصولات | ${s.siteName}`, description: `فهرست برندهای محصولات ${s.siteName}`, alternates: { canonical: new URL("/brands", siteBase(s.siteUrl)) } };
+  const title = `برندهای محصولات | ${s.siteName}`;
+  return seoMetadata(s, { title, description: `فهرست برندهای محصولات ${s.siteName}`, path: "/brands" });
 }
 
 export default async function BrandsIndexPage() {

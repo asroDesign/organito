@@ -13,7 +13,16 @@ import "./globals.css";
 export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
-  return { metadataBase: siteBase(s.siteUrl), title: { default: s.homeSeoTitle, template: `%s | ${s.siteName}` }, description: s.homeSeoDescription, applicationName: s.siteName, category: "shopping" };
+  const base = siteBase(s.siteUrl), image = s.defaultOgImageId ? `/api/media/${s.defaultOgImageId}` : "/images/home-harvest.jpg";
+  return {
+    metadataBase: base,
+    title: { default: s.homeSeoTitle, template: `%s | ${s.siteName}` },
+    description: s.homeSeoDescription,
+    applicationName: s.siteName,
+    category: "shopping",
+    openGraph: { type: "website", locale: "fa_IR", siteName: s.siteName, title: s.homeSeoTitle, description: s.homeSeoDescription, url: base.toString(), images: [{ url: image, alt: s.siteName }] },
+    twitter: { card: "summary_large_image", title: s.homeSeoTitle, description: s.homeSeoDescription, images: [image] },
+  };
 }
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#047857" };
 

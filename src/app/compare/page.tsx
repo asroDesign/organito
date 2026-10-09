@@ -7,10 +7,12 @@ import { listShopProducts } from "@/lib/queries";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { ProductCompareTable, type CompareProduct } from "@/components/ProductCompareTable";
+import { seoMetadata } from "@/lib/seo";
 
 export async function generateMetadata(): Promise<Metadata> {
   const settings = await getSettings();
-  return { title: `مقایسهٔ محصولات | ${settings.siteName}`, robots: { index: false, follow: true } };
+  const title = `مقایسهٔ محصولات | ${settings.siteName}`;
+  return { ...seoMetadata(settings, { title, description: `مقایسهٔ مشخصات و قیمت محصولات در ${settings.siteName}`, path: "/compare" }), robots: { index: false, follow: true } };
 }
 
 export default async function ComparePage({ searchParams }: { searchParams: Promise<{ ids?: string }> }) {

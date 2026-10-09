@@ -24,6 +24,7 @@ import { ProductCompareButton } from "@/components/ProductCompareButton";
 import { ProductAlerts } from "@/components/ProductAlerts";
 import { ProductCard } from "@/components/ProductCard";
 import { AnswerForm, QuestionForm, ReviewForm, ReviewImages, RoleBadge, Stars, VoteButtons } from "@/components/Community";
+import { seoMetadata } from "@/lib/seo";
 
 async function load(slug: string) {
   const [row] = await db.select({ p: products, cat: categories }).from(products).leftJoin(categories, eq(categories.id, products.categoryId))
@@ -34,7 +35,8 @@ async function load(slug: string) {
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const row = await load((await params).slug);
   if (!row) return { title: "محصول یافت نشد" };
-  return { title: row.p.seoTitle || row.p.nameFa, description: row.p.metaDesc || stripHtml(row.p.shortDesc) || undefined, keywords: row.p.seoKeywords ?? [], openGraph: { title: row.p.seoTitle || row.p.nameFa, description: row.p.metaDesc || stripHtml(row.p.shortDesc) || undefined, images: row.p.seoImageId ? [`/api/media/${row.p.seoImageId}`] : undefined }, twitter: { card: "summary_large_image", images: row.p.seoImageId ? [`/api/media/${row.p.seoImageId}`] : undefined } };
+  const settings = await getSettings();
+  return seoMetadata(settings, { title: row.p.seoTitle || row.p.nameFa, description: row.p.metaDesc || stripHtml(row.p.shortDesc) || settings.homeSeoDescription, keywords: row.p.seoKeywords ?? [], path: `/products/${row.p.slug}`, imageId: row.p.seoImageId || row.p.mainImageId });
 }
 
 const ORG: [keyof import("@/db/schema").OrganicInfo, string, typeof MapPin][] = [

@@ -31,20 +31,20 @@ export function siteBase(raw: string, requestUrl?: string, requirePublicOrigin =
   return parseSiteUrl(raw) ?? new URL("http://localhost:3000");
 }
 
-export function seoMetadata(s: SettingsShape, input: { title: string; description: string; path: string; keywords?: string; imageId?: number | null; canonical?: string | null; type?: "website" | "article"; publishedTime?: string; modifiedTime?: string }): Metadata {
+export function seoMetadata(s: SettingsShape, input: { title: string; description: string; path: string; keywords?: string | string[]; imageId?: number | null; canonical?: string | null; type?: "website" | "article"; publishedTime?: string; modifiedTime?: string }): Metadata {
   const base = siteBase(s.siteUrl);
   const canonical = input.canonical || new URL(input.path, base).toString();
   const imageId = input.imageId || s.defaultOgImageId;
-  const images = imageId ? [{ url: new URL(`/api/media/${imageId}`, base).toString(), alt: input.title }] : undefined;
+  const images = [{ url: new URL(imageId ? `/api/media/${imageId}` : "/images/home-harvest.jpg", base).toString(), alt: input.title }];
   return {
     metadataBase: base,
     title: input.title,
     description: input.description,
-    keywords: input.keywords?.split(/[،,]/).map((x) => x.trim()).filter(Boolean),
+    keywords: (Array.isArray(input.keywords) ? input.keywords : input.keywords?.split(/[،,]/))?.map((x) => x.trim()).filter(Boolean),
     alternates: { canonical },
     robots: { index: true, follow: true, googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 } },
     openGraph: { type: input.type ?? "website", locale: "fa_IR", siteName: s.siteName, title: input.title, description: input.description, url: canonical, images, ...(input.type === "article" ? { publishedTime: input.publishedTime, modifiedTime: input.modifiedTime } : {}) },
-    twitter: { card: "summary_large_image", title: input.title, description: input.description, images: images?.map((x) => x.url) },
+    twitter: { card: "summary_large_image", title: input.title, description: input.description, images: images.map((x) => x.url) },
   };
 }
 
