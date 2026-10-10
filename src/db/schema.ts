@@ -199,6 +199,8 @@ export const blogPosts = pgTable("blog_posts", {
   tags: jsonb("tags").$type<string[]>().notNull().default([]),
   seoTitle: text("seo_title"),
   metaDescription: text("meta_description"),
+  seoImageId: integer("seo_image_id"),
+  seoKeywords: jsonb("seo_keywords").$type<string[]>().notNull().default([]),
   canonicalUrl: text("canonical_url"),
   status: text("status").notNull().default("draft"),
   contentType: text("content_type").notNull().default("text"),

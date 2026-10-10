@@ -18,6 +18,9 @@ const postValues = (b: Record<string, unknown>, canPublish: boolean) => {
   const tags = Array.isArray(b.tags)
     ? b.tags.map((x) => str(x, 50)).filter(Boolean).slice(0, 20)
     : str(b.tags, 500).split(/[،,]/).map((x) => x.trim()).filter(Boolean).slice(0, 20);
+  const seoKeywords = Array.isArray(b.seoKeywords)
+    ? b.seoKeywords.map((x) => str(x, 60)).filter(Boolean).slice(0, 30)
+    : str(b.seoKeywords, 1200).split(/[،,\n]/).map((x) => x.trim()).filter(Boolean).slice(0, 30);
   return {
     title,
     slug: slugify(str(b.slug, 100) || title),
@@ -28,6 +31,8 @@ const postValues = (b: Record<string, unknown>, canPublish: boolean) => {
     tags,
     seoTitle: str(b.seoTitle, 160) || null,
     metaDescription: str(b.metaDescription, 320) || null,
+    seoImageId: b.seoImageId ? int(b.seoImageId, 1) : null,
+    seoKeywords,
     canonicalUrl: str(b.canonicalUrl, 500) || null,
     status,
     contentType,
@@ -37,6 +42,10 @@ const postValues = (b: Record<string, unknown>, canPublish: boolean) => {
 };
 
 async function validateBlogMedia(values: ReturnType<typeof postValues>, requiresAsset: boolean) {
+  if (values.seoImageId) {
+    const [image] = await db.select({ id: media.id, mime: media.mime }).from(media).where(eq(media.id, values.seoImageId));
+    if (!image?.mime.startsWith("image/")) throw new HttpError(400, "تصویر سئو معتبر نیست");
+  }
   const mediaId = values.contentType === "video" ? values.videoMediaId : values.contentType === "audio" ? values.audioMediaId : null;
   if (values.contentType === "text") return;
   if (!mediaId) {

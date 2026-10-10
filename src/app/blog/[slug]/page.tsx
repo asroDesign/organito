@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const [row, s] = await Promise.all([getPost(slug), getSettings()]);
   if (!row) return {};
   const p = row.post;
-  return seoMetadata(s, { title: siteBrandText(p.seoTitle || p.title, s.siteName), description: siteBrandText(p.metaDescription || p.excerpt || stripHtml(p.content, 160), s.siteName), keywords: p.tags.join(","), path: `/blog/${p.slug}`, canonical: p.canonicalUrl, imageId: p.coverImageId, type: "article", publishedTime: p.publishedAt?.toISOString(), modifiedTime: p.updatedAt.toISOString() });
+  return seoMetadata(s, { title: siteBrandText(p.seoTitle || p.title, s.siteName), description: siteBrandText(p.metaDescription || p.excerpt || stripHtml(p.content, 160), s.siteName), keywords: [...(p.seoKeywords ?? []), ...p.tags].join(","), path: `/blog/${p.slug}`, canonical: p.canonicalUrl, imageId: p.seoImageId ?? p.coverImageId, type: "article", publishedTime: p.publishedAt?.toISOString(), modifiedTime: p.updatedAt.toISOString() });
 }
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -47,7 +47,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   const url = new URL(`/blog/${p.slug}`, base).toString();
   const author = row.author || s.siteName;
 
-  return <><SiteHeader /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd({ "@context": "https://schema.org", "@type": "BlogPosting", headline: title, description: siteBrandText(p.metaDescription || p.excerpt, s.siteName), image: p.coverImageId ? new URL(`/api/media/${p.coverImageId}`, base).toString() : undefined, datePublished: p.publishedAt?.toISOString(), dateModified: p.updatedAt.toISOString(), author: { "@type": "Person", name: author }, publisher: { "@type": "Organization", name: s.siteName }, mainEntityOfPage: url }) }} />
+  return <><SiteHeader /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd({ "@context": "https://schema.org", "@type": "BlogPosting", headline: title, description: siteBrandText(p.metaDescription || p.excerpt, s.siteName), image: (p.seoImageId ?? p.coverImageId) ? new URL(`/api/media/${p.seoImageId ?? p.coverImageId}`, base).toString() : undefined, datePublished: p.publishedAt?.toISOString(), dateModified: p.updatedAt.toISOString(), author: { "@type": "Person", name: author }, publisher: { "@type": "Organization", name: s.siteName }, mainEntityOfPage: url }) }} />
     <main className="blog-page-surface min-h-screen bg-[#fbfaf6]">
       <div className="blog-hero-surface border-b border-amber-100 bg-[#fff9e8]">
         <div className="mx-auto max-w-7xl px-4 pb-9 pt-5 sm:px-6 sm:pb-12">

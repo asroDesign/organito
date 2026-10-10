@@ -267,9 +267,18 @@ export const publicRoutes: Route[] = [
   } },
   { method: "GET", pattern: "media/library", handler: async (req) => {
     const u = await requireApi();
-    const q = str(req.nextUrl.searchParams.get("q"), 100), type = str(req.nextUrl.searchParams.get("type"), 20), folder = req.nextUrl.searchParams.get("folder");
-    const filters = [u.staff ? undefined : eq(media.uploadedBy, u.id), q ? ilike(media.filename, `%${q}%`) : undefined, type === "image" ? ilike(media.mime, "image/%") : undefined, folder === "root" ? isNull(media.folderId) : folder ? eq(media.folderId, int(folder, 1)) : undefined].filter(Boolean) as ReturnType<typeof eq>[];
-    const rows = await db.select({ id: media.id, filename: media.filename, alt: media.alt, folderId: media.folderId, mime: media.mime, size: media.size, isPublic: media.isPublic, createdAt: media.createdAt }).from(media).where(filters.length ? and(...filters) : undefined).orderBy(desc(media.createdAt)).limit(120);
+    const q = str(req.nextUrl.searchParams.get("q"), 100), type = str(req.nextUrl.searchParams.get("type"), 20), folder = req.nextUrl.searchParams.get("folder"), rawIds = req.nextUrl.searchParams.get("ids");
+    const ids = rawIds ? rawIds.split(",").slice(0, 40).map((value) => /^\d+$/.test(value) ? Number(value) : 0).filter((id) => Number.isSafeInteger(id) && id > 0) : [];
+    let folderId: number | null | undefined;
+    if (folder === "root") folderId = null;
+    else if (folder?.startsWith("slug:")) {
+      const slug = str(folder.slice(5), 80);
+      const [destination] = await db.select({ id: mediaFolders.id }).from(mediaFolders).where(eq(mediaFolders.slug, slug)).limit(1);
+      if (!destination) return [];
+      folderId = destination.id;
+    } else if (folder) folderId = int(folder, 1);
+    const filters = [u.staff ? undefined : eq(media.uploadedBy, u.id), q ? ilike(media.filename, `%${q}%`) : undefined, type === "image" ? ilike(media.mime, "image/%") : undefined, folderId === null ? isNull(media.folderId) : folderId ? eq(media.folderId, folderId) : undefined, rawIds ? ids.length ? inArray(media.id, ids) : sql`false` : undefined].filter(Boolean) as ReturnType<typeof eq>[];
+    const rows = await db.select({ id: media.id, filename: media.filename, alt: media.alt, folderId: media.folderId, mime: media.mime, size: media.size, isPublic: media.isPublic, createdAt: media.createdAt }).from(media).where(filters.length ? and(...filters) : undefined).orderBy(desc(media.createdAt)).limit(rawIds ? 40 : 120);
     return rows.map((row) => ({ ...row, url: `/api/media/${row.id}` }));
   } },
   { method: "GET", pattern: "media/:id", handler: async (req, p) => {
