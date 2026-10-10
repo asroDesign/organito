@@ -105,7 +105,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
           </div>
         </div>
         <div className={tab === "media" ? "space-y-6" : "hidden"}>
-          <div><b className="mb-2 block text-sm">تصاویر و گالری</b><ImageUploader value={images} onChange={setImages} /></div>
+          <div><b className="mb-2 block text-sm">تصاویر و گالری</b><ImageUploader folderSlug="products" value={images} onChange={setImages} /></div>
           <VideoUploader value={video} onChange={setVideo} />
         </div>
         <div className={tab === "price" ? "space-y-4" : "hidden"}>
@@ -144,7 +144,7 @@ export function ProductForm({ initial = {}, categories, mode, backTo, productCho
           <F name="seoTitle" label="SEO Title" dv={initial.seoTitle} /><F name="slug" label="Slug" dv={initial.slug} ltr />
           <label className="flex flex-col gap-1 text-sm sm:col-span-2">Meta Description<textarea name="metaDesc" defaultValue={initial.metaDesc ?? ""} className="input" /></label>
           <label className="flex flex-col gap-1 text-sm sm:col-span-2">کلمات کلیدی SEO<input name="seoKeywords" defaultValue={initial.seoKeywords?.join("، ") ?? ""} className="input" placeholder="محصول ارگانیک، خرید عسل، ..." /><small className="text-slate-400">کلمات را با ویرگول جدا کنید.</small></label>
-          <div className="text-sm sm:col-span-2"><b className="mb-2 block">تصویر سئو و شبکه‌های اجتماعی</b><ImageUploader value={seoImage} onChange={setSeoImage} max={1} /></div>
+          <div className="text-sm sm:col-span-2"><b className="mb-2 block">تصویر سئو و شبکه‌های اجتماعی</b><ImageUploader folderSlug="products" value={seoImage} onChange={setSeoImage} max={1} /></div>
         </div>
       </div>
       <div className="flex gap-2"><button disabled={busy} className="btn-primary">{busy && <Loader2 className="h-4 w-4 animate-spin" />}{isEdit ? "ذخیره تغییرات" : "ثبت محصول"}</button>

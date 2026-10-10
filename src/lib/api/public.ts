@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "@/db";
 import {
-  media, mediaVariants, notifications, productImages, productViewLogs, productViewPresence, productPriceHistory, productAlertVerifications, productAlertSubscriptions, productAlertEvents, productAlertDeliveries, ticketDepartments, detailAccounts, products, productVariants, sellerOffers, sellers, supplyRequests, ticketMessages, tickets, users, wallets, auditLogs, blogPosts,
+  media, mediaFolders, mediaVariants, notifications, productImages, productViewLogs, productViewPresence, productPriceHistory, productAlertVerifications, productAlertSubscriptions, productAlertEvents, productAlertDeliveries, ticketDepartments, detailAccounts, products, productVariants, sellerOffers, sellers, supplyRequests, ticketMessages, tickets, users, wallets, auditLogs, blogPosts,
 } from "@/db/schema";
 import { createSession, destroySession, getUser, hashPassword, rateLimit, requireApi, verifyPassword } from "../auth";
 import { audit } from "../audit";
@@ -261,6 +261,10 @@ export const publicRoutes: Route[] = [
     return db.transaction((tx) => quoteCart(tx, items, false, { userId: u?.id ?? null, code: str(b.code, 30), city: str(b.city, 60), carrierId: b.carrierId ? int(b.carrierId, 1) : null, freightCollect: b.freightCollect === true, pickup: b.pickup === true }));
   } },
 
+  { method: "GET", pattern: "media/folders", handler: async () => {
+    await requireApi();
+    return db.select({ id: mediaFolders.id, name: mediaFolders.name, slug: mediaFolders.slug, parentId: mediaFolders.parentId, color: mediaFolders.color, legacyId: mediaFolders.legacyId }).from(mediaFolders).orderBy(mediaFolders.name);
+  } },
   { method: "GET", pattern: "media/library", handler: async (req) => {
     const u = await requireApi();
     const q = str(req.nextUrl.searchParams.get("q"), 100), type = str(req.nextUrl.searchParams.get("type"), 20), folder = req.nextUrl.searchParams.get("folder");
@@ -340,10 +344,31 @@ export const publicRoutes: Route[] = [
     buf = await applyUploadWatermark(buf, real, kind);
     const filename = (file.name || "upload").replace(/[/\\]/g, "_").replace(/\.\.+/g, ".").replace(/[^\w.\-\u0600-\u06FF]/g, "_").slice(0, 100);
     const folderId = form?.get("folderId") ? int(form.get("folderId"), 1) : null;
+    const requestedFolderSlug = str(form?.get("folderSlug"), 40);
+    const folderNames: Record<string, string> = { blog: "blog", products: "products", custom: "custom" };
+    const folderSlug = requestedFolderSlug || (kind === "library" ? "" : "custom");
+    let destinationFolderId = folderId;
+    if (destinationFolderId) {
+      const [selectedFolder] = await db.select({ id: mediaFolders.id }).from(mediaFolders).where(eq(mediaFolders.id, destinationFolderId)).limit(1);
+      if (!selectedFolder) throw new HttpError(400, "پوشه مقصد انتخاب‌شده وجود ندارد");
+    }
+    if (!destinationFolderId && folderSlug && folderSlug !== "none") {
+      const folderName = folderNames[folderSlug];
+      if (!folderName) throw new HttpError(400, "پوشه مقصد معتبر نیست");
+      const destination = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`media-folder:${folderSlug}`}))`);
+        const [existing] = await tx.select({ id: mediaFolders.id }).from(mediaFolders).where(eq(mediaFolders.slug, folderSlug)).limit(1);
+        if (existing) return { id: existing.id, created: false };
+        const [created] = await tx.insert(mediaFolders).values({ name: folderName, slug: folderSlug, createdBy: u.id }).returning({ id: mediaFolders.id });
+        return { id: created.id, created: true };
+      });
+      destinationFolderId = destination.id;
+      if (destination.created) await audit(db, { userId: u.id, ...m }, "media.folder.create", "media_folder", destination.id, null, { name: folderName, slug: folderSlug, automatic: true });
+    }
     const storagePath=newMediaPath(filename);await writeMediaFile(storagePath,buf);
-    let row:{id:number}|undefined;try{[row]=await db.insert(media).values({ filename, alt: str(form?.get("alt"), 190) || null, folderId, mime: real, size: buf.length, storagePath, uploadedBy: u.id, isPublic: kind === "editor" || kind === "library" || kind === "profile" }).returning({ id: media.id })}catch(error){await removeMediaFile(storagePath);throw error}if(!row){await removeMediaFile(storagePath);throw new HttpError(500,"ثبت فایل انجام نشد")}
+    let row:{id:number}|undefined;try{[row]=await db.insert(media).values({ filename, alt: str(form?.get("alt"), 190) || null, folderId: destinationFolderId, mime: real, size: buf.length, storagePath, uploadedBy: u.id, isPublic: kind === "editor" || kind === "library" || kind === "profile" }).returning({ id: media.id })}catch(error){await removeMediaFile(storagePath);throw error}if(!row){await removeMediaFile(storagePath);throw new HttpError(500,"ثبت فایل انجام نشد")}
     await audit(db, { userId: u.id, ...m }, "media.upload", "media", row.id, null, { filename, size: buf.length, kind });
-    return { id: row.id, url: `/api/media/${row.id}`, mime: real };
+    return { id: row.id, url: `/api/media/${row.id}`, mime: real, folderId: destinationFolderId };
   } },
 
   { method: "POST", pattern: "orders", handler: async (req, _p, m) => {

@@ -125,32 +125,46 @@ export function JsonForm({ url, method = "POST", fields, submit = "ثبت", extr
 }
 
 /* ---------------- uploader ---------------- */
-export function ImageUploader({ value, onChange, max = 8, allowLibrary = true }: { value: number[]; onChange: (ids: number[]) => void; max?: number; allowLibrary?: boolean }) {
+export function ImageUploader({ value, onChange, max = 8, allowLibrary = true, folderSlug = "custom" }: { value: number[]; onChange: (ids: number[]) => void; max?: number; allowLibrary?: boolean; folderSlug?: "blog" | "products" | "custom" }) {
   const [busy, setBusy] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [libraryBusy, setLibraryBusy] = useState(false);
   const [libraryUploadBusy, setLibraryUploadBusy] = useState(false);
   const [libraryEdit, setLibraryEdit] = useState<{ id: number; filename: string; rotation: number; ratio: "original" | "1:1" | "4:3" | "16:9" } | null>(null);
   const [libraryEditBusy, setLibraryEditBusy] = useState(false);
+  const [libraryFolders, setLibraryFolders] = useState<{ id: number; name: string; slug: string; parentId: number | null }[]>([]);
+  const [destinationFolder, setDestinationFolder] = useState("default");
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const [library, setLibrary] = useState<{ id: number; filename: string; alt: string | null; mime?: string; size?: number }[]>([]);
   const openLibrary = async () => {
     setLibraryOpen(true); setLibraryBusy(true);
-    try { setLibrary(await api<{ id: number; filename: string; alt: string | null }[]>("/api/media/library?type=image", "GET")); }
+    try {
+      const [files, folders] = await Promise.all([
+        api<{ id: number; filename: string; alt: string | null }[]>("/api/media/library?type=image", "GET"),
+        api<{ id: number; name: string; slug: string; parentId: number | null }[]>("/api/media/folders", "GET"),
+      ]);
+      setLibrary(files); setLibraryFolders(folders); setDestinationFolder("default");
+    }
     catch (e) { toast((e as Error).message, false); setLibraryOpen(false); }
     finally { setLibraryBusy(false); }
   };
+  function setUploadDestination(form: FormData) {
+    if (destinationFolder === "default") form.append("folderSlug", folderSlug);
+    else if (destinationFolder === "none") form.append("folderSlug", "none");
+    else form.append("folderId", destinationFolder);
+  }
   async function uploadToLibrary(files: FileList | null) {
     if (!files?.length) return;
     setLibraryUploadBusy(true);
     try {
       for (const file of Array.from(files)) {
-        const fd = new FormData(); fd.append("file", file); fd.append("kind", "editor");
+        const fd = new FormData(); fd.append("file", file); fd.append("kind", "editor"); setUploadDestination(fd);
         const response = await fetch("/api/media", { method: "POST", headers: { "x-csrf": "1" }, body: fd });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error ?? "خطا در بارگذاری فایل");
       }
       setLibrary(await api<{ id: number; filename: string; alt: string | null; mime?: string; size?: number }[]>("/api/media/library?type=image", "GET"));
+      setLibraryFolders(await api<{ id: number; name: string; slug: string; parentId: number | null }[]>("/api/media/folders", "GET"));
       toast("تصویر در مرکز فایل بارگذاری شد");
     } catch (error) { toast((error as Error).message, false); }
     finally { setLibraryUploadBusy(false); if (libraryInputRef.current) libraryInputRef.current.value = ""; }
@@ -172,10 +186,11 @@ export function ImageUploader({ value, onChange, max = 8, allowLibrary = true }:
       context.translate(canvas.width / 2, canvas.height / 2); context.rotate(radians); context.drawImage(image, -image.width / 2, -image.height / 2);
       const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(value => value ? resolve(value) : reject(new Error("ساخت تصویر ویرایش‌شده ناموفق بود")), "image/webp", 0.9));
       const filename = `${libraryEdit.filename.replace(/\.[^.]+$/, "")}-edited.webp`;
-      const form = new FormData(); form.append("file", new File([blob], filename, { type: "image/webp" })); form.append("kind", "editor");
+      const form = new FormData(); form.append("file", new File([blob], filename, { type: "image/webp" })); form.append("kind", "editor"); setUploadDestination(form);
       const response = await fetch("/api/media", { method: "POST", headers: { "x-csrf": "1" }, body: form }); const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "ذخیره تصویر ویرایش‌شده ناموفق بود");
       setLibrary(await api<{ id: number; filename: string; alt: string | null; mime?: string; size?: number }[]>("/api/media/library?type=image", "GET"));
+      setLibraryFolders(await api<{ id: number; name: string; slug: string; parentId: number | null }[]>("/api/media/folders", "GET"));
       onChange([...value, result.id]); setLibraryEdit(null); toast("نسخه ویرایش‌شده در مرکز فایل ذخیره و به گالری اضافه شد");
     } catch (error) { toast((error as Error).message, false); }
     finally { setLibraryEditBusy(false); }
@@ -187,6 +202,7 @@ export function ImageUploader({ value, onChange, max = 8, allowLibrary = true }:
     for (const f of Array.from(files).slice(0, max - ids.length)) {
       const fd = new FormData();
       fd.append("file", f);
+      fd.append("folderSlug", folderSlug);
       const r = await fetch("/api/media", { method: "POST", body: fd, headers: { "x-csrf": "1" } });
       const j = await r.json();
       if (r.ok) ids.push(j.id); else toast(j.error ?? "خطای آپلود", false);
@@ -215,7 +231,7 @@ export function ImageUploader({ value, onChange, max = 8, allowLibrary = true }:
       </div>
       {allowLibrary && value.length < max && <button type="button" onClick={openLibrary} className="btn-ghost"><Images className="h-4 w-4" />انتخاب از مرکز فایل</button>}
       <p className="text-xs text-slate-400">فقط آپلود فایل از دستگاه شما — JPG، PNG و WebP تا ۳ مگابایت. ستاره = تصویر اصلی.</p>
-      {allowLibrary && libraryOpen && <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !libraryEditBusy) setLibraryOpen(false); }}><div className="max-h-[92dvh] w-full max-w-5xl overflow-y-auto rounded-t-3xl bg-white p-4 shadow-2xl sm:rounded-3xl sm:p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><b className="block">انتخاب از مرکز فایل</b><small className="text-slate-500">تصویر موجود را انتخاب یا ویرایش کنید، یا فایل تازه بارگذاری کنید.</small></div><div className="flex items-center gap-2"><label className="btn-primary cursor-pointer">{libraryUploadBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}بارگذاری تصویر<input ref={libraryInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={e => uploadToLibrary(e.target.files)} /></label><button type="button" onClick={() => setLibraryOpen(false)} className="rounded-full p-2 hover:bg-slate-100"><X className="h-5 w-5" /></button></div></div>{libraryEdit ? <div className="mx-auto grid max-w-3xl gap-4 md:grid-cols-[minmax(0,1fr)_240px]"><div className="grid min-h-56 place-items-center overflow-hidden rounded-2xl bg-slate-100 p-3"><img src={`/api/media/${libraryEdit.id}`} alt={libraryEdit.filename} className="max-h-[48vh] max-w-full object-cover" style={{ transform: `rotate(${libraryEdit.rotation}deg)`, aspectRatio: libraryEdit.ratio === "original" ? undefined : libraryEdit.ratio === "1:1" ? "1 / 1" : libraryEdit.ratio === "4:3" ? "4 / 3" : "16 / 9" }} /></div><div className="space-y-3"><b className="block">ویرایش تصویر</b><label className="block text-sm">نسبت برش<select className="input mt-1" value={libraryEdit.ratio} onChange={e => setLibraryEdit({...libraryEdit,ratio:e.target.value as typeof libraryEdit.ratio})}><option value="original">نسبت اصلی</option><option value="1:1">مربع ۱:۱</option><option value="4:3">افقی ۴:۳</option><option value="16:9">عریض ۱۶:۹</option></select></label><div className="flex gap-2"><button type="button" className="btn-ghost flex-1" onClick={() => setLibraryEdit({...libraryEdit,rotation:(libraryEdit.rotation+270)%360})}><RotateCcw className="size-4"/>چرخش چپ</button><button type="button" className="btn-ghost flex-1" onClick={() => setLibraryEdit({...libraryEdit,rotation:(libraryEdit.rotation+90)%360})}><RotateCw className="size-4"/>چرخش راست</button></div><p className="text-xs leading-6 text-slate-500">نسخه ویرایش‌شده به‌صورت فایل جدید ذخیره می‌شود و تصویر اصلی دست‌نخورده می‌ماند.</p><div className="flex gap-2"><button type="button" className="btn-ghost flex-1" onClick={() => setLibraryEdit(null)}>بازگشت</button><button type="button" disabled={libraryEditBusy || value.length >= max} className="btn-primary flex-1" onClick={() => void saveLibraryEdit()}>{libraryEditBusy?<Loader2 className="size-4 animate-spin"/>:<Check className="size-4"/>}ذخیره و انتخاب</button></div></div></div> : libraryBusy ? <div className="grid min-h-40 place-items-center"><Loader2 className="h-6 w-6 animate-spin text-emerald-600" /></div> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">{library.map((file) => <div key={file.id} className={`overflow-hidden rounded-xl border ${value.includes(file.id) ? "border-emerald-500 ring-2 ring-emerald-100" : "border-slate-200"}`}><button type="button" disabled={value.includes(file.id)||value.length>=max} onClick={() => { if (!value.includes(file.id) && value.length < max) onChange([...value, file.id]); }} className="block w-full text-right disabled:cursor-default"><img src={`/api/media/${file.id}`} alt={file.alt ?? file.filename} className="aspect-square w-full bg-slate-100 object-cover" loading="lazy" /><span className="block truncate p-2 text-[11px]">{file.filename}</span></button><div className="flex justify-end border-t p-1"><button type="button" disabled={value.length >= max} onClick={() => setLibraryEdit({id:file.id,filename:file.filename,rotation:0,ratio:"original"})} className="btn-ghost px-2 py-1 text-xs disabled:opacity-50"><Pencil className="size-3"/>ویرایش تصویر</button></div></div>)}</div>}{library.length===0&&!libraryBusy&&<p className="py-10 text-center text-sm text-slate-500">تصویری در مرکز فایل نیست؛ با دکمهٔ «بارگذاری تصویر» فایل اضافه کنید.</p>}</div></div>}
+      {allowLibrary && libraryOpen && <div className="fixed inset-0 z-[110] flex items-end justify-center bg-slate-950/55 sm:items-center sm:p-4" onMouseDown={(e) => { if (e.target === e.currentTarget && !libraryEditBusy) setLibraryOpen(false); }}><div className="max-h-[92dvh] w-full max-w-5xl overflow-y-auto rounded-t-3xl bg-white p-4 shadow-2xl sm:rounded-3xl sm:p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><div><b className="block">انتخاب از مرکز فایل</b><small className="text-slate-500">تصویر موجود را انتخاب یا ویرایش کنید، یا فایل تازه بارگذاری کنید.</small></div><div className="flex items-center gap-2"><label className="btn-primary cursor-pointer">{libraryUploadBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}بارگذاری تصویر<input ref={libraryInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={e => uploadToLibrary(e.target.files)} /></label><button type="button" onClick={() => setLibraryOpen(false)} className="rounded-full p-2 hover:bg-slate-100"><X className="h-5 w-5" /></button></div></div><label className="mb-4 block max-w-sm text-sm">پوشه مقصد فایل‌های تازه و نسخه ویرایش‌شده<select className="input mt-1" value={destinationFolder} onChange={e => setDestinationFolder(e.target.value)}><option value="default">پوشه پیش‌فرض این بخش ({folderSlug === "blog" ? "وبلاگ" : folderSlug === "products" ? "محصولات" : "سفارشی"})</option>{libraryFolders.filter(folder => folder.slug !== folderSlug).map(folder => <option key={folder.id} value={String(folder.id)}>{folder.name}</option>)}</select></label>{libraryEdit ? <div className="mx-auto grid max-w-3xl gap-4 md:grid-cols-[minmax(0,1fr)_240px]"><div className="grid min-h-56 place-items-center overflow-hidden rounded-2xl bg-slate-100 p-3"><img src={`/api/media/${libraryEdit.id}`} alt={libraryEdit.filename} className="max-h-[48vh] max-w-full object-cover" style={{ transform: `rotate(${libraryEdit.rotation}deg)`, aspectRatio: libraryEdit.ratio === "original" ? undefined : libraryEdit.ratio === "1:1" ? "1 / 1" : libraryEdit.ratio === "4:3" ? "4 / 3" : "16 / 9" }} /></div><div className="space-y-3"><b className="block">ویرایش تصویر</b><label className="block text-sm">نسبت برش<select className="input mt-1" value={libraryEdit.ratio} onChange={e => setLibraryEdit({...libraryEdit,ratio:e.target.value as typeof libraryEdit.ratio})}><option value="original">نسبت اصلی</option><option value="1:1">مربع ۱:۱</option><option value="4:3">افقی ۴:۳</option><option value="16:9">عریض ۱۶:۹</option></select></label><div className="flex gap-2"><button type="button" className="btn-ghost flex-1" onClick={() => setLibraryEdit({...libraryEdit,rotation:(libraryEdit.rotation+270)%360})}><RotateCcw className="size-4"/>چرخش چپ</button><button type="button" className="btn-ghost flex-1" onClick={() => setLibraryEdit({...libraryEdit,rotation:(libraryEdit.rotation+90)%360})}><RotateCw className="size-4"/>چرخش راست</button></div><p className="text-xs leading-6 text-slate-500">نسخه ویرایش‌شده به‌صورت فایل جدید ذخیره می‌شود و تصویر اصلی دست‌نخورده می‌ماند.</p><div className="flex gap-2"><button type="button" className="btn-ghost flex-1" onClick={() => setLibraryEdit(null)}>بازگشت</button><button type="button" disabled={libraryEditBusy || value.length >= max} className="btn-primary flex-1" onClick={() => void saveLibraryEdit()}>{libraryEditBusy?<Loader2 className="size-4 animate-spin"/>:<Check className="size-4"/>}ذخیره و انتخاب</button></div></div></div> : libraryBusy ? <div className="grid min-h-40 place-items-center"><Loader2 className="h-6 w-6 animate-spin text-emerald-600" /></div> : <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:grid-cols-5">{library.map((file) => <div key={file.id} className={`overflow-hidden rounded-xl border ${value.includes(file.id) ? "border-emerald-500 ring-2 ring-emerald-100" : "border-slate-200"}`}><button type="button" disabled={value.includes(file.id)||value.length>=max} onClick={() => { if (!value.includes(file.id) && value.length < max) onChange([...value, file.id]); }} className="block w-full text-right disabled:cursor-default"><img src={`/api/media/${file.id}`} alt={file.alt ?? file.filename} className="aspect-square w-full bg-slate-100 object-cover" loading="lazy" /><span className="block truncate p-2 text-[11px]">{file.filename}</span></button><div className="flex justify-end border-t p-1"><button type="button" disabled={value.length >= max} onClick={() => setLibraryEdit({id:file.id,filename:file.filename,rotation:0,ratio:"original"})} className="btn-ghost px-2 py-1 text-xs disabled:opacity-50"><Pencil className="size-3"/>ویرایش تصویر</button></div></div>)}</div>}{library.length===0&&!libraryBusy&&<p className="py-10 text-center text-sm text-slate-500">تصویری در مرکز فایل نیست؛ با دکمهٔ «بارگذاری تصویر» فایل اضافه کنید.</p>}</div></div>}
     </div>
   );
 }
