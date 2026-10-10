@@ -1277,6 +1277,7 @@ export const discountUsages = pgTable("discount_usages", {
 export const incompleteCarts = pgTable("incomplete_carts", {
   id: serial("id").primaryKey(),
   cartKey: text("cart_key").notNull().unique(),
+  analyticsSessionId: text("analytics_session_id"),
   customerId: integer("customer_id"),
   customerName: text("customer_name").notNull().default("مشتری"),
   phone: text("phone").notNull(),
@@ -1289,7 +1290,7 @@ export const incompleteCarts = pgTable("incomplete_carts", {
   lastSmsAt: timestamp("last_sms_at", { withTimezone: true }),
   createdAt: created(),
   updatedAt: updated(),
-}, (t) => [index("incomplete_carts_status_updated").on(t.status, t.updatedAt), index("incomplete_carts_customer").on(t.customerId)]);
+}, (t) => [index("incomplete_carts_status_updated").on(t.status, t.updatedAt), index("incomplete_carts_customer").on(t.customerId), index("incomplete_carts_analytics_session").on(t.analyticsSessionId)]);
 
 export const festivals = pgTable("festivals", {
   id: serial("id").primaryKey(),

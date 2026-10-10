@@ -7,6 +7,7 @@ import { audit } from "../audit";
 import { postJournal } from "../accounting";
 import { HttpError, int, slugify, str } from "../util";
 import { SMS_EVENTS, extractVars, retryLog, sendSms, sendTemplateTo } from "../sms";
+import { analyticsSessionFromCookie } from "../analytics";
 import { dateOnly } from "../commerce-common";
 import { body, idParam, type Route } from "./router";
 
@@ -59,8 +60,9 @@ export const extraRoutes: Route[] = [
       const row = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
       return { productId: int(row.productId, 1), variantId: row.variantId ? int(row.variantId, 1) : null, offerId: row.offerId ? int(row.offerId, 1) : null, qty: int(row.qty, 1, 100), title: str(row.title, 160) };
     });
-    await db.insert(incompleteCarts).values({ cartKey: `user-${u.id}-${recoveryKey}`, customerId: u.id, customerName: u.name, phone: u.phone, items, reason: "مشتری پس از افزودن کالا سبد خرید را تکمیل نکرد", status: "open", updatedAt: new Date() })
-      .onConflictDoUpdate({ target: incompleteCarts.cartKey, set: { customerId: u.id, customerName: u.name, phone: u.phone, items, status: sql`CASE WHEN ${incompleteCarts.status} IN ('checkout_started','completed') THEN ${incompleteCarts.status} ELSE 'open' END`, updatedAt: new Date() } });
+    const analyticsSessionId = analyticsSessionFromCookie(req.headers.get("cookie"));
+    await db.insert(incompleteCarts).values({ cartKey: `user-${u.id}-${recoveryKey}`, analyticsSessionId, customerId: u.id, customerName: u.name, phone: u.phone, items, reason: "مشتری پس از افزودن کالا سبد خرید را تکمیل نکرد", status: "open", updatedAt: new Date() })
+      .onConflictDoUpdate({ target: incompleteCarts.cartKey, set: { analyticsSessionId, customerId: u.id, customerName: u.name, phone: u.phone, items, status: sql`CASE WHEN ${incompleteCarts.status} IN ('checkout_started','completed') THEN ${incompleteCarts.status} ELSE 'open' END`, updatedAt: new Date() } });
     return { ok: true };
   } },
   { method: "POST", pattern: "admin/incomplete-carts/:id", handler: async (req, p, m) => {

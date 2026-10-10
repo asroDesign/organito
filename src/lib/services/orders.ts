@@ -284,8 +284,10 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
     ]);
     const affiliateUserId = affiliateConfig?.enabled && affiliate?.userId !== ctx.userId ? affiliate?.userId ?? null : null;
     const cartKey = `user-${ctx.userId}-${extra.recoveryKey || idemKey.replace(/[^\w-]/g, "-")}`;
-    const [recovery] = await tx.insert(incompleteCarts).values({ cartKey, customerId: ctx.userId, customerName: buyer?.name ?? "مشتری", phone: buyer?.phone ?? address.phone, items: q.lines.map((line) => ({ productId: line.productId, variantId: line.variantId, offerId: line.offerId, qty: line.qty, selectedOptions: line.variantTitle, title: line.variantTitle ? `${line.title} — ${line.variantTitle}` : line.title })), reason: "سفارش ثبت شده اما پرداخت تکمیل نشده است", status: "checkout_started", updatedAt: new Date() })
-      .onConflictDoUpdate({ target: incompleteCarts.cartKey, set: { customerId: ctx.userId, customerName: buyer?.name ?? "مشتری", phone: buyer?.phone ?? address.phone, items: q.lines.map((line) => ({ productId: line.productId, variantId: line.variantId, offerId: line.offerId, qty: line.qty, selectedOptions: line.variantTitle, title: line.variantTitle ? `${line.title} — ${line.variantTitle}` : line.title })), reason: "سفارش ثبت شده اما پرداخت تکمیل نشده است", status: "checkout_started", updatedAt: new Date() } }).returning({ id: incompleteCarts.id });
+    const analyticsSessionId = extra.analyticsSessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(extra.analyticsSessionId) ? extra.analyticsSessionId : null;
+    const recoveryItems = q.lines.map((line) => ({ productId: line.productId, variantId: line.variantId, offerId: line.offerId, qty: line.qty, selectedOptions: line.variantTitle, title: line.variantTitle ? `${line.title} — ${line.variantTitle}` : line.title }));
+    const [recovery] = await tx.insert(incompleteCarts).values({ cartKey, analyticsSessionId, customerId: ctx.userId, customerName: buyer?.name ?? "مشتری", phone: buyer?.phone ?? address.phone, items: recoveryItems, reason: "سفارش ثبت شده اما پرداخت تکمیل نشده است", status: "checkout_started", updatedAt: new Date() })
+      .onConflictDoUpdate({ target: incompleteCarts.cartKey, set: { analyticsSessionId, customerId: ctx.userId, customerName: buyer?.name ?? "مشتری", phone: buyer?.phone ?? address.phone, items: recoveryItems, reason: "سفارش ثبت شده اما پرداخت تکمیل نشده است", status: "checkout_started", updatedAt: new Date() } }).returning({ id: incompleteCarts.id });
     const [order] = await tx.insert(orders).values({
       number: genNumber("SB"), customerId: ctx.userId, status: "pending_payment", paymentStatus: "unpaid",
       recoveryCartId: recovery.id,
@@ -295,7 +297,7 @@ export async function placeOrder(ctx: Ctx & { userId: number }, items: CartInput
       fulfillmentType: extra.fulfillmentType === "pickup" ? "pickup" : "delivery", pickupCenterId: pickup?.id ?? null, pickupCenterName: pickup?.name ?? null, pickupDate: pickup ? extra.pickupDate! : null, pickupTime: pickup ? extra.pickupTime! : null, pickupCode: pickup ? String(randomInt(100000, 1000000)) : null, pickupStatus: pickup ? "awaiting" : null,
       officialInvoiceType: extra.officialInvoiceType ?? null, officialInvoiceDetails: extra.officialInvoiceDetails ?? null,
       attribution: extra.attribution ?? null,
-      analyticsSessionId: extra.analyticsSessionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(extra.analyticsSessionId) ? extra.analyticsSessionId : null,
+      analyticsSessionId,
       affiliateUserId,
     }).returning();
     if(q.creditAmount){const [customer]=await tx.select({phone:users.phone}).from(users).where(eq(users.id,ctx.userId));await reserveCredit(tx,customer.phone,q.creditAmount,q.giftCardId,order.id,ctx.userId);}
