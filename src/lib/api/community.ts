@@ -1,7 +1,7 @@
 import { createHash, randomInt, timingSafeEqual } from "crypto";
-import { and, desc, eq, gt, ilike, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { categories, media, orderItems, orders, otpCodes, productAnswers, productQuestions, products, reviews, reviewVotes, sellerOffers, sellers, settings, users, wallets, detailAccounts } from "@/db/schema";
+import { categories, loyaltyPointEntries, media, orderItems, orders, otpCodes, productAnswers, productQuestions, products, reviews, reviewVotes, sellerOffers, sellerShipments, sellers, settings, users, wallets, detailAccounts } from "@/db/schema";
 import { createSession, hashPassword, rateLimit, requireApi } from "../auth";
 import { audit, notify } from "../audit";
 import { getSettings } from "../settings";
@@ -46,10 +46,29 @@ export const communityRoutes: Route[] = [
     const status = s.reviewAutoApprove ? "approved" : "pending";
     const [exists] = await db.select({ id: reviews.id }).from(reviews).where(and(eq(reviews.userId, u.id), eq(reviews.productId, pr.id)));
     if (exists) throw new HttpError(409, "شما قبلاً برای این محصول نظر ثبت کرده‌اید");
-    const [r] = await db.insert(reviews).values({ productId: pr.id, userId: u.id, rating, title: str(b.title, 120) || null, body: text, pros: lines(b.pros), cons: lines(b.cons), mediaIds, recommend: b.recommend === true ? true : b.recommend === false ? false : null, verifiedPurchase: !!bought, status }).returning();
+    const reviewReward = Math.max(0, Math.min(1_000_000, Number(s.reviewRewardPoints) || 0));
+    const result = await db.transaction(async (tx) => {
+      const [r] = await tx.insert(reviews).values({ productId: pr.id, userId: u.id, rating, title: str(b.title, 120) || null, body: text, pros: lines(b.pros), cons: lines(b.cons), mediaIds, recommend: b.recommend === true ? true : b.recommend === false ? false : null, verifiedPurchase: !!bought, status }).returning();
+      let awardedPoints = 0;
+      if (reviewReward > 0) {
+        const [deliveredPurchase] = await tx.select({ orderId: orders.id }).from(orderItems)
+          .innerJoin(orders, eq(orders.id, orderItems.orderId))
+          .innerJoin(sellerShipments, eq(sellerShipments.id, orderItems.shipmentId))
+          .where(and(eq(orderItems.productId, pr.id), eq(orders.customerId, u.id), eq(orders.paymentStatus, "paid"), eq(sellerShipments.status, "delivered"))).limit(1);
+        if (deliveredPurchase) {
+          const [entry] = await tx.insert(loyaltyPointEntries).values({ userId: u.id, kind: "review", points: reviewReward, orderId: deliveredPurchase.orderId, reference: `review:${r.id}`, description: `امتیاز ثبت دیدگاه برای «${pr.nameFa}»` }).onConflictDoNothing().returning({ id: loyaltyPointEntries.id });
+          if (entry) {
+            await tx.update(users).set({ marketingPoints: sql`${users.marketingPoints}+${reviewReward}` }).where(eq(users.id, u.id));
+            awardedPoints = reviewReward;
+          }
+        }
+      }
+      return { review: r, awardedPoints };
+    });
+    const r = result.review;
     if (status === "approved" && mediaIds.length) await db.update(media).set({ isPublic: true }).where(inArray(media.id, mediaIds));
     await audit(db, { userId: u.id, ...m }, "review.create", "review", r.id, null, { productId: pr.id, rating });
-    return { id: r.id, status };
+    return { id: r.id, status, awardedPoints: result.awardedPoints };
   } },
   { method: "POST", pattern: "reviews/:id/vote", handler: async (req, p) => {
     const u = await requireApi();

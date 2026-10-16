@@ -10,6 +10,7 @@ import { activeCarriers, activeFestivals, activeVariantDiscount, carrierCost, ev
 import { audit, notify } from "../audit";
 import { postJournal, reverseJournal, type Line } from "../accounting";
 import { getSettings } from "../settings";
+import { siteBase } from "../seo";
 import { snapPayCancel } from "../snappay";
 import { sendSms } from "../sms";
 import { HttpError, genNumber } from "../util";
@@ -479,6 +480,24 @@ async function refreshOrderStatus(tx: DB, ctx: Ctx, orderId: number) {
 
 const NEXT: Record<string, string[]> = { pending: ["preparing", "cancelled"], preparing: ["ready"], ready: ["shipped"], shipped: ["delivered", "returned"] };
 
+async function sendReviewRequests(customerId: number, orderNumber: string, shipmentIds: number[]) {
+  if (!shipmentIds.length) return;
+  const [customer] = await db.select({ name: users.name, phone: users.phone }).from(users).where(eq(users.id, customerId));
+  if (!customer?.phone) return;
+  const items = await db.select({ productId: products.id, name: products.nameFa, slug: products.slug })
+    .from(orderItems).innerJoin(products, eq(products.id, orderItems.productId))
+    .where(inArray(orderItems.shipmentId, shipmentIds));
+  const uniqueProducts = [...new Map(items.map((item) => [item.productId, item])).values()];
+  if (!uniqueProducts.length) return;
+  const settings = await getSettings();
+  let base: URL;
+  try { base = siteBase(settings.siteUrl, undefined, true); } catch { return; }
+  for (const product of uniqueProducts) {
+    const link = new URL(`/products/${encodeURIComponent(product.slug)}#reviews`, base).toString();
+    void sendSms("review_request", customer.phone, { name: customer.name || "مشتری", order: orderNumber, product: product.name, link }).catch(() => undefined);
+  }
+}
+
 export async function updateShipment(
   ctx: Ctx & { userId: number }, shipmentId: number,
   input: { status: string; carrier?: string; carrierId?: number | null; trackingNumber?: string; packageCount?: number; notes?: string; shippedAt?: Date },
@@ -515,13 +534,14 @@ export async function updateShipment(
     await tx.insert(orderHistory).values({ orderId: o.id, status: `shipment:${input.status}`, note: `مرسوله #${sh.id}${input.trackingNumber ? ` - رهگیری ${input.trackingNumber}` : ""}`, userId: ctx.userId });
     await audit(tx, ctx, "shipment.update", "shipment", sh.id, { status: sh.status }, patch);
     const st = await refreshOrderStatus(tx, ctx, o.id);
-    return { orderStatus: st, customerId: o.customerId, number: o.number };
+    return { orderStatus: st, customerId: o.customerId, number: o.number, reviewShipmentIds: input.status === "delivered" ? [sh.id] : [] };
   });
   const evt = smsEvt as { event: string; orderId: number; tracking?: string } | null;
   if (evt) {
     const [u] = await db.select().from(users).where(eq(users.id, res.customerId));
     if (u) void sendSms(evt.event, u.phone, { order: res.number, tracking: evt.tracking ?? "" });
   }
+  if (res.reviewShipmentIds.length) void sendReviewRequests(res.customerId, res.number, res.reviewShipmentIds).catch(() => undefined);
   return res;
 }
 
@@ -657,10 +677,11 @@ export async function confirmReceipt(ctx: Ctx & { userId: number }, orderId: num
     await releaseAffiliateEarnings(tx, o.id);
     await tx.insert(orderHistory).values({ orderId: o.id, status: "completed", note: "دریافت کامل سفارش توسط مشتری تأیید شد", userId: ctx.userId });
     await audit(tx, ctx, "order.confirm_receipt", "order", o.id, { status: o.status }, { status: "completed" });
-    return o;
+    return { order: o, deliveredShipmentIds: shs.filter((s) => s.status === "shipped").map((s) => s.id) };
   });
-  const [u] = await db.select().from(users).where(eq(users.id, res.customerId));
-  if (u) void sendSms("order_delivered", u.phone, { order: res.number });
+  const [u] = await db.select().from(users).where(eq(users.id, res.order.customerId));
+  if (u) void sendSms("order_delivered", u.phone, { order: res.order.number });
+  if (res.deliveredShipmentIds.length) void sendReviewRequests(res.order.customerId, res.order.number, res.deliveredShipmentIds).catch(() => undefined);
 }
 
 export async function cancelOrder(ctx: Ctx & { userId: number }, orderId: number, scope: { staff: boolean }, reason: string) {

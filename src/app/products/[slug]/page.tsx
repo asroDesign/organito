@@ -8,7 +8,7 @@ import { brands, categories, productAnswers, productImages, productQuestions, pr
 import { getUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { activeFestivals, activeVariantDiscounts, festivalFor, safeDiscountPercent } from "@/lib/marketing";
-import { quantityTierPrice } from "@/lib/quantity-pricing";
+import { applicableQuantityTier, quantityTierPrice } from "@/lib/quantity-pricing";
 import { listShopProducts } from "@/lib/queries";
 import { stripHtml, toSafeHtml } from "@/lib/html";
 import { RichContent } from "@/components/RichContent";
@@ -24,7 +24,7 @@ import { ProductCompareButton } from "@/components/ProductCompareButton";
 import { ProductAlerts } from "@/components/ProductAlerts";
 import { ProductCard } from "@/components/ProductCard";
 import { AnswerForm, QuestionForm, ReviewForm, ReviewImages, RoleBadge, Stars, VoteButtons } from "@/components/Community";
-import { seoMetadata } from "@/lib/seo";
+import { seoMetadata, siteBase } from "@/lib/seo";
 
 async function load(slug: string) {
   const [row] = await db.select({ p: products, cat: categories }).from(products).leftJoin(categories, eq(categories.id, products.categoryId))
@@ -97,11 +97,58 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const specGroups = Array.from(new Set(visibleSpecs.map((sp) => sp.group || "مشخصات اصلی")));
   const inquiryProduct = p.inquiryOnly || variants.some((variant) => variant.inquiryOnly);
   const nav: [string, string, typeof FileText][] = [["desc", "معرفی محصول", FileText], ["review", "بررسی تخصصی", Microscope], ["specs", "مشخصات و شناسنامه", ListChecks], ["reviews", `دیدگاه‌ها (${faNum(approved.length)})`, MessageSquareText], ["qa", `پرسش و پاسخ (${faNum(qs.filter((x) => x.q.status === "approved").length)})`, MessageCircleQuestion], ...(mv && offerViews.length && !inquiryProduct ? [["sellers", "فروشندگان", Store] as [string, string, typeof FileText]] : [])];
-  const jsonLd = { "@context": "https://schema.org", "@type": "Product", name: p.nameFa, sku: p.sku, brand: { "@type": "Brand", name: p.brand }, description: stripHtml(p.shortDesc), ...(approved.length ? { aggregateRating: { "@type": "AggregateRating", ratingValue: avg.toFixed(1), reviewCount: approved.length } } : {}) };
+  const currencyKey = s.currency.trim().toLowerCase();
+  const currency = ["تومان", "تومان ایران", "irt"].includes(currencyKey) ? { code: "IRR", multiplier: 10 }
+    : ["ریال", "ریال ایران", "irr"].includes(currencyKey) ? { code: "IRR", multiplier: 1 }
+      : /^[a-z]{3}$/i.test(s.currency.trim()) ? { code: s.currency.trim().toUpperCase(), multiplier: 1 }
+        : null;
+  const jsonBase = siteBase(s.siteUrl);
+  const productUrl = new URL(`/products/${encodeURIComponent(p.slug)}`, jsonBase).toString();
+  const schemaOffers: { price: number; available: boolean; seller?: string }[] = [];
+  if (currency && !p.inquiryOnly) {
+    if (p.source === "central" && variants.length) {
+      for (const variant of variants.filter((item) => item.isSellable && !item.inquiryOnly)) {
+        const tier = applicableQuantityTier(variant.quantityPriceTiers ?? [], 1);
+        const listPrice = quantityTierPrice(variant.price, tier);
+        const discount = variantPromotions[variant.id]?.pct ?? baseFestival?.pct ?? 0;
+        const price = listPrice - Math.round(listPrice * discount / 100);
+        if (price > 0) schemaOffers.push({ price, available: variant.onHand - variant.reserved > 0 || p.allowBackorder });
+      }
+    } else if (p.source === "central" && !(p.options?.length)) {
+      const price = p.basePrice - Math.round(p.basePrice * (baseFestival?.pct ?? 0) / 100);
+      if (price > 0) schemaOffers.push({ price, available: p.onHand > p.reserved || p.allowBackorder });
+    }
+    if (!p.inquiryOnly && mv) {
+      for (const offer of offerViews) {
+        const price = offer.price - Math.round(offer.price * (baseFestival?.pct ?? 0) / 100);
+        if (price > 0) schemaOffers.push({ price, available: offer.available > 0, seller: offer.shopName });
+      }
+    } else if (!schemaOffers.length && !p.inquiryOnly) {
+      const offer = offerViews.find((item) => item.price > 0);
+      if (offer) {
+        const price = offer.price - Math.round(offer.price * (baseFestival?.pct ?? 0) / 100);
+        if (price > 0) schemaOffers.push({ price, available: offer.available > 0, seller: offer.shopName });
+      }
+    }
+  }
+  const offerData = currency && schemaOffers.length > 1
+    ? { "@type": "AggregateOffer", priceCurrency: currency.code, lowPrice: Math.min(...schemaOffers.map((offer) => offer.price)) * currency.multiplier, highPrice: Math.max(...schemaOffers.map((offer) => offer.price)) * currency.multiplier, offerCount: schemaOffers.length, availability: schemaOffers.some((offer) => offer.available) ? "https://schema.org/InStock" : "https://schema.org/OutOfStock", url: productUrl }
+    : currency && schemaOffers.length === 1
+      ? { "@type": "Offer", priceCurrency: currency.code, price: schemaOffers[0].price * currency.multiplier, availability: schemaOffers[0].available ? "https://schema.org/InStock" : "https://schema.org/OutOfStock", itemCondition: "https://schema.org/NewCondition", url: productUrl, ...(schemaOffers[0].seller ? { seller: { "@type": "Organization", name: schemaOffers[0].seller } } : {}) }
+      : undefined;
+  const jsonLd = offerData || approved.length ? {
+    "@context": "https://schema.org", "@type": "Product", name: p.nameFa, sku: p.sku,
+    ...(p.brand ? { brand: { "@type": "Brand", name: p.brand } } : {}),
+    ...(p.shortDesc ? { description: stripHtml(p.shortDesc) } : {}),
+    ...(imgs.length || p.mainImageId ? { image: [...new Set([...(p.mainImageId ? [p.mainImageId] : []), ...imgs.map((image) => image.mediaId)])].map((id) => new URL(`/api/media/${id}`, jsonBase).toString()) } : {}),
+    url: productUrl,
+    ...(offerData ? { offers: offerData } : {}),
+    ...(approved.length ? { aggregateRating: { "@type": "AggregateRating", ratingValue: Number(avg.toFixed(1)), reviewCount: approved.length } } : {}),
+  } : null;
   return (
     <>
       <SiteHeader />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
+      {jsonLd && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />}
       {(p.productFaqs ?? []).length > 0 && <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: p.productFaqs.map((faq) => ({ "@type": "Question", name: faq.question, acceptedAnswer: { "@type": "Answer", text: faq.answer } })) }).replace(/</g, "\\u003c") }} />}
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-6 pb-28 lg:pb-10">
         <nav className="text-xs text-slate-500"><Link href="/">خانه</Link> / <Link href="/shop">فروشگاه</Link>{row.cat && <> / <Link href={`/shop?cat=${row.cat.id}`}>{row.cat.name}</Link></>} / <span className="text-emerald-800">{p.nameFa}</span></nav>

@@ -1,5 +1,5 @@
 import { createInventoryDocument } from "../services/inventory-documents";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { accounts, inventoryParties, inventorySupplierPayments, journalLines, orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications, inventoryWarehouses, inventoryWarehouseStock, productVariants, products, sellerOffers, stockMovements } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword } from "../auth";
@@ -25,6 +25,18 @@ async function requireSeller() {
 }
 
 export const staffRoutes: Route[] = [
+  { method: "GET", pattern: "admin/settings/storefront-products", handler: async (req) => {
+    await requireApi("SETTINGS_MANAGE");
+    const url = new URL(req.url);
+    const ids = [...new Set((url.searchParams.get("ids") ?? "").split(",").map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 50);
+    const q = (url.searchParams.get("q") ?? "").trim().slice(0, 120);
+    const where = [sql`${products.status} in ('active','out_of_stock')`];
+    if (ids.length) where.push(inArray(products.id, ids));
+    else if (q) where.push(sql`(${products.nameFa} ilike ${`%${q}%`} or ${products.sku} ilike ${`%${q}%`} or ${products.partNumber} ilike ${`%${q}%`})`);
+    else where.push(sql`false`);
+    return db.select({ id: products.id, name: products.nameFa, sku: products.sku, imageId: products.mainImageId })
+      .from(products).where(and(...where)).orderBy(products.nameFa).limit(50);
+  } },
   { method: "GET", pattern: "admin/inventory/warehouses", handler: async () => {
     await requireApi("INVENTORY_MANAGE");
     await db.transaction(tx=>ensurePrimaryWarehouse(tx));
@@ -370,6 +382,36 @@ export const staffRoutes: Route[] = [
         if (!Array.isArray(b[k])) throw new HttpError(400, "فهرست نوع محصولات نامعتبر است");
         v = (b[k] as Record<string, unknown>[]).map((x) => ({ name: str(x.name, 80), parameters: Array.isArray(x.parameters) ? [...new Set(x.parameters.map((p) => str(p, 80)).filter(Boolean))].slice(0, 40) : [] })).filter((x) => x.name).slice(0, 80);
         if (new Set((v as {name:string}[]).map((x) => x.name)).size !== (v as {name:string}[]).length) throw new HttpError(400, "نام نوع محصول تکراری است");
+      } else if (k === "specialPopups") {
+        if (!Array.isArray(b[k]) || b[k].length > 10) throw new HttpError(400, "حداکثر ۱۰ پاپ‌آپ پیشنهاد ویژه تعریف کنید");
+        const popups = (b[k] as Record<string, unknown>[]).map((item) => {
+          const id = str(item.id, 40);
+          const title = str(item.title, 120);
+          const productIds = [...new Set((Array.isArray(item.productIds) ? item.productIds : []).map(Number).filter((productId) => Number.isSafeInteger(productId) && productId > 0))];
+          const enabled = item.enabled === true;
+          const delaySeconds = int(item.delaySeconds, 0, 120);
+          const repeatHours = int(item.repeatHours, 1, 720);
+          const imageId = int(item.imageId, 0, 1_000_000_000);
+          if (!/^[A-Za-z0-9_-]{1,40}$/.test(id) || !title || (Array.isArray(item.productIds) && productIds.length !== item.productIds.length) || productIds.length > 50) throw new HttpError(400, "اطلاعات یا محصولات پاپ‌آپ نامعتبر است");
+          if (enabled && productIds.length === 0) throw new HttpError(400, "برای فعال‌سازی هر پاپ‌آپ حداقل یک محصول انتخاب کنید");
+          return { id, enabled, title, body: str(item.body, 600), imageId, productIds, buttonLabel: str(item.buttonLabel, 60) || "مشاهده پیشنهادها", delaySeconds, repeatHours };
+        });
+        if (new Set(popups.map((item) => item.id)).size !== popups.length) throw new HttpError(400, "شناسه پاپ‌آپ تکراری است");
+        const productIds = [...new Set(popups.flatMap((item) => item.productIds))];
+        if (productIds.length) {
+          const rows = await db.select({ id: products.id }).from(products).where(and(inArray(products.id, productIds), sql`${products.status} in ('active','out_of_stock')`));
+          if (rows.length !== productIds.length) throw new HttpError(400, "یکی از محصولات پاپ‌آپ‌ها فعال یا قابل نمایش نیست");
+        }
+        v = popups;
+      } else if (k === "specialPopupProductIds") {
+        if (!Array.isArray(b[k])) throw new HttpError(400, "فهرست محصولات پاپ‌آپ نامعتبر است");
+        const productIds = [...new Set((b[k] as unknown[]).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
+        if (productIds.length > 50 || productIds.length !== (b[k] as unknown[]).length) throw new HttpError(400, "حداکثر ۵۰ محصول معتبر انتخاب کنید");
+        if (productIds.length) {
+          const rows = await db.select({ id: products.id }).from(products).where(and(inArray(products.id, productIds), sql`${products.status} in ('active','out_of_stock')`));
+          if (rows.length !== productIds.length) throw new HttpError(400, "یکی از محصولات انتخاب‌شده فعال یا قابل نمایش نیست");
+        }
+        v = productIds;
       } else if (k === "robotsSitemapEnabled") v = b[k] === true || b[k] === 1 || b[k] === "1" ? 1 : 0;
       else if (k === "robotsUserAgents") {
         const agents = [...new Set(str(b[k], 2000).split(/\r?\n/).map((x) => x.trim()).filter(Boolean))];
@@ -379,7 +421,22 @@ export const staffRoutes: Route[] = [
         const paths = [...new Set(str(b[k], 10000).split(/\r?\n/).map((x) => x.trim()).filter(Boolean))];
         if (paths.length > 100 || paths.some((x) => x.length > 300 || !x.startsWith("/") || x.startsWith("//") || /[?#\s\u0000-\u001f]/.test(x))) throw new HttpError(400, "مسیر robots نامعتبر است؛ هر مسیر باید با / شروع شود و آدرس کامل نباشد");
         v = paths.join("\n");
-      } else v = typeof def === "number" ? int(b[k], 0, 1_000_000_000) : str(b[k], k === "footerScripts" ? 20000 : 1000);
+      } else if (typeof def === "number") v = int(b[k], 0, 1_000_000_000);
+      else {
+        const limits: Record<string, number> = { announcementText: 300, announcementHref: 500, specialPopupTitle: 120, specialPopupBody: 600, specialPopupButtonLabel: 60 };
+        v = str(b[k], limits[k] ?? (k === "footerScripts" ? 20000 : 1000));
+      }
+      if (["announcementEnabled", "specialPopupEnabled"].includes(k) && ![0, 1].includes(Number(v))) throw new HttpError(400, "وضعیت قابلیت نامعتبر است");
+      if (k === "announcementTheme" && !["sunshine", "forest", "rose"].includes(String(v))) throw new HttpError(400, "رنگ نوار اعلان نامعتبر است");
+      if (k === "announcementHref" && v && !(/^\/(?![\\/])[^\u0000-\u001f\\]*$/.test(String(v)) || /^https:\/\//i.test(String(v)))) throw new HttpError(400, "پیوند نوار اعلان باید مسیر داخلی یا HTTPS باشد");
+      if (k === "specialPopupDelaySeconds" && (Number(v) < 0 || Number(v) > 120)) throw new HttpError(400, "تأخیر پاپ‌آپ باید بین صفر تا ۱۲۰ ثانیه باشد");
+      if (k === "specialPopupRepeatHours" && (Number(v) < 1 || Number(v) > 720)) throw new HttpError(400, "فاصله نمایش مجدد باید بین ۱ تا ۷۲۰ ساعت باشد");
+      if (k === "reviewRewardPoints" && (Number(v) < 0 || Number(v) > 1_000_000)) throw new HttpError(400, "امتیاز دیدگاه باید بین صفر تا یک میلیون باشد");
+      if (k === "announcementEnabled" && Number(v) === 1 && !String(b.announcementText ?? "").trim()) throw new HttpError(400, "متن نوار اعلان الزامی است");
+      if (k === "specialPopupEnabled" && Number(v) === 1) {
+        const productIds = Array.isArray(b.specialPopupProductIds) ? b.specialPopupProductIds : [];
+        if (!String(b.specialPopupTitle ?? "").trim() || productIds.length < 1) throw new HttpError(400, "برای فعال‌سازی پاپ‌آپ، عنوان و دست‌کم یک محصول انتخاب کنید");
+      }
       if (["invoiceWidth", "barcodeLabelWidth", "barcodeLabelHeight"].includes(k) && Number(v) < 20) throw new HttpError(400, "ابعاد چاپ باید دست‌کم ۲۰ میلی‌متر باشد");
       if (["invoiceFontSize", "barcodeFontSize"].includes(k) && (Number(v) < 6 || Number(v) > 40)) throw new HttpError(400, "اندازه فونت چاپ باید بین ۶ تا ۴۰ باشد");
       if (k === "invoicePadding" && (Number(v) < 0 || Number(v) > 30)) throw new HttpError(400, "حاشیه داخلی فاکتور باید بین ۰ تا ۳۰ میلی‌متر باشد");

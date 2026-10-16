@@ -7,7 +7,7 @@ import { getSettings } from "./settings";
 import { unstable_cache } from "next/cache";
 import { PUBLIC_CATALOG_TAG } from "./public-cache";
 
-export type ShopFilters = { ids?: number[]; q?: string; cat?: string; auth?: string; brand?: string; stock?: string; sort?: string; min?: string; max?: string; make?: string; page?: string; fest?: string };
+export type ShopFilters = { ids?: number[]; products?: string; q?: string; cat?: string; auth?: string; brand?: string; stock?: string; sort?: string; min?: string; max?: string; make?: string; page?: string; fest?: string };
 
 export async function listShopProducts(f: ShopFilters, limit = 200) {
   const conds: SQL[] = [inArray(products.status, ["active", "out_of_stock"])];

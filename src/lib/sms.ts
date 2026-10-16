@@ -19,6 +19,7 @@ export const SMS_EVENTS: Record<string, { title: string; vars: string[]; body: s
   ready_to_ship: { title: "آماده ارسال", vars: ["order"], body: "مرسوله سفارش {order} آماده ارسال است." },
   order_shipped: { title: "ارسال سفارش", vars: ["order", "tracking"], body: "سفارش {order} ارسال شد. کد رهگیری: {tracking}" },
   order_delivered: { title: "تحویل سفارش", vars: ["order"], body: "سفارش {order} تحویل شد. از خرید شما سپاسگزاریم." },
+  review_request: { title: "درخواست ثبت دیدگاه پس از تحویل", vars: ["name", "order", "product", "link"], body: "{name} عزیز، امیدواریم از خرید {product} راضی باشید. تجربه‌تان را درباره این محصول ثبت کنید: {link}" },
   ticket_reply: { title: "پاسخ تیکت", vars: ["ticket"], body: "به تیکت {ticket} پاسخ داده شد." },
   withdrawal_requested: { title: "ثبت برداشت", vars: ["amount"], body: "درخواست برداشت {amount} تومان ثبت شد." },
   birthday: { title: "تبریک تولد باشگاه مشتریان", vars: ["name", "shop"], body: "{name} عزیز، زادروزتان مبارک! از طرف خانواده {shop} برایتان سلامتی و شادی آرزو می‌کنیم." },

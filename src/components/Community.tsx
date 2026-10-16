@@ -76,7 +76,7 @@ export function ReviewForm({ productId, loggedIn, productName }: { productId: nu
             </div>
             <button disabled={busy || !rating || f.body.trim().length < 10} className="btn-primary w-full !py-3" onClick={async () => {
               setBusy(true);
-              try { const r = await api<{ status: string }>(`/api/products/${productId}/reviews`, "POST", { rating, ...f, pros, cons, recommend, mediaIds: imgs }); toast(r.status === "approved" ? "دیدگاه شما منتشر شد" : "دیدگاه شما ثبت شد و پس از بررسی منتشر می‌شود"); setOpen(false); router.refresh(); }
+              try { const r = await api<{ status: string; awardedPoints?: number }>(`/api/products/${productId}/reviews`, "POST", { rating, ...f, pros, cons, recommend, mediaIds: imgs }); const message = r.status === "approved" ? "دیدگاه شما منتشر شد" : "دیدگاه شما ثبت شد و پس از بررسی منتشر می‌شود"; toast(r.awardedPoints ? `${message} · ${r.awardedPoints.toLocaleString("fa-IR")} امتیاز به کیف امتیاز شما افزوده شد` : message); setOpen(false); router.refresh(); }
               catch (e) { toast((e as Error).message, false); } finally { setBusy(false); }
             }}>{busy && <Loader2 className="h-4 w-4 animate-spin" />}ثبت دیدگاه</button>
             <p className="text-center text-[11px] text-slate-400">{!rating ? "امتیاز را انتخاب کنید. " : ""}{f.body.trim().length < 10 ? "متن دیدگاه حداقل ۱۰ کاراکتر باشد." : ""}</p>

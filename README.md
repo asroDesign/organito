@@ -1,5 +1,7 @@
 # یدک‌تک (YadakTech) — مارکت‌پلیس و سامانه تأمین قطعات خودرو
 
+> راهنمای فنی ماژول‌ها و معماری جاری پروژه: [مستندات پروژه](project-docs/README.md). هنگام تغییر کد، سند ماژول مرتبط را نیز به‌روز کنید.
+
 Next.js 16 (App Router) · React 19 · TypeScript strict · PostgreSQL · Drizzle ORM · Tailwind 4 · Vazirmatn · Lucide · RTL
 
 ## نصب و اجرا

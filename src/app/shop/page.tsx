@@ -26,8 +26,10 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 
 export default async function Shop({ searchParams }: { searchParams: Promise<ShopFilters> }) {
   const sp = await searchParams;
+  const selectedProductIds = [...new Set((sp.products ?? "").split(",").map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 50);
+  const filters: ShopFilters = { ...sp, ids: selectedProductIds.length ? selectedProductIds : undefined };
   const [items, cats, brands, makes, st] = await Promise.all([
-    listShopProducts(sp), categoriesWithCounts(),
+    listShopProducts(filters), categoriesWithCounts(),
     db.selectDistinct({ b: products.brand }).from(products).where(sql`${products.status} in ('active','out_of_stock')`), vehicleMakes(), getSettings(),
   ]);
   const page = Math.max(1, Number(sp.page) || 1);
@@ -48,10 +50,12 @@ export default async function Shop({ searchParams }: { searchParams: Promise<Sho
   if (sp.make) chips.push([`محصول: ${sp.make}`, "make"]);
   if (sp.stock) chips.push([sp.stock === "in" ? "فقط موجود" : "ناموجود", "stock"]);
   if (sp.fest) chips.push(["محصولات جشنواره", "fest"]);
+  if (selectedProductIds.length) chips.push(["پیشنهادهای ویژه", "products"]);
   if (sp.min || sp.max) chips.push([`قیمت ${sp.min ? `از ${faNum(Number(sp.min))}` : ""} ${sp.max ? `تا ${faNum(Number(sp.max))}` : ""}`, "min"]);
   const Filters = (
     <form className="space-y-5">
       {sp.sort && <input type="hidden" name="sort" value={sp.sort} />}
+      {selectedProductIds.length > 0 && <input type="hidden" name="products" value={selectedProductIds.join(",")} />}
       <div><b className="mb-2 block text-sm">جست‌وجو</b><input name="q" defaultValue={sp.q} placeholder="نام محصول، برند یا کد" className="input" /></div>
       <div><b className="mb-2 block text-sm">دسته‌بندی</b>
         <div className="max-h-52 space-y-1 overflow-y-auto text-sm">
@@ -80,7 +84,7 @@ export default async function Shop({ searchParams }: { searchParams: Promise<Sho
       <div className="border-b bg-gradient-to-l from-emerald-50 to-white">
         <div className="mx-auto max-w-7xl px-4 py-6">
           <nav className="mb-2 text-xs text-slate-500"><Link href="/">خانه</Link> / <Link href="/shop">فروشگاه</Link>{cat && <> / {cat.name}</>}</nav>
-          <h1 className="text-2xl font-black text-slate-900">{cat?.name ?? (sp.q ? `نتایج جست‌وجو «${sp.q}»` : sp.fest ? "محصولات جشنواره" : "همه محصولات")}</h1>
+          <h1 className="text-2xl font-black text-slate-900">{cat?.name ?? (selectedProductIds.length ? "پیشنهادهای ویژه" : sp.q ? `نتایج جست‌وجو «${sp.q}»` : sp.fest ? "محصولات جشنواره" : "همه محصولات")}</h1>
           {cat?.description && <p className="mt-1 line-clamp-2 max-w-3xl text-sm text-slate-500">{stripHtml(cat.description, 220)}</p>}
         </div>
       </div>

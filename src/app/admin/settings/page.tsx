@@ -1,14 +1,25 @@
 import { requirePage } from "@/lib/auth";
+import { db } from "@/db";
+import { products } from "@/db/schema";
+import { inArray } from "drizzle-orm";
 import { getSettings } from "@/lib/settings";
 import { Card, PageHeader } from "@/components/ui";
 import { JsonForm } from "@/components/client";
 import { HeroEditor } from "@/components/HeroEditor";
 import PosTerminalManager from "@/components/PosTerminalManager";
 import { ProductTypeManager } from "@/components/ProductTypeManager";
+import { StorefrontMessagesSettings } from "@/components/StorefrontMessagesSettings";
 
 export default async function SettingsPage() {
   await requirePage({ perm: "SETTINGS_MANAGE" });
   const s = await getSettings();
+  const popups = Array.isArray(s.specialPopups) && s.specialPopups.length
+    ? s.specialPopups
+    : Number(s.specialPopupEnabled) === 1 && Array.isArray(s.specialPopupProductIds) && s.specialPopupProductIds.length
+      ? [{ id: "legacy-special", enabled: true, title: s.specialPopupTitle, body: s.specialPopupBody, imageId: Number(s.specialPopupMediaId), productIds: s.specialPopupProductIds, buttonLabel: s.specialPopupButtonLabel, delaySeconds: Number(s.specialPopupDelaySeconds), repeatHours: Number(s.specialPopupRepeatHours) }]
+      : [];
+  const selectedIds = [...new Set(popups.flatMap((popup) => popup.productIds ?? []))];
+  const selectedProducts = selectedIds.length ? await db.select({ id: products.id, name: products.nameFa, sku: products.sku, imageId: products.mainImageId }).from(products).where(inArray(products.id, selectedIds)) : [];
   return (
     <>
       <PageHeader title="تنظیمات کلان" subtitle="تمام تغییرات در Audit Log ثبت می‌شوند" />
@@ -23,6 +34,7 @@ export default async function SettingsPage() {
       </Card>
       <Card title="هیرو صفحه اصلی (تصویر / GIF / ویدیو)" className="mb-6"><HeroEditor initial={{ heroMediaId: s.heroMediaId, heroType: s.heroType, heroTitle: s.heroTitle, heroSubtitle: s.heroSubtitle }} /></Card>
       <Card title="کارتخوان‌های فروش حضوری" className="mb-6"><p className="text-xs leading-6 text-slate-500">کارتخوان‌های فعال این فهرست هنگام ثبت فروش حضوری انبار مرکزی انتخاب می‌شوند.</p><PosTerminalManager listUrl="/api/admin/settings/pos-terminals" manageUrl="/api/admin/settings/pos-terminals" /></Card>
+      <Card title="پاپ‌آپ پیشنهاد ویژه و نوار اعلان" className="mb-6"><StorefrontMessagesSettings initial={{ announcementEnabled: Number(s.announcementEnabled), announcementText: s.announcementText, announcementHref: s.announcementHref, announcementTheme: s.announcementTheme, specialPopups: popups }} initialProducts={selectedProducts}/></Card>
       <Card title="تنظیمات عمومی">
         <JsonForm url="/api/admin/settings" submit="ذخیره تنظیمات" resetOnDone={false} fields={[
           { name: "siteName", label: "نام سامانه", half: true, defaultValue: s.siteName },
@@ -33,6 +45,7 @@ export default async function SettingsPage() {
           { name: "defaultCommission", label: "کمیسیون پیش‌فرض (%)", type: "number", half: true, defaultValue: s.defaultCommission },
           { name: "minWithdrawal", label: "حداقل برداشت (تومان)", type: "number", half: true, defaultValue: s.minWithdrawal },
           { name: "loyaltyPointValue", label: "ارزش هر امتیاز باشگاه (تومان)", type: "number", half: true, defaultValue: s.loyaltyPointValue },
+          { name: "reviewRewardPoints", label: "امتیاز ثبت دیدگاه پس از تحویل کالا (۰ = غیرفعال)", type: "number", half: true, defaultValue: s.reviewRewardPoints },
           { name: "organicBadgeLabel", label: "عنوان نشان تأیید اصالت محصول", half: true, defaultValue: s.organicBadgeLabel },
           { name: "releasePolicy", label: "سیاست آزادسازی وجه", type: "select", half: true, defaultValue: s.releasePolicy, options: [["on_customer_confirm", "پس از تأیید تحویل"], ["on_delivery", "پس از ثبت تحویل"]] },
           { name: "supportPhone", label: "تلفن پشتیبانی", half: true, defaultValue: s.supportPhone },

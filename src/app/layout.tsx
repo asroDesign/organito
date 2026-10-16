@@ -8,6 +8,7 @@ import { CurrencyInitializer } from "@/components/CurrencyInitializer";
 import { AttributionTracker } from "@/components/AttributionTracker";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { ProductCompareDock } from "@/components/ProductCompareDock";
+import { StorefrontMessages } from "@/components/StorefrontMessages";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,11 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const s = await getSettings();
+  const specialPopups = Array.isArray(s.specialPopups) && s.specialPopups.length
+    ? s.specialPopups
+    : Number(s.specialPopupEnabled) === 1 && Array.isArray(s.specialPopupProductIds) && s.specialPopupProductIds.length
+      ? [{ id: "legacy-special", enabled: true, title: s.specialPopupTitle, body: s.specialPopupBody, imageId: Number(s.specialPopupMediaId), productIds: s.specialPopupProductIds, buttonLabel: s.specialPopupButtonLabel, delaySeconds: Number(s.specialPopupDelaySeconds), repeatHours: Number(s.specialPopupRepeatHours) }]
+      : [];
   setCurrencyUnit(s.currency);
   const defaultTheme = ["light", "dark", "system"].includes(s.appearanceMode) ? s.appearanceMode : "light";
   const palette = ["sunshine", "forest", "ocean"].includes(s.appearancePalette) ? s.appearancePalette : "sunshine";
@@ -56,7 +62,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <link rel="preload" href="/fonts/Vazirmatn-wght.woff2" as="font" type="font/woff2" crossOrigin="anonymous" />
       </head>
       <body className="bg-leaf-pattern min-h-screen text-slate-900 antialiased">
-        <CurrencyInitializer currency={s.currency}><AttributionTracker /><AnalyticsTracker />{children}<ProductCompareDock /><Toaster /></CurrencyInitializer>
+        <CurrencyInitializer currency={s.currency}><AttributionTracker /><AnalyticsTracker />
+          <StorefrontMessages announcement={{ enabled: Number(s.announcementEnabled) === 1, text: s.announcementText, href: s.announcementHref, theme: s.announcementTheme }} popups={specialPopups} />
+          {children}<ProductCompareDock /><Toaster />
+        </CurrencyInitializer>
       </body>
     </html>
   );
