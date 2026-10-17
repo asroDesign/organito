@@ -67,7 +67,7 @@ export default async function SmsPage({ searchParams }: { searchParams: Promise<
         <div className="space-y-6">
           <Card title="ارسال پیامک با الگو"><SmsSender templates={tpls.map((t) => ({ id: t.id, title: t.title, event: t.event, body: t.body, variables: t.variables }))} /></Card>
           <Card title="گزارش ارسال">
-            <Table head={["رویداد", "گیرنده", "وضعیت", "زمان", ""]}>
+            <div className="hidden md:block"><Table head={["رویداد", "گیرنده", "وضعیت", "زمان", ""]}>
               {logs.map((l) => (
                 <tr id={`sms-log-${l.id}`} key={l.id} className={selectedLog === String(l.id) ? "bg-amber-50" : ""} title={`${l.body}\n\n${l.response ?? ""}`}>
                   <Td className="text-[11px]">{l.event}</Td><Td className="text-xs"><span dir="ltr">{maskPhone(l.phone)}</span></Td>
@@ -75,7 +75,8 @@ export default async function SmsPage({ searchParams }: { searchParams: Promise<
                   <Td>{l.status === "failed" && <ActionButton url={`/api/admin/sms/logs/${l.id}/retry`} className="btn-sm">ارسال مجدد</ActionButton>}</Td>
                 </tr>
               ))}
-            </Table>
+            </Table></div>
+            <div className="space-y-2 md:hidden">{logs.map((l)=><article id={`sms-log-mobile-${l.id}`} key={l.id} className={`min-w-0 rounded-xl border p-3 ${selectedLog===String(l.id)?"border-amber-300 bg-amber-50":"border-slate-200"}`} title={`${l.body}\n\n${l.response??""}`}><div className="flex items-start justify-between gap-2"><div className="min-w-0"><b className="block break-words text-sm">{l.event}</b><span className="mt-1 block text-xs text-slate-500" dir="ltr">{maskPhone(l.phone)}</span></div><StatusBadge status={l.status}/></div><div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500"><span>{jdate(l.createdAt,true)}</span><span>{l.attempts.toLocaleString("fa-IR")} تلاش</span></div>{l.status==="failed"&&<ActionButton url={`/api/admin/sms/logs/${l.id}/retry`} className="btn-sm mt-3">ارسال مجدد</ActionButton>}</article>)}{!logs.length&&<p className="py-6 text-center text-sm text-slate-400">گزارشی ثبت نشده است.</p>}</div>
           </Card>
         </div>
       </div>

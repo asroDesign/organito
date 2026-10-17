@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { FolderTree, Pencil, Trash2, Plus, Loader2 } from "lucide-react";
 import { api, toast } from "./client";
 import { RichEditor } from "./RichEditor";
+import { ImageUploader } from "./client";
 
 type FAQ = { question: string; answer: string };
-type Row = { id: number; name: string; slug: string; parentId: number | null; description: string | null; seoTitle: string | null; metaDescription: string | null; seoKeywords: string | null; canonicalUrl: string | null; faqs: FAQ[]; sortOrder: number; products: number };
+type Row = { id: number; name: string; slug: string; imageId: number | null; parentId: number | null; description: string | null; seoTitle: string | null; metaDescription: string | null; seoKeywords: string | null; canonicalUrl: string | null; faqs: FAQ[]; sortOrder: number; products: number };
 
 export function CategoryManager({ rows }: { rows: Row[] }) {
   const router = useRouter();
@@ -28,9 +29,9 @@ export function CategoryManager({ rows }: { rows: Row[] }) {
   };
   const Node = ({ r, depth }: { r: Row; depth: number }) => (
     <>
-      <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2 hover:bg-slate-50" style={{ paddingRight: 12 + depth * 24 }}>
-        <div className="flex items-center gap-2"><FolderTree className="h-4 w-4 text-emerald-600" /><b>{r.name}</b><span className="text-xs text-slate-400" dir="ltr">/{r.slug}</span><span className="rounded bg-slate-100 px-2 text-[11px]">{r.products.toLocaleString("fa-IR")} محصول</span></div>
-        <div className="flex gap-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl px-3 py-2 hover:bg-slate-50" style={{ paddingRight: 12 + depth * 12 }}>
+        <div className="flex min-w-0 flex-wrap items-center gap-2"><FolderTree className="h-4 w-4 shrink-0 text-emerald-600" /><b>{r.name}</b><span className="max-w-full truncate text-xs text-slate-400" dir="ltr">/{r.slug}</span><span className="rounded bg-slate-100 px-2 text-[11px]">{r.products.toLocaleString("fa-IR")} محصول</span>{r.imageId ? <span className="text-[10px] text-emerald-700">تصویر دارد</span> : null}</div>
+        <div className="flex shrink-0 gap-1">
           <button className="btn-sm" onClick={() => setEdit({ parentId: r.id, name: "", sortOrder: 0 })}><Plus className="h-3 w-3" />زیردسته</button>
           <button className="btn-sm" onClick={() => setEdit(r)}><Pencil className="h-3 w-3" /></button>
           <button className="btn-sm" onClick={() => del(r)}><Trash2 className="h-3 w-3 text-rose-500" /></button>
@@ -52,6 +53,7 @@ export function CategoryManager({ rows }: { rows: Row[] }) {
           <option value="">— دسته اصلی —</option>{rows.filter((r) => r.id !== edit?.id).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
         <input type="number" value={edit?.sortOrder ?? 0} onChange={(e) => setEdit({ ...(edit ?? {}), sortOrder: Number(e.target.value) })} placeholder="ترتیب" className="input" />
+        <div className="rounded-xl border border-slate-200 bg-white p-3"><b className="mb-2 block text-sm">تصویر دسته‌بندی</b><ImageUploader value={edit?.imageId ? [edit.imageId] : []} max={1} folderSlug="custom" onChange={(ids) => setEdit({ ...(edit ?? {}), imageId: ids[0] ?? null })} /></div>
         <div><label className="mb-1 block text-sm text-slate-600">توضیحات کامل دسته</label><RichEditor value={edit?.description ?? ""} onChange={(description) => setEdit({ ...(edit ?? {}), description })} placeholder="راهنمای خرید، ویژگی‌ها و اطلاعات مفید این دسته…" minHeight={180} /></div>
         <div className="rounded-xl border border-slate-200 bg-white p-3">
           <b className="mb-3 block text-sm">تنظیمات سئو</b>

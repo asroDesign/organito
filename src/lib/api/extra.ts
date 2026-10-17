@@ -104,7 +104,7 @@ export const extraRoutes: Route[] = [
     const b = await body(req);
     const name = str(b.name, 80);
     if (!name) throw new HttpError(400, "نام دسته الزامی است");
-    const [c] = await db.insert(categories).values({ name, slug: slugify(str(b.slug, 80) || name), parentId: b.parentId ? int(b.parentId, 1) : null, description: str(b.description, 50000) || null, seoTitle: str(b.seoTitle, 160) || null, metaDescription: str(b.metaDescription, 320) || null, seoKeywords: str(b.seoKeywords, 500) || null, canonicalUrl: str(b.canonicalUrl, 500) || null, faqs: faqs(b.faqs), sortOrder: int(b.sortOrder ?? 0, 0, 1000) }).returning();
+    const [c] = await db.insert(categories).values({ name, slug: slugify(str(b.slug, 80) || name), imageId: b.imageId ? int(b.imageId, 1) : null, parentId: b.parentId ? int(b.parentId, 1) : null, description: str(b.description, 50000) || null, seoTitle: str(b.seoTitle, 160) || null, metaDescription: str(b.metaDescription, 320) || null, seoKeywords: str(b.seoKeywords, 500) || null, canonicalUrl: str(b.canonicalUrl, 500) || null, faqs: faqs(b.faqs), sortOrder: int(b.sortOrder ?? 0, 0, 1000) }).returning();
     await audit(db, { userId: u.id, ...m }, "category.create", "category", c.id, null, c);
     return c;
   } },
@@ -124,7 +124,7 @@ export const extraRoutes: Route[] = [
     }
     const parentId = b.parentId ? int(b.parentId, 1) : null;
     if (parentId === id) throw new HttpError(400, "دسته نمی‌تواند والد خودش باشد");
-    const patch = { name: str(b.name, 80) || old.name, slug: slugify(str(b.slug, 80) || old.slug), parentId, description: str(b.description, 50000) || null, seoTitle: str(b.seoTitle, 160) || null, metaDescription: str(b.metaDescription, 320) || null, seoKeywords: str(b.seoKeywords, 500) || null, canonicalUrl: str(b.canonicalUrl, 500) || null, faqs: faqs(b.faqs), sortOrder: int(b.sortOrder ?? old.sortOrder, 0, 1000) };
+    const patch = { name: str(b.name, 80) || old.name, slug: slugify(str(b.slug, 80) || old.slug), imageId: b.imageId === undefined ? old.imageId : b.imageId ? int(b.imageId, 1) : null, parentId, description: str(b.description, 50000) || null, seoTitle: str(b.seoTitle, 160) || null, metaDescription: str(b.metaDescription, 320) || null, seoKeywords: str(b.seoKeywords, 500) || null, canonicalUrl: str(b.canonicalUrl, 500) || null, faqs: faqs(b.faqs), sortOrder: int(b.sortOrder ?? old.sortOrder, 0, 1000) };
     await db.update(categories).set(patch).where(eq(categories.id, id));
     await audit(db, { userId: u.id, ...m }, "category.update", "category", id, old, patch);
     return { ok: true };

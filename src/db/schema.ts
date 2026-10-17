@@ -168,6 +168,7 @@ export const categories = pgTable("categories", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
+  imageId: integer("image_id"),
   parentId: integer("parent_id"),
   description: text("description"),
   seoTitle: text("seo_title"),

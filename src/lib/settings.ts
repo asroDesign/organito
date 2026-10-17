@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { db } from "@/db";
 import { settings } from "@/db/schema";
 import type { DB } from "./types";
@@ -182,7 +183,7 @@ export const DEFAULT_SETTINGS = {
 };
 export type SettingsShape = typeof DEFAULT_SETTINGS;
 
-export async function getSettings(tx: DB = db): Promise<SettingsShape> {
+async function readSettings(tx: DB): Promise<SettingsShape> {
   const rows = await tx.select().from(settings);
   const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
   for (const r of rows) out[r.key] = r.value;
@@ -190,4 +191,12 @@ export async function getSettings(tx: DB = db): Promise<SettingsShape> {
   for (const [key, value] of Object.entries(out)) if (typeof value === "string" && key !== "siteName" && key !== "footerScripts") out[key] = siteBrandText(value, siteName);
   setCurrencyUnit(String(out.currency ?? DEFAULT_SETTINGS.currency));
   return out as SettingsShape;
+}
+
+// Root layout, storefront header, and individual pages often need the same
+// settings during one render. React cache is request-scoped, so edits are
+// visible on the next request and settings are never kept globally stale.
+const getRequestSettings = cache(() => readSettings(db));
+export async function getSettings(tx: DB = db): Promise<SettingsShape> {
+  return tx === db ? getRequestSettings() : readSettings(tx);
 }

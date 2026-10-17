@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { cache } from "react";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { MapPin, CalendarDays, Sprout, BadgeCheck, FlaskConical, Package, Thermometer, Hourglass, FileText, Microscope, ListChecks, MessageSquareText, MessageCircleQuestion, Store, Leaf, Star, Plus, Minus, CheckCircle2 } from "lucide-react";
 import { db } from "@/db";
@@ -26,11 +27,11 @@ import { ProductCard } from "@/components/ProductCard";
 import { AnswerForm, QuestionForm, ReviewForm, ReviewImages, RoleBadge, Stars, VoteButtons } from "@/components/Community";
 import { seoMetadata, siteBase } from "@/lib/seo";
 
-async function load(slug: string) {
+const load = cache(async (slug: string) => {
   const [row] = await db.select({ p: products, cat: categories }).from(products).leftJoin(categories, eq(categories.id, products.categoryId))
     .where(and(eq(products.slug, decodeURIComponent(slug)), inArray(products.status, ["active", "out_of_stock"])));
   return row;
-}
+});
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const row = await load((await params).slug);
@@ -89,6 +90,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   const allPros = approved.flatMap((x) => x.r.pros), allCons = approved.flatMap((x) => x.r.cons);
   const topOf = (arr: string[]) => Object.entries(arr.reduce<Record<string, number>>((m, t) => ({ ...m, [t]: (m[t] ?? 0) + 1 }), {})).sort((a, b) => b[1] - a[1]).slice(0, 4);
   const org = p.organicInfo ?? {};
+  const galleryIds = [...new Set([...(p.mainImageId ? [p.mainImageId] : []), ...imgs.map((image) => image.mediaId)])];
   const orgRows = ORG.filter(([k]) => org[k] && (k !== "certificate" || p.certifiedOrganic));
   const byId = (ids: number[]) => ids.map((id) => related.find((x) => x.id === id)).filter((x): x is (typeof related)[number] => !!x);
   const rel = (p.relatedProductIds?.length ? byId(p.relatedProductIds) : related.filter((r) => r.id !== p.id)).filter((r) => r.id !== p.id).slice(0, 5);
@@ -153,7 +155,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
       <main className="mx-auto max-w-7xl space-y-10 px-4 py-6 pb-28 lg:pb-10">
         <nav className="text-xs text-slate-500"><Link href="/">خانه</Link> / <Link href="/shop">فروشگاه</Link>{row.cat && <> / <Link href={`/shop?cat=${row.cat.id}`}>{row.cat.name}</Link></>} / <span className="text-emerald-800">{p.nameFa}</span></nav>
         <div className="grid min-w-0 items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,340px)] xl:gap-8">
-          <div className="min-w-0 xl:sticky xl:top-40 xl:self-start"><Gallery ids={imgs.map((i) => i.mediaId)} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? s.organicBadgeLabel : undefined} actions={<>{(!p.inquiryOnly && !variants.some((v) => v.inquiryOnly)) && <ProductPriceHistory productId={p.id}/>}<FavoriteButton productId={p.id}/><ProductCompareButton productId={p.id}/></>} /></div>
+          <div className="min-w-0 xl:sticky xl:top-40 xl:self-start"><Gallery ids={galleryIds} alt={p.nameFa} videoId={p.videoMediaId} badge={p.certifiedOrganic ? s.organicBadgeLabel : undefined} actions={<>{(!p.inquiryOnly && !variants.some((v) => v.inquiryOnly)) && <ProductPriceHistory productId={p.id}/>}<FavoriteButton productId={p.id}/><ProductCompareButton productId={p.id}/></>} /></div>
           <div className="min-w-0 space-y-5 [overflow-wrap:anywhere]">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <Link href={brandPage ? `/brands/${brandPage.slug}` : `/shop?brand=${encodeURIComponent(p.brand)}`} className="rounded-full bg-emerald-50 px-3 py-1 font-bold text-emerald-800 ring-1 ring-emerald-200">🌿 {p.brand}</Link>

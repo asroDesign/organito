@@ -1,6 +1,7 @@
 import { and, desc, eq, gt, ilike, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { after } from "next/server";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import sharp from "sharp";
 import { db } from "@/db";
 import {
   media, mediaFolders, mediaVariants, notifications, productImages, productViewLogs, productViewPresence, productPriceHistory, productAlertVerifications, productAlertSubscriptions, productAlertEvents, productAlertDeliveries, ticketDepartments, detailAccounts, products, productVariants, sellerOffers, sellers, supplyRequests, ticketMessages, tickets, users, wallets, auditLogs, blogPosts,
@@ -295,7 +296,7 @@ export const publicRoutes: Route[] = [
       const u = await getUser();
       if (!u || (u.id !== m.uploadedBy && !u.staff)) throw new HttpError(404, "یافت نشد");
     }
-    let pathToRead = m.storagePath, contentType = m.mime;
+    let pathToRead = m.storagePath, contentType = m.mime, generatedImageVariant = false;
     const requestedWidth = Number(req.nextUrl.searchParams.get("w"));
     if (m.mime.startsWith("image/") && [320, 640, 960, 1280, 1600].includes(requestedWidth)) {
       const formats = preferredImageFormats(req.headers.get("accept"));
@@ -308,8 +309,23 @@ export const publicRoutes: Route[] = [
     }
     let content:Buffer;
     try{content=await readMediaFile(pathToRead)}catch{if(pathToRead!==m.storagePath){try{content=await readMediaFile(m.storagePath);contentType=m.mime}catch{throw new HttpError(404,"فایل در دایرکتوری مدیا یافت نشد")}}else if(m.externalUrl&&/^https:\/\//i.test(m.externalUrl))return Response.redirect(m.externalUrl,307);else throw new HttpError(404,"فایل در دایرکتوری مدیا یافت نشد")}
+    // Older uploads may not have pre-generated responsive variants. Resize and
+    // encode those on demand instead of sending a multi-megabyte original to
+    // the product page's 320/640/960px image slots.
+    if (pathToRead === m.storagePath && m.mime.startsWith("image/") && [320, 640, 960, 1280, 1600].includes(requestedWidth) && ["image/jpeg", "image/png", "image/webp"].includes(m.mime)) {
+      const formats = preferredImageFormats(req.headers.get("accept"));
+      const format = formats.includes("avif") && sharp.format.avif?.output?.file ? "avif" : formats.includes("webp") ? "webp" : null;
+      if (format) {
+        try {
+          content = await sharp(content, { failOn: "error", limitInputPixels: 40_000_000 }).rotate().resize({ width: requestedWidth, withoutEnlargement: true }).toFormat(format, { quality: 80, effort: 3 }).toBuffer();
+          contentType = `image/${format}`;
+          generatedImageVariant = true;
+        } catch { /* Keep the original image available if optimization cannot decode it. */ }
+      }
+    }
     const headers: Record<string, string> = {
-      "Content-Type": contentType, "Cache-Control": pub ? "public, max-age=900" : "private, max-age=300", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes", "Vary": "Accept",
+      "Content-Type": contentType, "Cache-Control": pub ? (m.mime.startsWith("image/") ? "public, max-age=86400, stale-while-revalidate=604800" : "public, max-age=900") : "private, max-age=300", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes", "Vary": "Accept",
+      ...(generatedImageVariant ? { "X-Image-Optimized": "on-demand" } : {}),
       ...(m.mime === "application/pdf" ? { "Content-Disposition": `inline; filename="doc-${m.id}.pdf"`, "Content-Security-Policy": "sandbox" } : {}),
     };
     const range = req.headers.get("range");
