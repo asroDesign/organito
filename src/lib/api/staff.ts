@@ -1,7 +1,7 @@
 import { createInventoryDocument } from "../services/inventory-documents";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { accounts, inventoryParties, inventorySupplierPayments, journalLines, orderItems, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications, inventoryWarehouses, inventoryWarehouseStock, productVariants, products, sellerOffers, stockMovements } from "@/db/schema";
+import { accounts, inventoryParties, inventorySupplierPayments, journalLines, orderItems, orders, payments, centralPosSales, centralPosItems, sellerPosSales, sellers, settings, smsTemplates, tickets, users, sellerShipments, sellerPosItems, ticketMessages, ticketDepartments, notifications, inventoryWarehouses, inventoryWarehouseStock, productVariants, products, sellerOffers, stockMovements } from "@/db/schema";
 import { requireApi, rateLimit, hashPassword } from "../auth";
 import { audit } from "../audit";
 import { postJournal, reverseJournal } from "../accounting";
@@ -25,6 +25,36 @@ async function requireSeller() {
 }
 
 export const staffRoutes: Route[] = [
+  { method: "GET", pattern: "admin/order-details/:kind/:id", handler: async (_req, p) => {
+    await requireApi("ORDERS_VIEW");
+    const id = idParam(p.id), kind = str(p.kind, 20);
+    if (kind === "online") {
+      const [order] = await db.select({ id: orders.id, number: orders.number, status: orders.status, paymentStatus: orders.paymentStatus, total: orders.total, itemsSubtotal: orders.itemsSubtotal, sellerShippingTotal: orders.sellerShippingTotal, centralShipping: orders.centralShipping, discount: orders.discount, tax: orders.tax, address: orders.address, createdAt: orders.createdAt, fulfillmentType: orders.fulfillmentType, pickupCenterName: orders.pickupCenterName, discountCode: orders.discountCode }).from(orders).where(eq(orders.id, id));
+      if (!order) throw new HttpError(404, "سفارش پیدا نشد");
+      const [[customer], items, paymentRows] = await Promise.all([
+        db.select({ name: users.name, phone: users.phone }).from(users).innerJoin(orders, eq(orders.customerId, users.id)).where(eq(orders.id, id)),
+        db.select({ title: orderItems.title, quantity: orderItems.qty, unitPrice: orderItems.unitPrice, lineTotal: orderItems.lineTotal }).from(orderItems).where(eq(orderItems.orderId, id)),
+        db.select({ method: payments.method, status: payments.status, amount: payments.amount, refCode: payments.refCode, gateway: payments.gateway, paidAt: payments.paidAt, trackingCode: payments.trackingCode }).from(payments).where(eq(payments.orderId, id)).orderBy(payments.id),
+      ]);
+      return { kind, order, customer: customer ?? null, items, payments: paymentRows };
+    }
+    if (kind === "central") {
+      const [sale] = await db.select().from(centralPosSales).where(eq(centralPosSales.id, id));
+      if (!sale) throw new HttpError(404, "فاکتور فروش حضوری پیدا نشد");
+      const items = await db.select({ title: centralPosItems.title, quantity: centralPosItems.quantity, unitPrice: centralPosItems.unitPrice, lineTotal: centralPosItems.lineTotal }).from(centralPosItems).where(eq(centralPosItems.saleId, id));
+      return { kind, order: { id: sale.id, number: sale.number, status: sale.status, paymentStatus: sale.status === "returned" ? "refunded" : "paid", total: sale.total, itemsSubtotal: sale.subtotal, discount: sale.discount, shippingCost: sale.shippingCost, shippingCity: sale.shippingCity, shippingAddress: sale.shippingAddress, shippingPostalCode: sale.shippingPostalCode, shippingCarrierName: sale.shippingCarrierName, shippingFreightCollect: sale.shippingFreightCollect, shippingTrackingNumber: sale.shippingTrackingNumber, shippingStatus: sale.shippingStatus, createdAt: sale.createdAt, paymentMethod: sale.paymentMethod, settlement: sale.settlement }, customer: { name: sale.customerName, phone: sale.customerPhone }, items, payments: [] };
+    }
+    if (kind === "seller") {
+      const [sale] = await db.select().from(sellerPosSales).where(eq(sellerPosSales.id, id));
+      if (!sale) throw new HttpError(404, "فاکتور فروش حضوری پیدا نشد");
+      const [[seller], items] = await Promise.all([
+        db.select({ shopName: sellers.shopName }).from(sellers).where(eq(sellers.id, sale.sellerId)),
+        db.select({ title: sellerPosItems.title, quantity: sellerPosItems.quantity, unitPrice: sellerPosItems.unitPrice, lineTotal: sellerPosItems.lineTotal }).from(sellerPosItems).where(eq(sellerPosItems.saleId, id)),
+      ]);
+      return { kind, order: { id: sale.id, number: sale.number, status: sale.status, paymentStatus: sale.status === "returned" ? "refunded" : "paid", total: sale.total, itemsSubtotal: sale.subtotal, discount: sale.discount, createdAt: sale.createdAt, paymentMethod: sale.paymentMethod, settlement: sale.settlement, shopName: seller?.shopName ?? "" }, customer: { name: sale.customerName, phone: sale.customerPhone }, items, payments: [] };
+    }
+    throw new HttpError(400, "نوع سفارش نامعتبر است");
+  } },
   { method: "GET", pattern: "admin/settings/storefront-products", handler: async (req) => {
     await requireApi("SETTINGS_MANAGE");
     const url = new URL(req.url);
